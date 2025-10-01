@@ -32,6 +32,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
         
+      - name: Create secret_key.json for build
+        shell: powershell
+        run: |
+          Copy-Item "secret_key.json.template" "secret_key.json"
+          Write-Host "Created secret_key.json from template"
+        
       - name: Build frontend
         run: npm run build
         
