@@ -1521,6 +1521,12 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
     // 声明在外层作用域，以便 catch 块也能访问
     let processed = 0
     let matched = 0
+    
+    // 发送开始信息到前端
+    const dbPath = path.basename(result.filePaths[0])
+    sendMessageToWebContents(`🔄 开始从 ${dbPath} 导入元数据...`)
+    sendMessageToWebContents(`📋 匹配选项: ${matchOptions?.matchTitleOnly ? '仅标题' : '全字段'}, 哈希:${matchOptions?.matchHash ? '是' : '否'}, 并发数:${setting.concurrentScan || 4}`)
+    
     try {
       const re = /'/g
       const bookListLength = bookList.length
@@ -1543,15 +1549,23 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                 const { gid, token } = ehviewerData || {};
                 if (gid && token) {
                   metadata = await db.get('SELECT * FROM gallery WHERE gid = ? AND token = ?', [gid, token]);
+                  if (metadata) {
+                    sendMessageToWebContents(`✅ [Folder] 匹配: ${book.title} -> gid:${gid}`);
+                  }
                 }
               }
               if (metadata === undefined) {
                 let filename = path.parse(book.title).name;
+                const originalFilename = filename;
                 if (matchOptions?.trimTitleRegExp) {
                   try {
                     filename = filename.replace(new RegExp(matchOptions.trimTitleRegExp, 'g'), '').trim();
+                    if (filename !== originalFilename) {
+                      sendMessageToWebContents(`🔧 标题裁剪: "${originalFilename}" -> "${filename}"`);
+                    }
                   } catch (e) {
                     console.log('trimTitleRegExp error:', e);
+                    sendMessageToWebContents(`⚠️ 标题裁剪失败: ${e.message}`);
                   }
                 }
                 let sql = '';
@@ -1568,6 +1582,12 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                   params.push(book.hash);
                 }
                 metadata = await db.get(sql, ...params);
+                
+                if (metadata) {
+                  sendMessageToWebContents(`✅ [SQL] 匹配: "${filename}" -> "${metadata.title || metadata.title_jpn}"`);
+                } else {
+                  sendMessageToWebContents(`❌ [SQL] 未匹配: "${filename}"`);
+                }
               }
               if (metadata) {
                 metadata.tags = {
@@ -1602,13 +1622,23 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
       }
       while (i < bookListLength) {
         await processBatch();
+        // 每批次报告进度
+        if (processed % (BATCH_SIZE * 2) === 0 || processed === bookListLength) {
+          const percent = ((processed / bookListLength) * 100).toFixed(1);
+          sendMessageToWebContents(`📊 进度: ${processed}/${bookListLength} (${percent}%), 已匹配: ${matched}`);
+        }
       }
       await db.close()
       setProgressBar(-1)
+      
+      // 最终统计
+      const matchRate = bookListLength > 0 ? ((matched / bookListLength) * 100).toFixed(1) : 0;
       console.log(`Import completed: ${matched} matched out of ${processed} processed`)
+      sendMessageToWebContents(`🎉 导入完成! 处理: ${processed}, 匹配: ${matched} (${matchRate}%)`);
       sendMessageToWebContents(`Import completed: ${matched} matched, ${processed} processed`)
     } catch (e) {
       console.log(e)
+      sendMessageToWebContents(`❌ 导入错误: ${e.message || e}`);
       await db.close()
       setProgressBar(-1)
     }
