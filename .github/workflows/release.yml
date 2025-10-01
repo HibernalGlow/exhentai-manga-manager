@@ -45,6 +45,8 @@ jobs:
         run: npm run dist
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 使用预编译的二进制文件，避免从源码编译
+          npm_config_build_from_source: false
           
       - name: Create portable package
         shell: powershell

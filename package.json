@@ -22,6 +22,8 @@
     "directories": {
       "output": "out"
     },
+    "npmRebuild": false,
+    "buildDependenciesFromSource": false,
     "files": [
       "dist/index.html",
       "dist/assets/*",
