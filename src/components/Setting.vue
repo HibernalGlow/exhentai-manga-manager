@@ -552,10 +552,16 @@
           </el-col>
           <el-col :span="8">
             <div class="setting-line">
-              <el-button class="function-button" type="primary" plain @click="importMetadataFromSqlite">{{
-                  $t('m.importMetadataFromSqlite')
-                }}
-              </el-button>
+                <el-checkbox v-model="setting.matchTitleOnly" style="margin-right:12px">
+                  仅用标题匹配（title/title_jpn）
+                </el-checkbox>
+                <el-checkbox v-model="setting.matchHash" style="margin-right:12px">
+                  启用 hash 匹配
+                </el-checkbox>
+                <el-button class="function-button" type="primary" plain @click="importMetadataFromSqlite">{{
+                    $t('m.importMetadataFromSqlite')
+                  }}
+                </el-button>
             </div>
           </el-col>
           <el-col :span="8">
@@ -1068,10 +1074,22 @@ const importDatabase = async () => {
 }
 
 const importMetadataFromSqlite = async () => {
-  const { success, bList } = await ipcRenderer.invoke('import-sqlite', _.cloneDeep(bookList.value))
+  const matchOptions = {
+    matchTitleOnly: setting.value.matchTitleOnly,
+    matchHash: setting.value.matchHash,
+    trimTitleRegExp: setting.value.trimTitleRegExp  // 传递裁剪标题正则表达式
+  }
+  const { success, matched, processed } = await ipcRenderer.invoke('import-sqlite', {
+    bookList: _.cloneDeep(bookList.value),
+    matchOptions
+  })
   if (success) {
-    bookList.value = bList
-    printMessage('success', t('c.importMessage'))
+    // 重新加载书籍列表，避免传输大量数据
+    await ipcRenderer.invoke('load-book-list').then(res => {
+      bookList.value = res
+    })
+    printMessage('success', t('c.importMessage') + ` (${matched}/${processed})`)
+    emit('loadBookList')
   } else {
     printMessage('info', t('c.canceled'))
   }

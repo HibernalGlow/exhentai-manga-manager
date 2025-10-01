@@ -1507,7 +1507,8 @@ ipcMain.handle('import-database', async (event, arg) => {
   }
 })
 
-ipcMain.handle('import-sqlite', async (event, bookList) => {
+ipcMain.handle('import-sqlite', async (event, arg) => {
+  const { bookList, matchOptions } = arg
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile'],
     filters: [{ name: 'SQLite', extensions: ['sqlite'] }]
@@ -1517,9 +1518,14 @@ ipcMain.handle('import-sqlite', async (event, bookList) => {
       filename: result.filePaths[0],
       driver: sqlite3.Database
     })
+    // 声明在外层作用域，以便 catch 块也能访问
+    let processed = 0
+    let matched = 0
     try {
       const re = /'/g
       const bookListLength = bookList.length
+      const BATCH_SIZE = 50 // 每批处理50个，定期让出事件循环
+      
       for (let i = 0; i < bookListLength; i++) {
         const book = bookList[i]
         if (book.status !== 'tagged') {
@@ -1535,31 +1541,47 @@ ipcMain.handle('import-sqlite', async (event, bookList) => {
           }
           if (metadata === undefined) {
             // remove file extension
-            const filename = path.parse(book.title).name
-            metadata = await db.get(`SELECT * FROM gallery WHERE torrents LIKE ?
-                                                            OR title LIKE ?
-                                                            OR title_jpn LIKE ?
-                                                            OR thumb LIKE ?`,
-              `%${filename}%`,
-              `%${filename}%`,
-              `%${filename}%`,
-              `%${book.coverHash}%`
-            )
+            let filename = path.parse(book.title).name
+            
+            // 应用 trimTitleRegExp 裁剪标题（如果配置了）
+            if (matchOptions?.trimTitleRegExp) {
+              try {
+                filename = filename.replace(new RegExp(matchOptions.trimTitleRegExp, 'g'), '').trim()
+              } catch (e) {
+                console.log('trimTitleRegExp error:', e)
+              }
+            }
+            
+            let sql = ''
+            let params = []
+            if (matchOptions?.matchTitleOnly) {
+              sql = `SELECT * FROM gallery WHERE title LIKE ? OR title_jpn LIKE ?`
+              params = [`%${filename}%`, `%${filename}%`]
+            } else {
+              sql = `SELECT * FROM gallery WHERE torrents LIKE ? OR title LIKE ? OR title_jpn LIKE ? OR thumb LIKE ?`
+              params = [`%${filename}%`, `%${filename}%`, `%${filename}%`, `%${book.coverHash}%`]
+            }
+            // hash 匹配（可选）
+            if (matchOptions?.matchHash && book.hash) {
+              sql += ` OR hash = ?`
+              params.push(book.hash)
+            }
+            metadata = await db.get(sql, ...params)
           }
 
           if (metadata) {
             metadata.tags = {
-              language: metadata.language ? JSON.parse(metadata.language.replace(re, '\"')) : undefined,
-              parody: metadata.parody ? JSON.parse(metadata.parody.replace(re, '\"')) : undefined,
-              character: metadata.character ? JSON.parse(metadata.character.replace(re, '\"')) : undefined,
-              group: metadata.group ? JSON.parse(metadata.group.replace(re, '\"')) : undefined,
-              artist: metadata.artist ? JSON.parse(metadata.artist.replace(re, '\"')) : undefined,
-              male: metadata.male ? JSON.parse(metadata.male.replace(re, '\"')) : undefined,
-              female: metadata.female ? JSON.parse(metadata.female.replace(re, '\"')) : undefined,
-              mixed: metadata.mixed ? JSON.parse(metadata.mixed.replace(re, '\"')) : undefined,
-              other: metadata.other ? JSON.parse(metadata.other.replace(re, '\"')) : undefined,
-              cosplayer: metadata.cosplayer ? JSON.parse(metadata.cosplayer.replace(re, '\"')) : undefined,
-              rest: metadata.rest ? JSON.parse(metadata.rest.replace(re, '\"')) : undefined,
+              language: metadata.language ? JSON.parse(metadata.language.replace(re, '"')) : undefined,
+              parody: metadata.parody ? JSON.parse(metadata.parody.replace(re, '"')) : undefined,
+              character: metadata.character ? JSON.parse(metadata.character.replace(re, '"')) : undefined,
+              group: metadata.group ? JSON.parse(metadata.group.replace(re, '"')) : undefined,
+              artist: metadata.artist ? JSON.parse(metadata.artist.replace(re, '"')) : undefined,
+              male: metadata.male ? JSON.parse(metadata.male.replace(re, '"')) : undefined,
+              female: metadata.female ? JSON.parse(metadata.female.replace(re, '"')) : undefined,
+              mixed: metadata.mixed ? JSON.parse(metadata.mixed.replace(re, '"')) : undefined,
+              other: metadata.other ? JSON.parse(metadata.other.replace(re, '"')) : undefined,
+              cosplayer: metadata.cosplayer ? JSON.parse(metadata.cosplayer.replace(re, '"')) : undefined,
+              rest: metadata.rest ? JSON.parse(metadata.rest.replace(re, '"')) : undefined,
             }
             metadata.filecount = +metadata.filecount
             metadata.rating = +metadata.rating
@@ -1568,19 +1590,33 @@ ipcMain.handle('import-sqlite', async (event, bookList) => {
             metadata.url = `https://exhentai.org/g/${metadata.gid}/${metadata.token}/`
             _.assign(book, _.pick(metadata, ['tags', 'title', 'title_jpn', 'filecount', 'rating', 'posted', 'filesize', 'category', 'url']), { status: 'tagged' })
             await saveBookToDatabase(book)
+            matched++
           }
-          setProgressBar(i / bookListLength)
+          processed++
+        }
+        
+        // 每处理 BATCH_SIZE 个项目后让出事件循环和更新进度条
+        if ((i + 1) % BATCH_SIZE === 0 || i === bookListLength - 1) {
+          setProgressBar(processed / bookListLength)
+          // 让出事件循环，避免主进程阻塞
+          await new Promise(resolve => setImmediate(resolve))
         }
       }
       await db.close()
       setProgressBar(-1)
+      console.log(`Import completed: ${matched} matched out of ${processed} processed`)
+      sendMessageToWebContents(`Import completed: ${matched} matched, ${processed} processed`)
     } catch (e) {
       console.log(e)
       await db.close()
+      setProgressBar(-1)
     }
+    // 不返回整个 bookList，避免 IPC 传输大量数据导致卡死
+    // 让前端重新加载书籍列表
     return {
       success: true,
-      bookList
+      matched,
+      processed
     }
   } else {
     return {
