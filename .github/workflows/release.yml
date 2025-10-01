@@ -66,7 +66,8 @@ jobs:
             Compress-Archive -Path "$($buildDir.FullName)\*" -DestinationPath "out\$packageName" -CompressionLevel Optimal
             
             Write-Host "Created portable package: $packageName"
-            echo "PACKAGE_PATH=out\$packageName" >> $env:GITHUB_ENV
+            # 使用正斜杠以兼容GitHub Actions
+            echo "PACKAGE_PATH=out/$packageName" >> $env:GITHUB_ENV
             echo "PACKAGE_NAME=$packageName" >> $env:GITHUB_ENV
           } else {
             Write-Error "Build directory not found"
