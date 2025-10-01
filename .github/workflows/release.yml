@@ -1,0 +1,119 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+      - 'v*.*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.6.10.1)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Build frontend
+        run: npm run build
+        
+      - name: Build Electron app (Windows)
+        run: npm run dist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Create portable package
+        shell: powershell
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ inputs.version }}" -replace '^v', ''
+          }
+          
+          # 查找构建输出目录
+          $buildDir = Get-ChildItem -Path "out" -Directory -Filter "win-unpacked" -Recurse | Select-Object -First 1
+          
+          if ($buildDir) {
+            $packageName = "exhentai-manga-manager-$version-win-x64-portable.zip"
+            
+            # 压缩为zip
+            Compress-Archive -Path "$($buildDir.FullName)\*" -DestinationPath "out\$packageName" -CompressionLevel Optimal
+            
+            Write-Host "Created portable package: $packageName"
+            echo "PACKAGE_PATH=out\$packageName" >> $env:GITHUB_ENV
+            echo "PACKAGE_NAME=$packageName" >> $env:GITHUB_ENV
+          } else {
+            Write-Error "Build directory not found"
+            exit 1
+          }
+          
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-portable
+          path: ${{ env.PACKAGE_PATH }}
+          retention-days: 5
+          
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ env.PACKAGE_PATH }}
+          draft: false
+          prerelease: ${{ contains(github.ref, 'beta') || contains(github.ref, 'alpha') }}
+          generate_release_notes: true
+          body: |
+            ## 📦 下载说明
+            
+            下载 `${{ env.PACKAGE_NAME }}` 解压后直接运行 `exhentai-manga-manager.exe`
+            
+            ### Windows 便携版
+            - 无需安装，解压即用
+            - 所有数据保存在程序目录
+            - 适合移动存储设备使用
+            
+            ## 🔄 更新内容
+            
+            详见自动生成的更新日志
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Upload to workflow dispatch release
+        if: github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ inputs.version }}
+          name: Release ${{ inputs.version }}
+          files: ${{ env.PACKAGE_PATH }}
+          draft: true
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## 📦 下载说明
+            
+            下载 `${{ env.PACKAGE_NAME }}` 解压后直接运行 `exhentai-manga-manager.exe`
+            
+            ### Windows 便携版
+            - 无需安装，解压即用
+            - 所有数据保存在程序目录
+            - 适合移动存储设备使用
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

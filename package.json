@@ -1,7 +1,7 @@
 {
   "name": "exhentai-manga-manager",
   "private": true,
-  "version": "1.6.10",
+  "version": "1.6.10.1",
   "author": "SchneeHertz",
   "description": "Tag-based management, reading manga downloaded from ExHentai",
   "repository": {
@@ -49,9 +49,13 @@
     ],
     "win": {
       "target": [
-        "dir"
+        {
+          "target": "dir",
+          "arch": ["x64"]
+        }
       ],
-      "icon": "public/icon.ico"
+      "icon": "public/icon.ico",
+      "artifactName": "${productName}-${version}-${os}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
