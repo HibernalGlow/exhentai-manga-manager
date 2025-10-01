@@ -1526,81 +1526,82 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
       const bookListLength = bookList.length
       const BATCH_SIZE = 50 // 每批处理50个，定期让出事件循环
       
-      for (let i = 0; i < bookListLength; i++) {
-        const book = bookList[i]
-        if (book.status !== 'tagged') {
-          let metadata
-          // 当book type为folder时，尝试获取.ehviewer数据
-          if (book.type === 'folder') {
-            const dirname = book.filepath
-            const ehviewerData = getEhviewerDataManually(dirname)
-            const { gid, token } = ehviewerData || {}
-            if (gid && token) {
-              metadata = await db.get('SELECT * FROM gallery WHERE gid = ? AND token = ?', [gid, token])
-            }
-          }
-          if (metadata === undefined) {
-            // remove file extension
-            let filename = path.parse(book.title).name
-            
-            // 应用 trimTitleRegExp 裁剪标题（如果配置了）
-            if (matchOptions?.trimTitleRegExp) {
-              try {
-                filename = filename.replace(new RegExp(matchOptions.trimTitleRegExp, 'g'), '').trim()
-              } catch (e) {
-                console.log('trimTitleRegExp error:', e)
+      // 并发处理部分，使用 setting.concurrentScan 配置
+      const CONCURRENCY = setting.concurrentScan || 4;
+      let i = 0;
+      async function processBatch() {
+        const batch = [];
+        for (let j = 0; j < CONCURRENCY && i < bookListLength; j++, i++) {
+          const book = bookList[i];
+          if (book.status !== 'tagged') {
+            batch.push((async () => {
+              let metadata;
+              // folder类型特殊处理
+              if (book.type === 'folder') {
+                const dirname = book.filepath;
+                const ehviewerData = getEhviewerDataManually(dirname);
+                const { gid, token } = ehviewerData || {};
+                if (gid && token) {
+                  metadata = await db.get('SELECT * FROM gallery WHERE gid = ? AND token = ?', [gid, token]);
+                }
               }
-            }
-            
-            let sql = ''
-            let params = []
-            if (matchOptions?.matchTitleOnly) {
-              sql = `SELECT * FROM gallery WHERE title LIKE ? OR title_jpn LIKE ?`
-              params = [`%${filename}%`, `%${filename}%`]
-            } else {
-              sql = `SELECT * FROM gallery WHERE torrents LIKE ? OR title LIKE ? OR title_jpn LIKE ? OR thumb LIKE ?`
-              params = [`%${filename}%`, `%${filename}%`, `%${filename}%`, `%${book.coverHash}%`]
-            }
-            // hash 匹配（可选）
-            if (matchOptions?.matchHash && book.hash) {
-              sql += ` OR hash = ?`
-              params.push(book.hash)
-            }
-            metadata = await db.get(sql, ...params)
+              if (metadata === undefined) {
+                let filename = path.parse(book.title).name;
+                if (matchOptions?.trimTitleRegExp) {
+                  try {
+                    filename = filename.replace(new RegExp(matchOptions.trimTitleRegExp, 'g'), '').trim();
+                  } catch (e) {
+                    console.log('trimTitleRegExp error:', e);
+                  }
+                }
+                let sql = '';
+                let params = [];
+                if (matchOptions?.matchTitleOnly) {
+                  sql = `SELECT * FROM gallery WHERE title LIKE ? OR title_jpn LIKE ?`;
+                  params = [`%${filename}%`, `%${filename}%`];
+                } else {
+                  sql = `SELECT * FROM gallery WHERE torrents LIKE ? OR title LIKE ? OR title_jpn LIKE ? OR thumb LIKE ?`;
+                  params = [`%${filename}%`, `%${filename}%`, `%${filename}%`, `%${book.coverHash}%`];
+                }
+                if (matchOptions?.matchHash && book.hash) {
+                  sql += ` OR hash = ?`;
+                  params.push(book.hash);
+                }
+                metadata = await db.get(sql, ...params);
+              }
+              if (metadata) {
+                metadata.tags = {
+                  language: metadata.language ? JSON.parse(metadata.language.replace(re, '"')) : undefined,
+                  parody: metadata.parody ? JSON.parse(metadata.parody.replace(re, '"')) : undefined,
+                  character: metadata.character ? JSON.parse(metadata.character.replace(re, '"')) : undefined,
+                  group: metadata.group ? JSON.parse(metadata.group.replace(re, '"')) : undefined,
+                  artist: metadata.artist ? JSON.parse(metadata.artist.replace(re, '"')) : undefined,
+                  male: metadata.male ? JSON.parse(metadata.male.replace(re, '"')) : undefined,
+                  female: metadata.female ? JSON.parse(metadata.female.replace(re, '"')) : undefined,
+                  mixed: metadata.mixed ? JSON.parse(metadata.mixed.replace(re, '"')) : undefined,
+                  other: metadata.other ? JSON.parse(metadata.other.replace(re, '"')) : undefined,
+                  cosplayer: metadata.cosplayer ? JSON.parse(metadata.cosplayer.replace(re, '"')) : undefined,
+                  rest: metadata.rest ? JSON.parse(metadata.rest.replace(re, '"')) : undefined,
+                };
+                metadata.filecount = +metadata.filecount;
+                metadata.rating = +metadata.rating;
+                metadata.posted = +metadata.posted;
+                metadata.filesize = +metadata.filesize;
+                metadata.url = `https://exhentai.org/g/${metadata.gid}/${metadata.token}/`;
+                _.assign(book, _.pick(metadata, ['tags', 'title', 'title_jpn', 'filecount', 'rating', 'posted', 'filesize', 'category', 'url']), { status: 'tagged' });
+                await saveBookToDatabase(book);
+                matched++;
+              }
+              processed++;
+            })());
           }
-
-          if (metadata) {
-            metadata.tags = {
-              language: metadata.language ? JSON.parse(metadata.language.replace(re, '"')) : undefined,
-              parody: metadata.parody ? JSON.parse(metadata.parody.replace(re, '"')) : undefined,
-              character: metadata.character ? JSON.parse(metadata.character.replace(re, '"')) : undefined,
-              group: metadata.group ? JSON.parse(metadata.group.replace(re, '"')) : undefined,
-              artist: metadata.artist ? JSON.parse(metadata.artist.replace(re, '"')) : undefined,
-              male: metadata.male ? JSON.parse(metadata.male.replace(re, '"')) : undefined,
-              female: metadata.female ? JSON.parse(metadata.female.replace(re, '"')) : undefined,
-              mixed: metadata.mixed ? JSON.parse(metadata.mixed.replace(re, '"')) : undefined,
-              other: metadata.other ? JSON.parse(metadata.other.replace(re, '"')) : undefined,
-              cosplayer: metadata.cosplayer ? JSON.parse(metadata.cosplayer.replace(re, '"')) : undefined,
-              rest: metadata.rest ? JSON.parse(metadata.rest.replace(re, '"')) : undefined,
-            }
-            metadata.filecount = +metadata.filecount
-            metadata.rating = +metadata.rating
-            metadata.posted = +metadata.posted
-            metadata.filesize = +metadata.filesize
-            metadata.url = `https://exhentai.org/g/${metadata.gid}/${metadata.token}/`
-            _.assign(book, _.pick(metadata, ['tags', 'title', 'title_jpn', 'filecount', 'rating', 'posted', 'filesize', 'category', 'url']), { status: 'tagged' })
-            await saveBookToDatabase(book)
-            matched++
-          }
-          processed++
         }
-        
-        // 每处理 BATCH_SIZE 个项目后让出事件循环和更新进度条
-        if ((i + 1) % BATCH_SIZE === 0 || i === bookListLength - 1) {
-          setProgressBar(processed / bookListLength)
-          // 让出事件循环，避免主进程阻塞
-          await new Promise(resolve => setImmediate(resolve))
-        }
+        await Promise.all(batch);
+        setProgressBar(processed / bookListLength);
+        await new Promise(resolve => setImmediate(resolve));
+      }
+      while (i < bookListLength) {
+        await processBatch();
       }
       await db.close()
       setProgressBar(-1)
