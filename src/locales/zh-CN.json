@@ -251,7 +251,14 @@
     "outOfRange": "超出范围",
     "useTranslationCache": "使用翻译缓存",
     "moveSuccess": "移动成功",
-    "moveError": "移动失败"
+    "moveError": "移动失败",
+    "noLogs": "暂无日志",
+    "totalLogs": "总计",
+    "success": "成功",
+    "failed": "失败",
+    "metadataLogTitle": "元数据获取日志",
+    "showLogs": "显示元数据日志窗口",
+    "hideLogs": "隐藏日志"
   },
   "ac": {
     "Global": "全局",

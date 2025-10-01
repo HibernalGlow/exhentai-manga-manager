@@ -251,7 +251,14 @@
     "outOfRange": "Out of range",
     "useTranslationCache": "Use translation cache",
     "moveSuccess": "Move successful",
-    "moveError": "Move failed"
+    "moveError": "Move failed",
+    "noLogs": "No logs",
+    "totalLogs": "Total",
+    "success": "Success",
+    "failed": "Failed",
+    "metadataLogTitle": "Metadata Retrieval Log",
+    "showLogs": "Show Metadata Log Window",
+    "hideLogs": "Hide Logs"
   },
   "ac": {
     "Global": "Global",

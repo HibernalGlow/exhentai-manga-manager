@@ -4,6 +4,7 @@
                        @confirm="onConfirm"
                        @confirmPartialUpdate="onConfirmPartialUpdate"
   />
+  <LogFloatingWindow ref="logWindowRef" :title="t('c.metadataLogTitle')" />
 </template>
 <script setup lang="ts">
 /** The following contains functions to parse metadata from various online sources and batch get metadata function
@@ -19,6 +20,7 @@ import {ElMessage} from 'element-plus'
 
 import he from 'he'
 import SearchDialogBrowser from './SearchDialogBrowser.vue'
+import LogFloatingWindow from './LogFloatingWindow.vue'
 import {fetchNhentaiMeta, fetchNhentaiPartialMeta} from '../scrapers/nhentai'
 import {fetchEhExPartialMeta} from '../scrapers/exeh'
 import {storeToRefs} from 'pinia'
@@ -39,6 +41,7 @@ const dialogVisibleEhSearch = ref(false)
 const searchResultLoading = ref(false)
 const ehSearchResultList = ref([])
 const browserRef = ref<typeof SearchDialogBrowser>(null)
+const logWindowRef = ref<typeof LogFloatingWindow>(null)
 
 async function openSearchDialog(book) {
   dialogVisibleEhSearch.value = true
@@ -194,6 +197,13 @@ const getBooksMetadata = async (bookList, gap, callback) => {
   const server = setting.value.defaultScraper || 'exhentai'
   serviceAvailable.value = true
   const timer = ms => new Promise(res => setTimeout(res, ms))
+  
+  // 显示日志窗口并清空之前的日志
+  logWindowRef.value?.show()
+  logWindowRef.value?.clearLogs()
+  logWindowRef.value?.addLog(`开始批量获取元数据 - 数据源: ${server}`, 'info')
+  logWindowRef.value?.addLog(`待处理漫画数量: ${bookList.length}`, 'info')
+  
   const messageInstance = ElMessage({
     message: t('c.gettingMetadata'),
     type: 'success',
@@ -201,39 +211,50 @@ const getBooksMetadata = async (bookList, gap, callback) => {
     showClose: true,
     onClose: () => {
       serviceAvailable.value = false
+      logWindowRef.value?.addLog('用户取消了批量获取操作', 'warning')
     }
   })
+  
   for (let i = 0; i < bookList.length; i++) {
     ipcRenderer.invoke('set-progress-bar', (i + 1) / bookList.length)
     const book = bookList[i]
+    const bookTitle = returnTrimFileName(book)
+    
+    logWindowRef.value?.addLog(`[${i + 1}/${bookList.length}] 处理: ${bookTitle}`, 'info')
+    
     try {
       if (serviceAvailable.value) {
         if (!book.url) {
           const resultList = await getBookListFromWeb(
               book.hash.toUpperCase(),
-              returnTrimFileName(book),
+              bookTitle,
               server,
               book.filepath
           )
           if (!resultList[0]) {
             book.status = 'tag-failed'
             await saveBook(book)
+            logWindowRef.value?.addLog(`  ✗ 未找到匹配结果: ${bookTitle}`, 'error')
           } else {
             resolveSearchResult(book.id, resultList[0].url, resultList[0].type)
+            logWindowRef.value?.addLog(`  ✓ 成功匹配: ${resultList[0].title || bookTitle}`, 'success')
           }
         } else {
           getBookInfo(book)
+          logWindowRef.value?.addLog(`  ✓ 已有URL,更新元数据: ${bookTitle}`, 'success')
         }
         await timer(gap)
       }
     } catch (error) {
       book.status = 'tag-failed'
       await saveBook(book)
+      logWindowRef.value?.addLog(`  ✗ 处理失败: ${bookTitle} - ${error.message}`, 'error')
       console.error(error)
     }
   }
   messageInstance.close()
   ipcRenderer.invoke('set-progress-bar', -1)
+  logWindowRef.value?.addLog('批量获取元数据完成!', 'success')
   printMessage('success', t('c.getMetadataComplete'))
   callback?.()
 }
@@ -284,6 +305,19 @@ const getBookListFromWeb = async (bookHash, title, server = 'e-hentai', bookPath
         title,
         url: `https://exhentai.org/g/${ehviewerData.gid}/${ehviewerData.token}/`,
         type: 'e-hentai'
+      }]
+      ehSearchResultList.value = resultList
+    }
+  } else if (server === 'local-sqlite') {
+    // 从本地 sqlite 数据库查询元数据
+    const metadata = await ipcRenderer.invoke('query-local-sqlite', { title, bookHash })
+    ehSearchResultList.value = []
+    if (metadata) {
+      resultList = [{
+        title: metadata.title || title,
+        url: metadata.url || `https://exhentai.org/g/${metadata.gid}/${metadata.token}/`,
+        type: 'local-sqlite',
+        metadata  // 携带完整元数据
       }]
       ehSearchResultList.value = resultList
     }
@@ -375,6 +409,7 @@ defineExpose({
   openSearchDialog,
   getBookInfo,
   getBooksMetadata,
+  logWindowRef,
 })
 
 </script>

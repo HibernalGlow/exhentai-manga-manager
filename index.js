@@ -1483,6 +1483,11 @@ async function saveSettingExclusive(next) {
 
 ipcMain.handle('save-setting', (_e, receiveSetting) => saveSettingExclusive(receiveSetting));
 
+// 保存匹配选项和本地 sqlite 路径
+ipcMain.handle('save-match-options', async (event, matchOptions) => {
+  return saveSettingExclusive({ matchOptions })
+})
+
 ipcMain.handle('export-database', async (event, folder) => {
   if (folder !== STORE_PATH && folder !== setting.metadataPath) {
     await fs.promises.copyFile(path.join(STORE_PATH, 'collectionList.json'), path.join(folder, 'collectionList.json'))
@@ -1624,6 +1629,76 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
     }
   }
 })
+
+// 查询本地 sqlite 数据库（用于批量获取元数据）
+ipcMain.handle('query-local-sqlite', async (event, { title, bookHash }) => {
+  const sqlitePath = setting.localSqlitePath
+  if (!sqlitePath || !fs.existsSync(sqlitePath)) {
+    return null
+  }
+  
+  try {
+    const db = await open({
+      filename: sqlitePath,
+      driver: sqlite3.Database
+    })
+    
+    const re = /'/g
+    const matchOptions = setting.matchOptions || {}
+    
+    // 应用 trimTitleRegExp 裁剪标题（如果配置了）
+    let filename = title
+    if (matchOptions?.trimTitleRegExp) {
+      try {
+        filename = filename.replace(new RegExp(matchOptions.trimTitleRegExp, 'g'), '').trim()
+      } catch (e) {
+        console.log('trimTitleRegExp error:', e)
+      }
+    }
+    
+    let sql = ''
+    let params = []
+    
+    if (matchOptions?.matchTitleOnly) {
+      sql = `SELECT * FROM gallery WHERE title LIKE ? OR title_jpn LIKE ? LIMIT 1`
+      params = [`%${filename}%`, `%${filename}%`]
+    } else {
+      sql = `SELECT * FROM gallery WHERE torrents LIKE ? OR title LIKE ? OR title_jpn LIKE ? LIMIT 1`
+      params = [`%${filename}%`, `%${filename}%`, `%${filename}%`]
+    }
+    
+    const metadata = await db.get(sql, ...params)
+    await db.close()
+    
+    if (metadata) {
+      // 解析 tags
+      metadata.tags = {
+        language: metadata.language ? JSON.parse(metadata.language.replace(re, '"')) : undefined,
+        parody: metadata.parody ? JSON.parse(metadata.parody.replace(re, '"')) : undefined,
+        character: metadata.character ? JSON.parse(metadata.character.replace(re, '"')) : undefined,
+        group: metadata.group ? JSON.parse(metadata.group.replace(re, '"')) : undefined,
+        artist: metadata.artist ? JSON.parse(metadata.artist.replace(re, '"')) : undefined,
+        male: metadata.male ? JSON.parse(metadata.male.replace(re, '"')) : undefined,
+        female: metadata.female ? JSON.parse(metadata.female.replace(re, '"')) : undefined,
+        mixed: metadata.mixed ? JSON.parse(metadata.mixed.replace(re, '"')) : undefined,
+        other: metadata.other ? JSON.parse(metadata.other.replace(re, '"')) : undefined,
+        cosplayer: metadata.cosplayer ? JSON.parse(metadata.cosplayer.replace(re, '"')) : undefined,
+        rest: metadata.rest ? JSON.parse(metadata.rest.replace(re, '"')) : undefined,
+      }
+      metadata.filecount = +metadata.filecount
+      metadata.rating = +metadata.rating
+      metadata.posted = +metadata.posted
+      metadata.filesize = +metadata.filesize
+      metadata.url = `https://exhentai.org/g/${metadata.gid}/${metadata.token}/`
+      return metadata
+    }
+    return null
+  } catch (e) {
+    console.log('query-local-sqlite error:', e)
+    return null
+  }
+})
+
 /**=====  remove missing records button =============*/
 
 ipcMain.handle('sqlite-vacuum-estimate', async () => {

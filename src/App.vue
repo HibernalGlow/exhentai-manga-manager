@@ -213,7 +213,7 @@
     <FolderTree ref="FolderTreeRef" @chunk-list="chunkList"  @search="handleSearchString" />
     <TagGraph ref="TagGraphRef" @search="handleSearchString"/>
     <SearchDialog ref="SearchDialogRef"/>
-    <Setting ref="SettingRef" @load-book-list="loadBookList" @load-collection-list="loadCollectionList"/>
+    <Setting ref="SettingRef" @load-book-list="loadBookList" @load-collection-list="loadCollectionList" @toggle-log-window="handleToggleLogWindow"/>
   </el-config-provider>
 </template>
 
@@ -396,6 +396,18 @@ export default defineComponent({
       'copyTagClipboard',
       'pasteTagClipboard',
     ]),
+
+    // 从设置页面切换日志窗口显示/隐藏
+    handleToggleLogWindow (showLog) {
+      const logWindow = this.$refs.SearchDialogRef?.logWindowRef
+      if (logWindow) {
+        if (showLog) {
+          logWindow.show()
+        } else {
+          logWindow.hide()
+        }
+      }
+    },
 
     // base function
     currentUI () {

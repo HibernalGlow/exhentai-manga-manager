@@ -52,6 +52,7 @@ export const useAppStore = defineStore('appStore', {
       { label: "e-hentai(keyword)", value: "e-search" },
       { label: "hentag(keyword)", value: "hentag" },
       { label: "exhentai(.ehviewer file from EhViewer)", value: ".ehviewer" },
+      { label: "本地 SQLite 数据库", value: "local-sqlite" },
     ],
     setting: {},
     bookDetail: {},
