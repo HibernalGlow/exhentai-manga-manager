@@ -87,16 +87,6 @@
           </el-col>
           <el-col :span="24">
             <div class="setting-line">
-              <el-input v-model="setting.localSqlitePath" placeholder="本地 SQLite 数据库路径（如 api_dump.sqlite）">
-                <template #prepend><span class="setting-label">本地 SQLite</span></template>
-                <template #append>
-                  <el-button @click="selectLocalSqlitePath">{{$t('m.select')}}</el-button>
-                </template>
-              </el-input>
-            </div>
-          </el-col>
-          <el-col :span="24">
-            <div class="setting-line">
               <el-input v-model="setting.imageExplorer" @change="saveSetting">
                 <template #prepend><span class="setting-label">{{$t('m.imageViewer')}}</span></template>
                 <template #append>
@@ -656,13 +646,6 @@
           </el-col>
           <el-col :span="6" class="setting-switch">
             <el-switch
-                v-model="showLogWindow"
-                :active-text="$t('c.showLogs')"
-                @change="toggleLogWindow"
-            />
-          </el-col>
-          <el-col :span="6" class="setting-switch">
-            <el-switch
                 v-model="setting.minimizeOnStart"
                 :active-text="$t('m.minimizeOnStart')"
                 @change="saveSetting"
@@ -757,12 +740,10 @@ const { printMessage } = appStore
 const { t, locale } = useI18n()
 const dialogVisibleSetting = ref(false)
 const activeSettingPanel = ref('general')
-const showLogWindow = ref(false)
 
 const emit = defineEmits([
   'loadBookList',
   'loadCollectionList',
-  'toggleLogWindow',
 ])
 
 // concurrent scan options; default is min(concurrencyOptionCeiling, 4)
@@ -932,16 +913,6 @@ const selectMetadataPath = () => {
   })
 }
 
-const selectLocalSqlitePath = () => {
-  ipcRenderer.invoke('select-file', '选择本地 SQLite 数据库',
-      [{ name: 'SQLite', extensions: ['sqlite', 'db'] }]).then(res => {
-    if (res) {
-      setting.value.localSqlitePath = res
-      saveSetting()
-    }
-  })
-}
-
 const selectImageExplorerPath = () => {
   ipcRenderer.invoke('select-file', t('m.imageViewer')).then(res => {
     if (res) {
@@ -1055,10 +1026,6 @@ const saveSetting = () => {
   ipcRenderer.invoke('save-setting', _.cloneDeep(setting.value))
 }
 
-const toggleLogWindow = () => {
-  emit('toggleLogWindow', showLogWindow.value)
-}
-
 const openLink = (link) => {
   ipcRenderer.invoke('open-url', link)
 }
@@ -1112,9 +1079,6 @@ const importMetadataFromSqlite = async () => {
     matchHash: setting.value.matchHash,
     trimTitleRegExp: setting.value.trimTitleRegExp  // 传递裁剪标题正则表达式
   }
-  // 保存匹配选项到主进程 store，供 query-local-sqlite 使用
-  await ipcRenderer.invoke('save-match-options', matchOptions)
-  
   const { success, matched, processed } = await ipcRenderer.invoke('import-sqlite', {
     bookList: _.cloneDeep(bookList.value),
     matchOptions

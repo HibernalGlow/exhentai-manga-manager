@@ -251,14 +251,7 @@
     "moveSuccess": "移動成功",
     "moveError": "移動失敗",
     "concurrentScan": "並發掃描數",
-    "concurrentWrite": "並發寫入數",
-    "noLogs": "暫無日誌",
-    "totalLogs": "總計",
-    "success": "成功",
-    "failed": "失敗",
-    "metadataLogTitle": "元數據獲取日誌",
-    "showLogs": "顯示元數據日誌視窗",
-    "hideLogs": "隱藏日誌"
+    "concurrentWrite": "並發寫入數"
   },
   "ac": {
     "Global": "全域",
