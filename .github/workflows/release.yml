@@ -18,7 +18,7 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
-    timeout-minutes: 10
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -85,20 +85,19 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            out/*.exe
-            out/*.zip
+          files: ${{ env.PACKAGE_PATH }}
           draft: false
           prerelease: ${{ contains(github.ref, 'beta') || contains(github.ref, 'alpha') }}
           generate_release_notes: true
           body: |
             ## 📦 下载说明
             
-            ### Windows 便携版
-            下载 `exhentai-manga-manager-*-win-x64-portable.zip` 解压后直接运行 `exhentai-manga-manager.exe`
+            下载 `${{ env.PACKAGE_NAME }}` 解压后直接运行 `exhentai-manga-manager.exe`
             
-            ### Windows 安装版
-            下载 `exhentai-manga-manager-*-setup-x64.exe` 双击安装
+            ### Windows 便携版
+            - 无需安装，解压即用
+            - 所有数据保存在程序目录
+            - 适合移动存储设备使用
             
             ## 🔄 更新内容
             
@@ -112,19 +111,18 @@ jobs:
         with:
           tag_name: ${{ inputs.version }}
           name: Release ${{ inputs.version }}
-          files: |
-            out/*.exe
-            out/*.zip
+          files: ${{ env.PACKAGE_PATH }}
           draft: true
           prerelease: false
           generate_release_notes: true
           body: |
             ## 📦 下载说明
             
-            ### Windows 便携版
-            下载 `exhentai-manga-manager-*-win-x64-portable.zip` 解压后直接运行 `exhentai-manga-manager.exe`
+            下载 `${{ env.PACKAGE_NAME }}` 解压后直接运行 `exhentai-manga-manager.exe`
             
-            ### Windows 安装版
-            下载 `exhentai-manga-manager-*-setup-x64.exe` 双击安装
+            ### Windows 便携版
+            - 无需安装，解压即用
+            - 所有数据保存在程序目录
+            - 适合移动存储设备使用
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
