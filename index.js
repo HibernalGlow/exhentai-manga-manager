@@ -220,7 +220,7 @@ async function setupAdblockAndGuards() {
     'https://easylist.to/easylist/easylist.txt',
     'https://easylist.to/easylist/easyprivacy.txt',
     'https://secure.fanboy.co.nz/fanboy-annoyance.txt',
-    'https://ublockorigin.github.io/uAssets/filters/annoyances.txt',
+    // 'https://ublockorigin.github.io/uAssets/filters/annoyances.txt',
   ], { enableCompression: true })
 
   blocker.enableBlockingInSession(ses)
@@ -238,7 +238,7 @@ async function setupAdblockAndGuards() {
 }
 
 app.whenReady().then(async () => {
-  await setupAdblockAndGuards()
+  // await setupAdblockAndGuards()
   const primaryDisplay = screen.getPrimaryDisplay()
   screenWidth = Math.floor(primaryDisplay.workAreaSize.width * primaryDisplay.scaleFactor)
   mainWindow = createWindow()
@@ -808,12 +808,29 @@ ipcMain.handle('force-gene-book-list', async (event, arg) => {
     return await loadBookListFromDatabase()
   }
 
+  // 初始化 SQL 数据库连接（如果启用了自动匹配）
+  let db = null
+  let sqlMatchEnabled = false
+  if (setting.autoMatchOnRebuild && setting.defaultSqlPath) {
+    try {
+      db = await open({
+        filename: setting.defaultSqlPath,
+        driver: sqlite3.Database
+      })
+      sqlMatchEnabled = true
+      sendMessageToWebContents(`✅ SQL匹配已启用: ${path.basename(setting.defaultSqlPath)}`)
+    } catch (e) {
+      sendMessageToWebContents(`⚠️ 无法打开SQL数据库: ${e.message}`)
+    }
+  }
+
   const tTotal0 = performance.now()
   const workLimit = createLimiter(setting.concurrentScan)
   const coverLimit = createLimiter(setting.concurrentWrite) // avoid HDD IO spike
   const dbLimit = createLimiter(1) // serialize writes for SQLite
   const BATCH_SIZE = 50 // don't go high as db writes the whole batch at once
   let processed = 0
+  let sqlMatched = 0
 
   for (let offset = 0; offset < listLength; offset += BATCH_SIZE) {
     signal?.throwIfAborted?.()
@@ -846,6 +863,75 @@ ipcMain.handle('force-gene-book-list', async (event, arg) => {
                 coverHash,
                 status: 'non-tag',
                 date: Date.now(),
+              }
+
+              // 如果启用了 SQL 匹配，尝试从数据库获取元数据
+              if (sqlMatchEnabled && db) {
+                try {
+                  const re = /'/g
+                  let filename = path.parse(filepath).name
+                  let metadata = null
+
+                  // folder 类型特殊处理
+                  if (type === 'folder') {
+                    const ehviewerData = getEhviewerDataManually(filepath)
+                    const { gid, token } = ehviewerData || {}
+                    if (gid && token) {
+                      metadata = await db.get('SELECT * FROM gallery WHERE gid = ? AND token = ?', [gid, token])
+                    }
+                  }
+
+                  // 如果没有匹配到，使用标题匹配
+                  if (!metadata) {
+                    // 使用配置的匹配选项
+                    let sql = ''
+                    let params = []
+                    if (setting.matchTitleOnly) {
+                      sql = `SELECT * FROM gallery WHERE title LIKE ? OR title_jpn LIKE ?`
+                      params = [`%${filename}%`, `%${filename}%`]
+                    } else {
+                      sql = `SELECT * FROM gallery WHERE torrents LIKE ? OR title LIKE ? OR title_jpn LIKE ? OR thumb LIKE ?`
+                      params = [`%${filename}%`, `%${filename}%`, `%${filename}%`, `%${coverHash}%`]
+                    }
+                    if (setting.matchHash && hash) {
+                      sql += ` OR hash = ?`
+                      params.push(hash)
+                    }
+                    metadata = await db.get(sql, ...params)
+                  }
+
+                  if (metadata) {
+                    // 解析并应用元数据
+                    const tags = {
+                      language: metadata.language ? JSON.parse(metadata.language.replace(re, '"')) : undefined,
+                      parody: metadata.parody ? JSON.parse(metadata.parody.replace(re, '"')) : undefined,
+                      character: metadata.character ? JSON.parse(metadata.character.replace(re, '"')) : undefined,
+                      group: metadata.group ? JSON.parse(metadata.group.replace(re, '"')) : undefined,
+                      artist: metadata.artist ? JSON.parse(metadata.artist.replace(re, '"')) : undefined,
+                      male: metadata.male ? JSON.parse(metadata.male.replace(re, '"')) : undefined,
+                      female: metadata.female ? JSON.parse(metadata.female.replace(re, '"')) : undefined,
+                      mixed: metadata.mixed ? JSON.parse(metadata.mixed.replace(re, '"')) : undefined,
+                      other: metadata.other ? JSON.parse(metadata.other.replace(re, '"')) : undefined,
+                      cosplayer: metadata.cosplayer ? JSON.parse(metadata.cosplayer.replace(re, '"')) : undefined,
+                      rest: metadata.rest ? JSON.parse(metadata.rest.replace(re, '"')) : undefined,
+                    }
+
+                    newBook.title = metadata.title || newBook.title
+                    newBook.title_jpn = metadata.title_jpn
+                    newBook.tags = tags
+                    newBook.filecount = +metadata.filecount
+                    newBook.rating = +metadata.rating
+                    newBook.posted = +metadata.posted
+                    newBook.filesize = +metadata.filesize
+                    newBook.category = metadata.category
+                    newBook.url = `https://exhentai.org/g/${metadata.gid}/${metadata.token}/`
+                    newBook.status = 'tagged'
+                    sqlMatched++
+                  }
+                } catch (e) {
+                  // 忽略 SQL 匹配错误，继续使用默认元数据
+                  console.log(`SQL match error for ${filepath}:`, e.message)
+                }
               }
 
               await coverLimit(async () => {
@@ -900,6 +986,12 @@ ipcMain.handle('force-gene-book-list', async (event, arg) => {
   // Final cleanup + timing
   try { await clearFolder(TEMP_PATH) } catch {}
   await Manga.sequelize.query(`CREATE INDEX IF NOT EXISTS manga_hash_index ON Mangas(hash)`)
+
+  // 关闭 SQL 数据库连接
+  if (db) {
+    await db.close()
+    sendMessageToWebContents(`📊 SQL匹配统计: ${sqlMatched}/${listLength}`)
+  }
 
   setProgressBar(-1)
 
@@ -1525,15 +1617,55 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
     // 发送开始信息到前端
     const dbPath = path.basename(result.filePaths[0])
     sendMessageToWebContents(`🔄 开始从 ${dbPath} 导入元数据...`)
-    sendMessageToWebContents(`📋 匹配选项: ${matchOptions?.matchTitleOnly ? '仅标题' : '全字段'}, 哈希:${matchOptions?.matchHash ? '是' : '否'}, 并发数:${setting.concurrentScan || 4}`)
+    sendMessageToWebContents(`📋 匹配选项: ${matchOptions?.matchTitleOnly ? '仅标题' : '全字段'}, 快速模式:${matchOptions?.fastMatch ? '是' : '否'}, 哈希:${matchOptions?.matchHash ? '是' : '否'}, 并发数:${setting.concurrentScan || 4}`)
     
     try {
       const re = /'/g
       const bookListLength = bookList.length
       const BATCH_SIZE = 50 // 每批处理50个，定期让出事件循环
       
+      // 快速匹配模式：先加载所有标题到内存
+      let titleMap = null
+      if (matchOptions?.fastMatch) {
+        sendMessageToWebContents(`⚡ 快速模式：正在加载标题索引...`)
+        const t0 = performance.now()
+        // 先检查数据库结构，看是否有 hash 列
+        let hasHashColumn = false
+        try {
+          const pragmaResult = await db.all(`PRAGMA table_info(gallery)`)
+          hasHashColumn = pragmaResult.some(col => col.name === 'hash')
+        } catch (e) {
+          console.log('Failed to check table structure:', e)
+        }
+        
+        // 根据是否有 hash 列选择不同的查询
+        const allTitles = hasHashColumn 
+          ? await db.all('SELECT gid, token, title, title_jpn, hash FROM gallery')
+          : await db.all('SELECT gid, token, title, title_jpn FROM gallery')
+        const t1 = performance.now()
+        sendMessageToWebContents(`✅ 加载了 ${allTitles.length} 个标题，耗时: ${((t1-t0)/1000).toFixed(2)}s`)
+        
+        // 构建标题映射：标题 -> {gid, token, hash}
+        titleMap = new Map()
+        for (const item of allTitles) {
+          const title = (item.title || '').toLowerCase()
+          const titleJpn = (item.title_jpn || '').toLowerCase()
+          const key = { gid: item.gid, token: item.token, hash: item.hash || null }
+          
+          if (title) {
+            if (!titleMap.has(title)) titleMap.set(title, [])
+            titleMap.get(title).push(key)
+          }
+          if (titleJpn && titleJpn !== title) {
+            if (!titleMap.has(titleJpn)) titleMap.set(titleJpn, [])
+            titleMap.get(titleJpn).push(key)
+          }
+        }
+        sendMessageToWebContents(`✅ 标题索引构建完成，共 ${titleMap.size} 个唯一标题${hasHashColumn ? '（支持hash匹配）' : '（不支持hash匹配）'}`)
+      }
+      
       // 并发处理部分，使用 setting.concurrentScan 配置
-      const CONCURRENCY = setting.concurrentScan || 4;
+      const CONCURRENCY = setting.concurrentScan || 16;
       let i = 0;
       async function processBatch() {
         const batch = [];
@@ -1542,6 +1674,7 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
           if (book.status !== 'tagged') {
             batch.push((async () => {
               let metadata;
+              let matchType = '';
               // folder类型特殊处理
               if (book.type === 'folder') {
                 const dirname = book.filepath;
@@ -1550,7 +1683,8 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                 if (gid && token) {
                   metadata = await db.get('SELECT * FROM gallery WHERE gid = ? AND token = ?', [gid, token]);
                   if (metadata) {
-                    sendMessageToWebContents(`✅ [Folder] 匹配: ${book.title} -> gid:${gid}`);
+                    matchType = 'Folder';
+                    sendMessageToWebContents(`✅ [${matchType}] 匹配: ${book.title} -> gid:${gid}`);
                   }
                 }
               }
@@ -1560,36 +1694,81 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                 if (matchOptions?.trimTitleRegExp) {
                   try {
                     filename = filename.replace(new RegExp(matchOptions.trimTitleRegExp, 'g'), '').trim();
-                    if (filename !== originalFilename) {
-                      sendMessageToWebContents(`🔧 标题裁剪: "${originalFilename}" -> "${filename}"`);
-                    }
                   } catch (e) {
                     console.log('trimTitleRegExp error:', e);
                     sendMessageToWebContents(`⚠️ 标题裁剪失败: ${e.message}`);
                   }
                 }
-                let sql = '';
-                let params = [];
-                if (matchOptions?.matchTitleOnly) {
-                  sql = `SELECT * FROM gallery WHERE title LIKE ? OR title_jpn LIKE ?`;
-                  params = [`%${filename}%`, `%${filename}%`];
-                } else {
-                  sql = `SELECT * FROM gallery WHERE torrents LIKE ? OR title LIKE ? OR title_jpn LIKE ? OR thumb LIKE ?`;
-                  params = [`%${filename}%`, `%${filename}%`, `%${filename}%`, `%${book.coverHash}%`];
-                }
-                if (matchOptions?.matchHash && book.hash) {
-                  sql += ` OR hash = ?`;
-                  params.push(book.hash);
-                }
-                metadata = await db.get(sql, ...params);
                 
-                if (metadata) {
-                  sendMessageToWebContents(`✅ [SQL] 匹配: "${filename}" -> "${metadata.title || metadata.title_jpn}"`);
+                // 快速匹配模式：先在内存中查找
+                if (matchOptions?.fastMatch && titleMap) {
+                  const searchTerm = filename.toLowerCase()
+                  let foundKeys = []
+                  
+                  // 遍历标题映射，查找"包含"搜索词的标题（和原SQL LIKE %searchTerm% 逻辑一致）
+                  for (const [title, keys] of titleMap.entries()) {
+                    // SQL原逻辑：title LIKE %filename% 或 title_jpn LIKE %filename%
+                    // 即：标题中包含文件名
+                    if (title.includes(searchTerm)) {
+                      foundKeys.push(...keys)
+                    }
+                  }
+                  
+                  // Hash 匹配（如果有 hash 列）
+                  if (matchOptions?.matchHash && book.hash) {
+                    for (const [title, keys] of titleMap.entries()) {
+                      for (const key of keys) {
+                        if (key.hash && key.hash === book.hash) {
+                          foundKeys.push(key)
+                        }
+                      }
+                    }
+                  }
+                  
+                  // 去重并只查询第一个匹配
+                  if (foundKeys.length > 0) {
+                    const uniqueKeys = Array.from(new Map(foundKeys.map(k => [`${k.gid}_${k.token}`, k])).values())
+                    const firstKey = uniqueKeys[0]
+                    metadata = await db.get('SELECT * FROM gallery WHERE gid = ? AND token = ?', [firstKey.gid, firstKey.token])
+                    if (metadata) {
+                      matchType = 'FastSQL'
+                    }
+                  }
+                  
+                  if (!metadata) {
+                    if (searchTerm.length < 3) {
+                      sendMessageToWebContents(`⚠️ [Fast] 标题过短跳过: "${filename}"`)
+                    } else {
+                      sendMessageToWebContents(`❌ [Fast] 未匹配: "${filename}"`)
+                    }
+                  }
                 } else {
-                  sendMessageToWebContents(`❌ [SQL] 未匹配: "${filename}"`);
+                  // 原始匹配模式
+                  let sql = '';
+                  let params = [];
+                  if (matchOptions?.matchTitleOnly) {
+                    sql = `SELECT * FROM gallery WHERE title LIKE ? OR title_jpn LIKE ?`;
+                    params = [`%${filename}%`, `%${filename}%`];
+                  } else {
+                    sql = `SELECT * FROM gallery WHERE torrents LIKE ? OR title LIKE ? OR title_jpn LIKE ? OR thumb LIKE ?`;
+                    params = [`%${filename}%`, `%${filename}%`, `%${filename}%`, `%${book.coverHash}%`];
+                  }
+                  if (matchOptions?.matchHash && book.hash) {
+                    sql += ` OR hash = ?`;
+                    params.push(book.hash);
+                  }
+                  metadata = await db.get(sql, ...params);
+                  
+                  if (!metadata) {
+                    sendMessageToWebContents(`❌ [SQL] 未匹配: "${filename}"`);
+                  } else {
+                    matchType = 'SQL';
+                  }
                 }
               }
               if (metadata) {
+                if (!matchType) matchType = 'SQL'; // 如果没有设置matchType，说明是SQL匹配
+                
                 metadata.tags = {
                   language: metadata.language ? JSON.parse(metadata.language.replace(re, '"')) : undefined,
                   parody: metadata.parody ? JSON.parse(metadata.parody.replace(re, '"')) : undefined,
@@ -1608,8 +1787,16 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                 metadata.posted = +metadata.posted;
                 metadata.filesize = +metadata.filesize;
                 metadata.url = `https://exhentai.org/g/${metadata.gid}/${metadata.token}/`;
+                
+                // 更新 book 对象
                 _.assign(book, _.pick(metadata, ['tags', 'title', 'title_jpn', 'filecount', 'rating', 'posted', 'filesize', 'category', 'url']), { status: 'tagged' });
+                
+                // 保存到数据库（Manga 表 + Metadata 表）
                 await saveBookToDatabase(book);
+                
+                if (matchType === 'SQL' || matchType === 'FastSQL') {
+                  sendMessageToWebContents(`✅ [${matchType}] 匹配成功: "${path.parse(book.title).name}" -> "${metadata.title || metadata.title_jpn}"`);
+                }
                 matched++;
               }
               processed++;

@@ -87,6 +87,16 @@
           </el-col>
           <el-col :span="24">
             <div class="setting-line">
+              <el-input v-model="setting.defaultSqlPath" :placeholder="$t('m.defaultSqlPathPlaceholder')" @change="saveSetting">
+                <template #prepend><span class="setting-label">{{$t('m.defaultSqlPath')}}</span></template>
+                <template #append>
+                  <el-button @click="selectDefaultSqlPath">{{$t('m.select')}}</el-button>
+                </template>
+              </el-input>
+            </div>
+          </el-col>
+          <el-col :span="24">
+            <div class="setting-line">
               <el-input v-model="setting.imageExplorer" @change="saveSetting">
                 <template #prepend><span class="setting-label">{{$t('m.imageViewer')}}</span></template>
                 <template #append>
@@ -510,6 +520,9 @@
           </el-col>
           <el-col :span="8">
             <div class="setting-line">
+              <el-checkbox v-model="setting.autoMatchOnRebuild" @change="saveSetting" style="margin-bottom: 8px;">
+                {{$t('m.autoMatchOnRebuild')}}
+              </el-checkbox>
               <el-popconfirm
                   placement="top-start"
                   :title="$t('m.rebuildWarning')"
@@ -557,6 +570,9 @@
                 </el-checkbox>
                 <el-checkbox v-model="setting.matchHash" style="margin-right:12px">
                   启用 hash 匹配
+                </el-checkbox>
+                <el-checkbox v-model="setting.fastMatch" style="margin-right:12px">
+                  ⚡ 快速匹配模式
                 </el-checkbox>
                 <el-button class="function-button" type="primary" plain @click="importMetadataFromSqlite">{{
                     $t('m.importMetadataFromSqlite')
@@ -913,6 +929,15 @@ const selectMetadataPath = () => {
   })
 }
 
+const selectDefaultSqlPath = () => {
+  ipcRenderer.invoke('select-file', t('m.defaultSqlPath'), [{ name: 'SQLite', extensions: ['sqlite', 'db'] }]).then(res => {
+    if (res) {
+      setting.value.defaultSqlPath = res
+      saveSetting()
+    }
+  })
+}
+
 const selectImageExplorerPath = () => {
   ipcRenderer.invoke('select-file', t('m.imageViewer')).then(res => {
     if (res) {
@@ -1077,6 +1102,7 @@ const importMetadataFromSqlite = async () => {
   const matchOptions = {
     matchTitleOnly: setting.value.matchTitleOnly,
     matchHash: setting.value.matchHash,
+    fastMatch: setting.value.fastMatch,
     trimTitleRegExp: setting.value.trimTitleRegExp  // 传递裁剪标题正则表达式
   }
   const { success, matched, processed } = await ipcRenderer.invoke('import-sqlite', {
