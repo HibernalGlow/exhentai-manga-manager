@@ -97,6 +97,16 @@
           </el-col>
           <el-col :span="24">
             <div class="setting-line">
+              <el-input v-model="setting.blacklistPath" :placeholder="$t('m.blacklistPathPlaceholder') || '默认路径（留空使用程序数据目录）'" @change="saveSetting">
+                <template #prepend><span class="setting-label">黑名单路径</span></template>
+                <template #append>
+                  <el-button @click="selectBlacklistPath">{{$t('m.select')}}</el-button>
+                </template>
+              </el-input>
+            </div>
+          </el-col>
+          <el-col :span="24">
+            <div class="setting-line">
               <el-input v-model="setting.imageExplorer" @change="saveSetting">
                 <template #prepend><span class="setting-label">{{$t('m.imageViewer')}}</span></template>
                 <template #append>
@@ -585,6 +595,16 @@
               <el-button class="function-button" type="danger" :icon="Delete"
                          :loading="busyRemove" :disabled="busyRemove" @click="removeMissingRecords"
               >{{$t('m.removeMissingRecords')}}
+              </el-button>
+            </div>
+          </el-col>
+          <el-col :span="8">
+            <div class="setting-line">
+              <el-button class="function-button" type="warning" plain @click="clearMatchBlacklist">
+                清空匹配黑名单
+              </el-button>
+              <el-button class="function-button" type="info" plain @click="showBlacklistStats">
+                查看黑名单
               </el-button>
             </div>
           </el-col>
@@ -1103,9 +1123,10 @@ const importMetadataFromSqlite = async () => {
     matchTitleOnly: setting.value.matchTitleOnly,
     matchHash: setting.value.matchHash,
     fastMatch: setting.value.fastMatch,
-    trimTitleRegExp: setting.value.trimTitleRegExp  // 传递裁剪标题正则表达式
+    trimTitleRegExp: setting.value.trimTitleRegExp,  // 传递裁剪标题正则表达式
+    blacklistPath: setting.value.blacklistPath  // 传递黑名单路径
   }
-  const { success, matched, processed } = await ipcRenderer.invoke('import-sqlite', {
+  const { success, matched, blacklisted, processed } = await ipcRenderer.invoke('import-sqlite', {
     bookList: _.cloneDeep(bookList.value),
     matchOptions
   })
@@ -1114,10 +1135,63 @@ const importMetadataFromSqlite = async () => {
     await ipcRenderer.invoke('load-book-list').then(res => {
       bookList.value = res
     })
-    printMessage('success', t('c.importMessage') + ` (${matched}/${processed})`)
+    printMessage('success', t('c.importMessage') + ` (匹配:${matched}, 新增黑名单:${blacklisted}, 总数:${processed})`)
     emit('loadBookList')
   } else {
     printMessage('info', t('c.canceled'))
+  }
+}
+
+const selectBlacklistPath = async () => {
+  const folder = await ipcRenderer.invoke('select-folder', '选择黑名单存储文件夹')
+  if (folder) {
+    setting.value.blacklistPath = folder
+    await saveSetting()
+  }
+}
+
+const clearMatchBlacklist = async () => {
+  try {
+    await ElMessageBox.confirm(
+      '此操作将清空所有匹配失败的黑名单记录，下次导入时会重新尝试匹配这些项目。是否继续？',
+      '清空匹配黑名单',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    
+    const { success, path } = await ipcRenderer.invoke('clear-match-blacklist', setting.value.blacklistPath)
+    if (success) {
+      printMessage('success', `已清空黑名单文件: ${path}`)
+    } else {
+      printMessage('error', '清空黑名单失败')
+    }
+  } catch (e) {
+    if (e !== 'cancel') {
+      printMessage('error', '清空黑名单失败: ' + e.message)
+    }
+  }
+}
+
+const showBlacklistStats = async () => {
+  try {
+    const { success, count, path } = await ipcRenderer.invoke('get-blacklist-stats', setting.value.blacklistPath)
+    if (success) {
+      ElMessageBox.alert(
+        `黑名单项目数: ${count}\n文件路径: ${path}`,
+        '黑名单统计',
+        {
+          confirmButtonText: '确定',
+          type: 'info'
+        }
+      )
+    } else {
+      printMessage('error', '获取黑名单统计失败')
+    }
+  } catch (e) {
+    printMessage('error', '获取黑名单统计失败: ' + e.message)
   }
 }
 

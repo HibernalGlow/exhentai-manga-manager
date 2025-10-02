@@ -20,10 +20,76 @@ const { performance } = require('node:perf_hooks')
 const { prepareMangaModel, prepareMetadataModel } = require('./modules/database')
 const { prepareTemplate } = require('./modules/prepare_menu.js')
 const { getBookFilelist, geneCover, geneCoverFromBuffer, getImageListByBook, deleteImageFromBook } = require('./fileLoader/index.js')
-const { STORE_PATH, isPortable, TEMP_PATH, COVER_PATH, VIEWER_PATH, prepareSetting, prepareCollectionList, preparePath } = require('./modules/init_folder_setting.js')
+const { STORE_PATH, isPortable, TEMP_PATH, COVER_PATH, VIEWER_PATH, prepareSetting, prepareCollectionList, preparePath, loadBlacklist, saveBlacklist, clearBlacklist, getBlacklistPath } = require('./modules/init_folder_setting.js')
 const { findSameFile, makeShardedPath } = require('./fileLoader/folder.js')
 const { ElectronBlocker } = require('@ghostery/adblocker-electron')
 const { QueryTypes } = require("sequelize");
+
+// 全角/半角字符归一化函数
+function normalizeString(str) {
+  if (!str) return str
+  // 全角转半角：ASCII 字符（包括数字、字母、符号）
+  return str.replace(/[\uFF01-\uFF5E]/g, (char) => {
+    return String.fromCharCode(char.charCodeAt(0) - 0xFEE0)
+  })
+  // 全角空格转半角空格
+  .replace(/\u3000/g, ' ')
+  // 多个连续空格替换为一个空格
+  .replace(/\s+/g, ' ')
+  // 去除首尾空格
+  .trim()
+}
+
+// 计算两个字符串的相似度（基于最长公共子序列 LCS）
+function calculateSimilarity(str1, str2) {
+  if (!str1 || !str2) return 0
+  
+  // 归一化并转小写
+  const s1 = normalizeString(str1).toLowerCase()
+  const s2 = normalizeString(str2).toLowerCase()
+  
+  // 如果完全相同
+  if (s1 === s2) return 1.0
+  
+  // 计算最长公共子序列长度（LCS）
+  const lcsLength = getLCSLength(s1, s2)
+  
+  // 相似度 = 2 * LCS / (len1 + len2)
+  const similarity = (2.0 * lcsLength) / (s1.length + s2.length)
+  
+  // 额外加分：如果 s1 包含在 s2 中或反之
+  if (s1.includes(s2) || s2.includes(s1)) {
+    const containmentBonus = Math.min(s1.length, s2.length) / Math.max(s1.length, s2.length)
+    return Math.min(1.0, similarity + containmentBonus * 0.2)
+  }
+  
+  return similarity
+}
+
+// 最长公共子序列（LCS）长度计算
+function getLCSLength(str1, str2) {
+  const m = str1.length
+  const n = str2.length
+  
+  // 使用滚动数组优化空间复杂度
+  let prev = new Array(n + 1).fill(0)
+  let curr = new Array(n + 1).fill(0)
+  
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (str1[i - 1] === str2[j - 1]) {
+        curr[j] = prev[j - 1] + 1
+      } else {
+        curr[j] = Math.max(curr[j - 1], prev[j])
+      }
+    }
+    // 交换数组
+    [prev, curr] = [curr, prev]
+    curr.fill(0)
+  }
+  
+  return prev[n]
+}
 
 preparePath()
 let setting = prepareSetting()
@@ -1601,6 +1667,11 @@ ipcMain.handle('import-database', async (event, arg) => {
 
 ipcMain.handle('import-sqlite', async (event, arg) => {
   const { bookList, matchOptions } = arg
+  
+  // 创建可中断的上下文
+  const ctx = createAbortableContext(event)
+  const { controller } = ctx
+  
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile'],
     filters: [{ name: 'SQLite', extensions: ['sqlite'] }]
@@ -1613,6 +1684,13 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
     // 声明在外层作用域，以便 catch 块也能访问
     let processed = 0
     let matched = 0
+    let blacklisted = 0
+    
+    // 加载黑名单（从外部 JSON 文件）
+    const blacklistPath = matchOptions?.blacklistPath || setting.blacklistPath
+    const blacklist = loadBlacklist(blacklistPath)
+    const initialBlacklistSize = blacklist.size
+    sendMessageToWebContents(`📋 黑名单: 已加载 ${blacklist.size} 个项目 (路径: ${getBlacklistPath(blacklistPath)})`)
     
     // 发送开始信息到前端
     const dbPath = path.basename(result.filePaths[0])
@@ -1645,34 +1723,81 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
         const t1 = performance.now()
         sendMessageToWebContents(`✅ 加载了 ${allTitles.length} 个标题，耗时: ${((t1-t0)/1000).toFixed(2)}s`)
         
-        // 构建标题映射：标题 -> {gid, token, hash}
-        titleMap = new Map()
+        // 构建优化的索引结构（避免 Map 容量溢出）
+        titleMap = new Map() // 完整标题 -> [{gid, token, hash}]
+        const titleArray = [] // 所有标题的数组（用于线性搜索备用）
+        const hashIndex = hasHashColumn ? new Map() : null // hash -> [{gid, token}]
+        
         for (const item of allTitles) {
-          const title = (item.title || '').toLowerCase()
-          const titleJpn = (item.title_jpn || '').toLowerCase()
+          // 归一化标题：全角转半角 + 转小写
+          const title = normalizeString(item.title || '').toLowerCase()
+          const titleJpn = normalizeString(item.title_jpn || '').toLowerCase()
           const key = { gid: item.gid, token: item.token, hash: item.hash || null }
           
+          // 建立完整标题索引
           if (title) {
-            if (!titleMap.has(title)) titleMap.set(title, [])
+            if (!titleMap.has(title)) {
+              titleMap.set(title, [])
+              titleArray.push(title) // 同时存入数组
+            }
             titleMap.get(title).push(key)
           }
+          
           if (titleJpn && titleJpn !== title) {
-            if (!titleMap.has(titleJpn)) titleMap.set(titleJpn, [])
+            if (!titleMap.has(titleJpn)) {
+              titleMap.set(titleJpn, [])
+              titleArray.push(titleJpn)
+            }
             titleMap.get(titleJpn).push(key)
           }
+          
+          // 建立 hash 索引（最高优先级）
+          if (hashIndex && key.hash) {
+            if (!hashIndex.has(key.hash)) {
+              hashIndex.set(key.hash, [])
+            }
+            hashIndex.get(key.hash).push({ gid: item.gid, token: item.token })
+          }
         }
-        sendMessageToWebContents(`✅ 标题索引构建完成，共 ${titleMap.size} 个唯一标题${hasHashColumn ? '（支持hash匹配）' : '（不支持hash匹配）'}`)
+        
+        sendMessageToWebContents(`✅ 标题索引构建完成：`)
+        sendMessageToWebContents(`  - ${titleMap.size} 个唯一标题`)
+        sendMessageToWebContents(`  - ${titleArray.length} 个标题数组缓存`)
+        if (hashIndex) {
+          sendMessageToWebContents(`  - ${hashIndex.size} 个 hash 索引`)
+        }
+        
+        // 将索引存储到全局变量中
+        global.titleArray = titleArray
+        global.hashIndex = hashIndex
       }
       
       // 并发处理部分，使用 setting.concurrentScan 配置
       const CONCURRENCY = setting.concurrentScan || 16;
       let i = 0;
       async function processBatch() {
+        // 检查是否已中断
+        if (controller.signal.aborted) {
+          throw new Error('Import cancelled by user or system')
+        }
+        
         const batch = [];
         for (let j = 0; j < CONCURRENCY && i < bookListLength; j++, i++) {
           const book = bookList[i];
-          if (book.status !== 'tagged') {
-            batch.push((async () => {
+          
+          // 跳过已标记和黑名单中的项目
+          const bookKey = `${book.id}|${book.title}`
+          if (book.status === 'tagged' || blacklist.has(bookKey)) {
+            if (blacklist.has(bookKey)) {
+              processed++
+            }
+            continue
+          }
+          
+          batch.push((async () => {
+              // 再次检查中断信号
+              if (controller.signal.aborted) return;
+              
               let metadata;
               let matchType = '';
               // folder类型特殊处理
@@ -1700,35 +1825,108 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                   }
                 }
                 
-                // 快速匹配模式：先在内存中查找
+                // 快速匹配模式：使用优化的查找策略
                 if (matchOptions?.fastMatch && titleMap) {
-                  const searchTerm = filename.toLowerCase()
+                  // 归一化搜索词：全角转半角 + 转小写
+                  const searchTerm = normalizeString(filename).toLowerCase()
                   let foundKeys = []
                   
-                  // 遍历标题映射，查找"包含"搜索词的标题（和原SQL LIKE %searchTerm% 逻辑一致）
-                  for (const [title, keys] of titleMap.entries()) {
-                    // SQL原逻辑：title LIKE %filename% 或 title_jpn LIKE %filename%
-                    // 即：标题中包含文件名
-                    if (title.includes(searchTerm)) {
-                      foundKeys.push(...keys)
+                  // 优先使用 hash 匹配（O(1)，最快）
+                  if (matchOptions?.matchHash && book.hash && global.hashIndex) {
+                    const hashMatches = global.hashIndex.get(book.hash)
+                    if (hashMatches && hashMatches.length > 0) {
+                      foundKeys.push(...hashMatches.map(m => ({ gid: m.gid, token: m.token, hash: book.hash })))
                     }
                   }
                   
-                  // Hash 匹配（如果有 hash 列）
-                  if (matchOptions?.matchHash && book.hash) {
-                    for (const [title, keys] of titleMap.entries()) {
-                      for (const key of keys) {
-                        if (key.hash && key.hash === book.hash) {
-                          foundKeys.push(key)
+                  // 如果 hash 没匹配到，使用标题匹配
+                  if (foundKeys.length === 0 && searchTerm.length >= 3) {
+                    // 策略1: 先尝试精确匹配（O(1)）
+                    const exactMatch = titleMap.get(searchTerm)
+                    if (exactMatch) {
+                      foundKeys.push(...exactMatch)
+                    } else {
+                      // 策略2: 使用优化的线性搜索，收集所有匹配项
+                      const titleArray = global.titleArray
+                      if (titleArray && titleArray.length > 0) {
+                        const matchedTitles = [] // 存储所有匹配的标题
+                        
+                        for (let i = 0; i < titleArray.length; i++) {
+                          const title = titleArray[i]
+                          if (title.includes(searchTerm)) {
+                            const keys = titleMap.get(title)
+                            if (keys) {
+                              // 存储标题和对应的 keys
+                              matchedTitles.push({ title, keys })
+                            }
+                          }
+                        }
+                        
+                        // 如果找到多个匹配，使用相似度排序
+                        if (matchedTitles.length > 0) {
+                          if (matchedTitles.length === 1) {
+                            // 只有一个匹配，直接使用
+                            foundKeys.push(...matchedTitles[0].keys)
+                          } else {
+                            // 多个匹配，使用原始文件名计算相似度
+                            const originalNormalized = normalizeString(originalFilename).toLowerCase()
+                            
+                            // 计算每个匹配项的最高相似度（对比 title 和 title_jpn）
+                            const scoredMatches = []
+                            for (const { title, keys } of matchedTitles) {
+                              // 需要获取完整的 gallery 记录来访问 title_jpn
+                              // 为了性能，先使用标题本身计算
+                              const similarity = calculateSimilarity(originalNormalized, title)
+                              scoredMatches.push({ keys, similarity, title })
+                            }
+                            
+                            // 按相似度降序排序
+                            scoredMatches.sort((a, b) => b.similarity - a.similarity)
+                            
+                            // 使用相似度最高的匹配
+                            foundKeys.push(...scoredMatches[0].keys)
+                            
+                            // 调试信息（可选）
+                            if (scoredMatches.length > 1) {
+                              sendMessageToWebContents(`🔍 [多匹配] "${originalFilename}" 找到 ${scoredMatches.length} 个候选，相似度最高: ${(scoredMatches[0].similarity * 100).toFixed(1)}%`)
+                            }
+                          }
                         }
                       }
                     }
                   }
                   
-                  // 去重并只查询第一个匹配
-                  if (foundKeys.length > 0) {
-                    const uniqueKeys = Array.from(new Map(foundKeys.map(k => [`${k.gid}_${k.token}`, k])).values())
-                    const firstKey = uniqueKeys[0]
+                  // 如果找到匹配，进一步使用 title_jpn 优化相似度（针对多个 gid/token）
+                  if (foundKeys.length > 1) {
+                    // 获取所有候选的完整元数据
+                    const candidates = []
+                    for (const key of foundKeys) {
+                      const meta = await db.get('SELECT gid, token, title, title_jpn FROM gallery WHERE gid = ? AND token = ?', [key.gid, key.token])
+                      if (meta) candidates.push(meta)
+                    }
+                    
+                    // 使用原始文件名与 title 和 title_jpn 计算相似度
+                    const originalNormalized = normalizeString(originalFilename).toLowerCase()
+                    const scoredCandidates = candidates.map(meta => {
+                      const titleSim = calculateSimilarity(originalNormalized, meta.title || '')
+                      const titleJpnSim = calculateSimilarity(originalNormalized, meta.title_jpn || '')
+                      const maxSim = Math.max(titleSim, titleJpnSim)
+                      return { meta, similarity: maxSim }
+                    })
+                    
+                    // 按相似度降序排序
+                    scoredCandidates.sort((a, b) => b.similarity - a.similarity)
+                    
+                    // 使用最相似的
+                    metadata = scoredCandidates[0].meta
+                    matchType = 'FastSQL'
+                    
+                    if (scoredCandidates.length > 1) {
+                      sendMessageToWebContents(`🎯 [相似度匹配] "${originalFilename}" -> "${metadata.title_jpn || metadata.title}" (${(scoredCandidates[0].similarity * 100).toFixed(1)}%)`)
+                    }
+                  } else if (foundKeys.length === 1) {
+                    // 只有一个匹配，直接查询
+                    const firstKey = foundKeys[0]
                     metadata = await db.get('SELECT * FROM gallery WHERE gid = ? AND token = ?', [firstKey.gid, firstKey.token])
                     if (metadata) {
                       matchType = 'FastSQL'
@@ -1743,7 +1941,8 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                     }
                   }
                 } else {
-                  // 原始匹配模式
+                  // 原始匹配模式（直接 SQL 查询，无归一化支持，不推荐）
+                  // 注意：SQLite LIKE 不支持全角/半角归一化，可能导致匹配失败
                   let sql = '';
                   let params = [];
                   if (matchOptions?.matchTitleOnly) {
@@ -1791,38 +1990,69 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                 // 更新 book 对象
                 _.assign(book, _.pick(metadata, ['tags', 'title', 'title_jpn', 'filecount', 'rating', 'posted', 'filesize', 'category', 'url']), { status: 'tagged' });
                 
-                // 保存到数据库（Manga 表 + Metadata 表）
+                // 实时保存到数据库（Manga 表 + Metadata 表）
                 await saveBookToDatabase(book);
                 
                 if (matchType === 'SQL' || matchType === 'FastSQL') {
-                  sendMessageToWebContents(`✅ [${matchType}] 匹配成功: "${path.parse(book.title).name}" -> "${metadata.title || metadata.title_jpn}"`);
+                  const fileName = path.parse(book.title).name;
+                  const matchedTitle = metadata.title_jpn || metadata.title || 'N/A';
+                  sendMessageToWebContents(`✅ [${matchType}] "${fileName}" -> "${matchedTitle}" (gid:${metadata.gid})`);
                 }
                 matched++;
+              } else {
+                // 匹配失败，加入黑名单
+                const bookKey = `${book.id}|${book.title}`
+                blacklist.add(bookKey)
+                blacklisted++
               }
               processed++;
-            })());
-          }
+            })())
         }
         await Promise.all(batch);
         setProgressBar(processed / bookListLength);
-        await new Promise(resolve => setImmediate(resolve));
+        
+        // 让出事件循环，保持 UI 响应（增加延迟以提高响应性）
+        await new Promise(resolve => setTimeout(resolve, 20));
       }
-      while (i < bookListLength) {
+      
+      // 每批次报告进度，并让出更多时间给主线程
+      let lastReportTime = Date.now();
+      while (i < bookListLength && !controller.signal.aborted) {
         await processBatch();
-        // 每批次报告进度
-        if (processed % (BATCH_SIZE * 2) === 0 || processed === bookListLength) {
+        
+        const now = Date.now();
+        // 每 300ms 或每完成一定数量报告一次进度（降低报告频率减少 IPC 开销）
+        if (now - lastReportTime > 300 || processed === bookListLength) {
           const percent = ((processed / bookListLength) * 100).toFixed(1);
           sendMessageToWebContents(`📊 进度: ${processed}/${bookListLength} (${percent}%), 已匹配: ${matched}`);
+          lastReportTime = now;
         }
+      }
+      
+      // 检查是否因中断而退出
+      if (controller.signal.aborted) {
+        throw new Error('Import cancelled')
       }
       await db.close()
       setProgressBar(-1)
       
+      // 保存黑名单到文件
+      const newBlacklistCount = blacklist.size - initialBlacklistSize
+      if (newBlacklistCount > 0) {
+        const saved = saveBlacklist(blacklist, blacklistPath)
+        if (saved) {
+          sendMessageToWebContents(`💾 已保存 ${newBlacklistCount} 个新增黑名单项目`)
+        }
+      }
+      
       // 最终统计
       const matchRate = bookListLength > 0 ? ((matched / bookListLength) * 100).toFixed(1) : 0;
-      console.log(`Import completed: ${matched} matched out of ${processed} processed`)
-      sendMessageToWebContents(`🎉 导入完成! 处理: ${processed}, 匹配: ${matched} (${matchRate}%)`);
-      sendMessageToWebContents(`Import completed: ${matched} matched, ${processed} processed`)
+      console.log(`Import completed: ${matched} matched, ${blacklisted} blacklisted, out of ${processed} processed`)
+      sendMessageToWebContents(`🎉 导入完成!`);
+      sendMessageToWebContents(`  ✅ 成功匹配: ${matched} (${matchRate}%)`);
+      sendMessageToWebContents(`  ⛔ 新增黑名单: ${blacklisted}`);
+      sendMessageToWebContents(`  📋 黑名单总数: ${blacklist.size}`);
+      sendMessageToWebContents(`  📦 总处理: ${processed}`);
     } catch (e) {
       console.log(e)
       sendMessageToWebContents(`❌ 导入错误: ${e.message || e}`);
@@ -1834,6 +2064,7 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
     return {
       success: true,
       matched,
+      blacklisted,
       processed
     }
   } else {
@@ -1842,6 +2073,42 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
     }
   }
 })
+
+// 清空匹配黑名单
+ipcMain.handle('clear-match-blacklist', async (event, customPath) => {
+  try {
+    const blacklistPath = customPath || setting.blacklistPath
+    const result = clearBlacklist(blacklistPath)
+    if (result) {
+      sendMessageToWebContents(`✅ 已清空黑名单: ${getBlacklistPath(blacklistPath)}`)
+      return { success: true, path: getBlacklistPath(blacklistPath) }
+    } else {
+      sendMessageToWebContents(`❌ 清空黑名单失败`)
+      return { success: false }
+    }
+  } catch (e) {
+    console.log('Clear blacklist error:', e)
+    sendMessageToWebContents(`❌ 清空黑名单失败: ${e.message}`)
+    return { success: false, error: e.message }
+  }
+})
+
+// 获取黑名单统计信息
+ipcMain.handle('get-blacklist-stats', async (event, customPath) => {
+  try {
+    const blacklistPath = customPath || setting.blacklistPath
+    const blacklist = loadBlacklist(blacklistPath)
+    return {
+      success: true,
+      count: blacklist.size,
+      path: getBlacklistPath(blacklistPath)
+    }
+  } catch (e) {
+    console.log('Get blacklist stats error:', e)
+    return { success: false, error: e.message }
+  }
+})
+
 /**=====  remove missing records button =============*/
 
 ipcMain.handle('sqlite-vacuum-estimate', async () => {

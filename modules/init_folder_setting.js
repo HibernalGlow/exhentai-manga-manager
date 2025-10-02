@@ -88,6 +88,54 @@ const prepareCollectionList = () => {
   return collectionList
 }
 
+// 黑名单管理函数
+const getBlacklistPath = (customPath) => {
+  const basePath = customPath || STORE_PATH
+  return path.join(basePath, 'match-blacklist.json')
+}
+
+const loadBlacklist = (customPath) => {
+  try {
+    const blacklistPath = getBlacklistPath(customPath)
+    if (fs.existsSync(blacklistPath)) {
+      const data = JSON.parse(fs.readFileSync(blacklistPath, { encoding: 'utf-8' }))
+      return new Set(data.blacklist || [])
+    }
+  } catch (e) {
+    console.log('Load blacklist error:', e)
+  }
+  return new Set()
+}
+
+const saveBlacklist = (blacklistSet, customPath) => {
+  try {
+    const blacklistPath = getBlacklistPath(customPath)
+    const data = {
+      version: '1.0',
+      lastUpdate: new Date().toISOString(),
+      blacklist: Array.from(blacklistSet)
+    }
+    fs.writeFileSync(blacklistPath, JSON.stringify(data, null, 2), { encoding: 'utf-8' })
+    return true
+  } catch (e) {
+    console.log('Save blacklist error:', e)
+    return false
+  }
+}
+
+const clearBlacklist = (customPath) => {
+  try {
+    const blacklistPath = getBlacklistPath(customPath)
+    if (fs.existsSync(blacklistPath)) {
+      fs.unlinkSync(blacklistPath)
+    }
+    return true
+  } catch (e) {
+    console.log('Clear blacklist error:', e)
+    return false
+  }
+}
+
 module.exports = {
   STORE_PATH,
   isPortable,
@@ -96,5 +144,9 @@ module.exports = {
   VIEWER_PATH,
   prepareSetting,
   prepareCollectionList,
-  preparePath
+  preparePath,
+  loadBlacklist,
+  saveBlacklist,
+  clearBlacklist,
+  getBlacklistPath
 }
