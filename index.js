@@ -1247,6 +1247,251 @@ ipcMain.handle('get-ehviewer-data', async (event, dir) => {
   return getEhviewerDataManually(dir)
 })
 
+/**
+ * Fill metadata for no-category books from SQLite database
+ * 为无分类书籍从 SQLite 数据库补全元数据
+ */
+ipcMain.handle('fill-no-category-metadata', async (event, bookList) => {
+  try {
+    // 检查是否配置了 SQL 数据库路径
+    if (!setting.defaultSqlPath) {
+      return {
+        success: false,
+        error: 'SQL database path is not configured',
+        successCount: 0,
+        failedCount: bookList.length
+      }
+    }
+
+    // 打开 SQL 数据库
+    let db
+    try {
+      db = await open({
+        filename: setting.defaultSqlPath,
+        driver: sqlite3.Database
+      })
+      sendMessageToWebContents(`✅ Opened SQL database: ${path.basename(setting.defaultSqlPath)}`)
+    } catch (e) {
+      return {
+        success: false,
+        error: `Failed to open SQL database: ${e.message}`,
+        successCount: 0,
+        failedCount: bookList.length
+      }
+    }
+
+    const re = /'/g
+    let successCount = 0
+    let failedCount = 0
+    const totalCount = bookList.length
+  // 已成功写入数据库的数量（与 successCount 区别：successCount 是匹配成功数，savedCount 是实际保存成功数）
+  let savedCount = 0
+
+    // 检查数据库是否有 hash 列
+    sendMessageToWebContents('🔍 Checking database schema...')
+    const columns = await db.all(`PRAGMA table_info(gallery)`)
+    const hasHashColumn = columns.some(col => col.name === 'hash')
+    
+    // 构建标题索引以加速匹配
+    sendMessageToWebContents('🔍 Building title index from SQL database...')
+    let allTitles
+    if (hasHashColumn) {
+      allTitles = await db.all('SELECT gid, token, title, title_jpn, hash FROM gallery')
+    } else {
+      allTitles = await db.all('SELECT gid, token, title, title_jpn FROM gallery')
+    }
+    
+    const { titleMap, titleArray, hashIndex } = buildTitleIndex(allTitles, hasHashColumn)
+    sendMessageToWebContents(`✅ Index built: ${titleMap.size} unique titles${hashIndex ? ', ' + hashIndex.size + ' hashes' : ''}`)
+
+    // 批量保存队列
+    const booksToSave = []
+    const SAVE_BATCH_SIZE = 10 // 每10本书保存一次
+
+    for (let i = 0; i < totalCount; i++) {
+      const book = bookList[i]
+      setProgressBar((i + 1) / totalCount)
+      sendMessageToWebContents(`\n📖 Processing ${i + 1}/${totalCount}: ${book.title}`)
+      sendMessageToWebContents(`   ID: ${book.id}, Type: ${book.type}, Status: ${book.status}, Category: ${book.category || 'N/A'}`)
+
+      try {
+        let metadata = null
+        let matchMethod = ''
+
+        // 步骤1: 优先使用 URL 中的 token 匹配（最精确）
+        if (book.url) {
+          const urlMatch = book.url.match(/\/g\/(\d+)\/([a-f0-9]+)/)
+          if (urlMatch) {
+            const [, gid, token] = urlMatch
+            sendMessageToWebContents(`   🔍 Trying URL match: gid=${gid}, token=${token}`)
+            metadata = await db.get('SELECT * FROM gallery WHERE gid = ? AND token = ?', [gid, token])
+            if (metadata) {
+              matchMethod = 'URL'
+              sendMessageToWebContents(`   ✅ Matched by URL token: ${gid}/${token}`)
+            }
+          }
+        }
+
+        // 步骤2: 如果是 folder 类型，尝试读取 .ehviewer 文件
+        if (!metadata && book.type === 'folder') {
+          sendMessageToWebContents(`   🔍 Trying .ehviewer file match`)
+          const ehviewerData = getEhviewerDataManually(book.filepath)
+          if (ehviewerData && ehviewerData.gid && ehviewerData.token) {
+            metadata = await db.get('SELECT * FROM gallery WHERE gid = ? AND token = ?', [ehviewerData.gid, ehviewerData.token])
+            if (metadata) {
+              matchMethod = '.ehviewer'
+              sendMessageToWebContents(`   ✅ Matched by .ehviewer file: ${ehviewerData.gid}/${ehviewerData.token}`)
+            }
+          }
+        }
+
+        // 步骤3: 使用 hash 匹配（高优先级）
+        if (!metadata && book.hash && hashIndex) {
+          sendMessageToWebContents(`   🔍 Trying hash match: ${book.hash}`)
+          const hashMatches = matchByHash(book, hashIndex)
+          if (hashMatches.length > 0) {
+            const firstMatch = hashMatches[0]
+            metadata = await db.get('SELECT * FROM gallery WHERE gid = ? AND token = ?', [firstMatch.gid, firstMatch.token])
+            if (metadata) {
+              matchMethod = 'Hash'
+              sendMessageToWebContents(`   ✅ Matched by hash: ${firstMatch.gid}/${firstMatch.token}`)
+            }
+          }
+        }
+
+        // 步骤4: 使用标题匹配（最后的备选方案）
+        if (!metadata) {
+          const filename = book.title || path.parse(book.filepath).name
+          sendMessageToWebContents(`   🔍 Trying title match: "${filename}"`)
+          const foundKeys = await findMatchesByTitle(filename, filename, titleMap, titleArray)
+          
+          if (foundKeys && foundKeys.length > 0) {
+            sendMessageToWebContents(`   🔍 Found ${foundKeys.length} potential matches, refining...`)
+            // 如果有多个匹配，使用 title_jpn 精炼
+            metadata = await refineMatchesWithJapaneseTitle(foundKeys, filename, db)
+            if (metadata) {
+              matchMethod = 'Title'
+              sendMessageToWebContents(`   ✅ Matched by title: ${metadata.gid}/${metadata.token}`)
+            }
+          } else {
+            sendMessageToWebContents(`   ❌ No title matches found`)
+          }
+        }
+
+        // 应用元数据
+        if (metadata) {
+          // 使用 parseMetadataTags 解析标签（与 import-sqlite 一致）
+          metadata = parseMetadataTags(metadata)
+          
+          // 打印完整标签信息
+          const tagsSummary = metadata.tags ? Object.entries(metadata.tags)
+            .filter(([key, val]) => val && val.length > 0)
+            .map(([key, val]) => `${key}:${val.length}`)
+            .join(', ') : 'none'
+          sendMessageToWebContents(`  📝 Metadata: gid=${metadata.gid}, category=${metadata.category}`)
+          sendMessageToWebContents(`  🏷️  Tags: ${tagsSummary}`)
+          
+          // 打印详细标签内容（前3个）
+          if (metadata.tags) {
+            Object.entries(metadata.tags).forEach(([key, val]) => {
+              if (val && val.length > 0) {
+                const preview = val.slice(0, 3).join(', ') + (val.length > 3 ? '...' : '')
+                sendMessageToWebContents(`     - ${key}: [${preview}]`)
+              }
+            })
+          }
+
+          // 构建完整的 book 对象（与 import-sqlite 一致）
+          const updatedBook = {
+            id: book.id,
+            title: metadata.title || book.title,
+            title_jpn: metadata.title_jpn,
+            tags: metadata.tags,
+            filecount: metadata.filecount,
+            rating: metadata.rating,
+            posted: metadata.posted,
+            filesize: metadata.filesize,
+            category: metadata.category,
+            url: metadata.url,
+            status: 'tagged',
+            // 保留原有的必要字段
+            filepath: book.filepath,
+            type: book.type,
+            hash: book.hash,
+            coverPath: book.coverPath,
+            pageCount: book.pageCount,
+            bundleSize: book.bundleSize,
+            mtime: book.mtime,
+            coverHash: book.coverHash,
+            date: book.date
+          }
+
+          // 添加到保存队列，而不是立即保存
+          booksToSave.push(updatedBook)
+
+          successCount++
+          sendMessageToWebContents(`  ✅ Queued for save: ${metadata.title} (${metadata.category})`)
+          
+          // 每 SAVE_BATCH_SIZE 本书批量保存一次
+          if (booksToSave.length >= SAVE_BATCH_SIZE) {
+            sendMessageToWebContents(`  💾 Saving batch of ${booksToSave.length} books...`)
+            for (const bookToSave of booksToSave) {
+              await saveBookToDatabase(bookToSave)
+              savedCount++
+              sendMessageToWebContents(`    💾 Saved ${savedCount}/${totalCount}: ${bookToSave.title}`)
+            }
+            booksToSave.length = 0 // 清空队列
+            sendMessageToWebContents(`  ✅ Batch saved, progress: ${savedCount}/${totalCount}`)
+            // 让出事件循环，保持 UI 响应
+            await new Promise(resolve => setImmediate(resolve))
+          }
+        } else {
+          failedCount++
+          sendMessageToWebContents(`  ❌ No match found for: ${book.title}`)
+        }
+      } catch (e) {
+        failedCount++
+        sendMessageToWebContents(`  ❌ Error processing ${book.title}: ${e.message}`)
+        console.error(`Error processing book ${book.id}:`, e)
+      }
+    }
+
+    // 保存剩余的书籍
+    if (booksToSave.length > 0) {
+      sendMessageToWebContents(`  💾 Saving final batch of ${booksToSave.length} books...`)
+      for (const bookToSave of booksToSave) {
+        await saveBookToDatabase(bookToSave)
+        savedCount++
+        sendMessageToWebContents(`    💾 Saved ${savedCount}/${totalCount}: ${bookToSave.title}`)
+      }
+      sendMessageToWebContents(`  ✅ Final batch saved, total saved: ${savedCount}/${totalCount}`)
+    }
+
+    // 关闭数据库连接
+    await db.close()
+    setProgressBar(-1)
+
+    sendMessageToWebContents(`📊 Fill complete: Success: ${successCount}, Failed: ${failedCount}, Total: ${totalCount}`)
+
+    return {
+      success: true,
+      successCount,
+      failedCount,
+      totalCount
+    }
+  } catch (error) {
+    setProgressBar(-1)
+    sendMessageToWebContents(`❌ Fill no-category metadata failed: ${error.message}`)
+    console.error('Fill no-category metadata error:', error)
+    return {
+      success: false,
+      error: error.message,
+      successCount: 0,
+      failedCount: bookList.length
+    }
+  }
+})
+
 ipcMain.handle('get-ex-webpage', async (event, { url, cookie }) => {
   if (setting.proxy) {
     return await fetch(url, {

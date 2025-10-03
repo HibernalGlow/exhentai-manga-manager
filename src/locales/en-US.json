@@ -12,6 +12,7 @@
     "hiddenOnly": "Hidden Only",
     "noTagOnly": "No Tag Only",
     "noCategoryOnly": "No Category Only",
+    "fillNoCategoryMetadata": "Fill No-Category/No-Tags Metadata",
     "recentReadOnly": "Recent Read",
     "addTimeAscend": "AddTime Ascend",
     "addTimeDescend": "AddTime Descend",
@@ -212,6 +213,10 @@
     "mayFree": "(may free {sizes})"
   },
   "c": {
+    "noBooksToFill": "No books found to fill (no category or no tags)",
+    "startFillingNoCategory": "Start filling metadata for {count} books (no category or no tags)...",
+    "fillNoCategoryComplete": "Fill completed! Success: {success}, Failed: {failed}, Total: {total}",
+    "fillNoCategoryFailed": "Fill failed: {error}",
     "selectCollectionList": "Select collectionList.json",
     "selectMetadataSqlite": "Select metadata.sqlite",
     "importMessage": "Import is complete, if the imported data have collections, you need to open and edit the collection and save it manually",

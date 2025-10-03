@@ -12,6 +12,7 @@
     "hiddenOnly": "僅隱藏",
     "noTagOnly": "無標籤",
     "noCategoryOnly": "無分類",
+    "fillNoCategoryMetadata": "補全無分類/無標籤元數據",
     "recentReadOnly": "最近閱讀",
     "addTimeAscend": "新增時間升序",
     "addTimeDescend": "新增時間降序",
@@ -210,6 +211,10 @@
     "mayFree": "（可能釋放 {sizes}）"
   },
   "c": {
+    "noBooksToFill": "沒有找到需要補全的書籍（無分類或無標籤）",
+    "startFillingNoCategory": "開始補全 {count} 本書籍的元數據（無分類或無標籤）...",
+    "fillNoCategoryComplete": "補全完成！成功: {success}, 失敗: {failed}, 總計: {total}",
+    "fillNoCategoryFailed": "補全失敗: {error}",
     "selectCollectionList": "選擇collectionList.json",
     "selectMetadataSqlite": "選擇metadata.sqlite",
     "importMessage": "匯入完成, 如匯入資料有合集, 需打開編輯合集後手動保存",

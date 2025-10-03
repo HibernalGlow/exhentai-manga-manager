@@ -611,6 +611,13 @@
           </el-col>
           <el-col :span="8">
             <div class="setting-line">
+              <el-button class="function-button" type="warning" plain @click="fillNoCategoryMetadata">
+                {{$t('m.fillNoCategoryMetadata')}}
+              </el-button>
+            </div>
+          </el-col>
+          <el-col :span="8">
+            <div class="setting-line">
               <el-button class="function-button" type="warning" plain @click="clearMatchBlacklist">
                 清空匹配黑名单
               </el-button>
@@ -1198,6 +1205,65 @@ const importMetadataFromSqlite = async () => {
     emit('loadBookList')
   } else {
     printMessage('info', t('c.canceled'))
+  }
+}
+
+const fillNoCategoryMetadata = async () => {
+  try {
+    // 检查书籍是否有标签
+    const hasNoTags = (book) => {
+      if (!book.tags) return true
+      // 检查所有标签类别是否都为空
+      const tagCategories = ['language', 'parody', 'character', 'group', 'artist', 'male', 'female', 'mixed', 'other', 'cosplayer', 'rest']
+      return tagCategories.every(cat => !book.tags[cat] || book.tags[cat].length === 0)
+    }
+    
+    // 筛选出：1) 无分类的书籍 OR 2) 有分类但无标签的书籍
+    const noCategoryBooks = bookList.value.filter(book => {
+      if (book.status !== 'tagged') return false
+      
+      const noCategory = !book.category || book.category === '' || book.category === 'Misc'
+      const noTags = hasNoTags(book)
+      
+      return noCategory || noTags
+    })
+    
+    if (noCategoryBooks.length === 0) {
+      printMessage('info', t('c.noBooksToFill'))
+      return
+    }
+    
+    // 只传递必要的字段，避免克隆错误
+    const simpleBookList = noCategoryBooks.map(book => ({
+      id: book.id,
+      title: book.title,
+      title_jpn: book.title_jpn,
+      filepath: book.filepath,
+      type: book.type,
+      hash: book.hash,
+      url: book.url,
+      status: book.status,
+      category: book.category
+    }))
+    
+    printMessage('info', t('c.startFillingNoCategory', { count: noCategoryBooks.length }))
+    
+    const result = await ipcRenderer.invoke('fill-no-category-metadata', simpleBookList)
+    
+    if (result.success) {
+      printMessage('success', t('c.fillNoCategoryComplete', { 
+        success: result.successCount, 
+        failed: result.failedCount,
+        total: noCategoryBooks.length 
+      }))
+      // 重新加载书籍列表以更新UI
+      emit('loadBookList')
+    } else {
+      printMessage('error', t('c.fillNoCategoryFailed', { error: result.error }))
+    }
+  } catch (error) {
+    printMessage('error', t('c.fillNoCategoryFailed', { error: error.message }))
+    console.error('Fill no-category metadata error:', error)
   }
 }
 
