@@ -61,72 +61,15 @@ const {
 const { findSameFile, makeShardedPath } = require('./fileLoader/folder.js')
 const { ElectronBlocker } = require('@ghostery/adblocker-electron')
 const { QueryTypes } = require("sequelize");
-
-// 全角/半角字符归一化函数
-function normalizeString(str) {
-  if (!str) return str
-  // 全角转半角：ASCII 字符（包括数字、字母、符号）
-  return str.replace(/[\uFF01-\uFF5E]/g, (char) => {
-    return String.fromCharCode(char.charCodeAt(0) - 0xFEE0)
-  })
-  // 全角空格转半角空格
-  .replace(/\u3000/g, ' ')
-  // 多个连续空格替换为一个空格
-  .replace(/\s+/g, ' ')
-  // 去除首尾空格
-  .trim()
-}
-
-// 计算两个字符串的相似度（基于最长公共子序列 LCS）
-function calculateSimilarity(str1, str2) {
-  if (!str1 || !str2) return 0
-  
-  // 归一化并转小写
-  const s1 = normalizeString(str1).toLowerCase()
-  const s2 = normalizeString(str2).toLowerCase()
-  
-  // 如果完全相同
-  if (s1 === s2) return 1.0
-  
-  // 计算最长公共子序列长度（LCS）
-  const lcsLength = getLCSLength(s1, s2)
-  
-  // 相似度 = 2 * LCS / (len1 + len2)
-  const similarity = (2.0 * lcsLength) / (s1.length + s2.length)
-  
-  // 额外加分：如果 s1 包含在 s2 中或反之
-  if (s1.includes(s2) || s2.includes(s1)) {
-    const containmentBonus = Math.min(s1.length, s2.length) / Math.max(s1.length, s2.length)
-    return Math.min(1.0, similarity + containmentBonus * 0.2)
-  }
-  
-  return similarity
-}
-
-// 最长公共子序列（LCS）长度计算
-function getLCSLength(str1, str2) {
-  const m = str1.length
-  const n = str2.length
-  
-  // 使用滚动数组优化空间复杂度
-  let prev = new Array(n + 1).fill(0)
-  let curr = new Array(n + 1).fill(0)
-  
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      if (str1[i - 1] === str2[j - 1]) {
-        curr[j] = prev[j - 1] + 1
-      } else {
-        curr[j] = Math.max(curr[j - 1], prev[j])
-      }
-    }
-    // 交换数组
-    [prev, curr] = [curr, prev]
-    curr.fill(0)
-  }
-  
-  return prev[n]
-}
+// Custom modules for import functionality
+const { normalizeString, calculateSimilarity } = require('./modules/string_utils')
+const {
+  buildTitleIndex,
+  findMatchesByTitle,
+  refineMatchesWithJapaneseTitle,
+  parseMetadataTags,
+  matchByHash
+} = require('./modules/sqlite_import')
 
 preparePath()
 let setting = prepareSetting()
@@ -1771,42 +1714,11 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
         const t1 = performance.now()
         sendMessageToWebContents(`✅ 加载了 ${allTitles.length} 个标题，耗时: ${((t1-t0)/1000).toFixed(2)}s`)
         
-        // 构建优化的索引结构（避免 Map 容量溢出）
-        titleMap = new Map() // 完整标题 -> [{gid, token, hash}]
-        const titleArray = [] // 所有标题的数组（用于线性搜索备用）
-        const hashIndex = hasHashColumn ? new Map() : null // hash -> [{gid, token}]
-        
-        for (const item of allTitles) {
-          // 归一化标题：全角转半角 + 转小写
-          const title = normalizeString(item.title || '').toLowerCase()
-          const titleJpn = normalizeString(item.title_jpn || '').toLowerCase()
-          const key = { gid: item.gid, token: item.token, hash: item.hash || null }
-          
-          // 建立完整标题索引
-          if (title) {
-            if (!titleMap.has(title)) {
-              titleMap.set(title, [])
-              titleArray.push(title) // 同时存入数组
-            }
-            titleMap.get(title).push(key)
-          }
-          
-          if (titleJpn && titleJpn !== title) {
-            if (!titleMap.has(titleJpn)) {
-              titleMap.set(titleJpn, [])
-              titleArray.push(titleJpn)
-            }
-            titleMap.get(titleJpn).push(key)
-          }
-          
-          // 建立 hash 索引（最高优先级）
-          if (hashIndex && key.hash) {
-            if (!hashIndex.has(key.hash)) {
-              hashIndex.set(key.hash, [])
-            }
-            hashIndex.get(key.hash).push({ gid: item.gid, token: item.token })
-          }
-        }
+        // 使用独立模块构建索引
+        const indexResult = buildTitleIndex(allTitles, hasHashColumn)
+        titleMap = indexResult.titleMap
+        const titleArray = indexResult.titleArray
+        const hashIndex = indexResult.hashIndex
         
         sendMessageToWebContents(`✅ 标题索引构建完成：`)
         sendMessageToWebContents(`  - ${titleMap.size} 个唯一标题`)
@@ -1879,131 +1791,31 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                   const searchTerm = normalizeString(filename).toLowerCase()
                   let foundKeys = []
                   
-                  // 优先使用 hash 匹配（O(1)，最快）
+                  // 优先使用 hash 匹配（使用独立模块）
                   if (matchOptions?.matchHash && book.hash && global.hashIndex) {
-                    const hashMatches = global.hashIndex.get(book.hash)
-                    if (hashMatches && hashMatches.length > 0) {
-                      foundKeys.push(...hashMatches.map(m => ({ gid: m.gid, token: m.token, hash: book.hash })))
+                    const hashKeys = matchByHash(book, global.hashIndex)
+                    if (hashKeys.length > 0) {
+                      foundKeys.push(...hashKeys)
                     }
                   }
                   
-                  // 如果 hash 没匹配到，使用标题匹配
-                  if (foundKeys.length === 0 && searchTerm.length >= 3) {
-                    // 策略1: 先尝试精确匹配（O(1)）
-                    const exactMatch = titleMap.get(searchTerm)
-                    if (exactMatch) {
-                      foundKeys.push(...exactMatch)
-                    } else {
-                      // 策略2: 使用优化的线性搜索，收集所有匹配项
-                      const titleArray = global.titleArray
-                      if (titleArray && titleArray.length > 0) {
-                        const matchedTitles = [] // 存储所有匹配的标题
-                        
-                        // 分块处理，避免阻塞事件循环
-                        const CHUNK_SIZE = 1000; // 每次处理 1000 条
-                        for (let i = 0; i < titleArray.length; i++) {
-                          const title = titleArray[i]
-                          if (title.includes(searchTerm)) {
-                            const keys = titleMap.get(title)
-                            if (keys) {
-                              // 存储标题和对应的 keys
-                              matchedTitles.push({ title, keys })
-                            }
-                          }
-                          
-                          // 每处理 CHUNK_SIZE 条记录，让出事件循环
-                          if (i % CHUNK_SIZE === 0 && i > 0) {
-                            await new Promise(resolve => setImmediate(resolve))
-                          }
-                        }
-                        
-                        // 如果找到多个匹配，使用相似度排序
-                        if (matchedTitles.length > 0) {
-                          if (matchedTitles.length === 1) {
-                            // 只有一个匹配，直接使用
-                            foundKeys.push(...matchedTitles[0].keys)
-                          } else {
-                            // 多个匹配，使用原始文件名计算相似度
-                            const originalNormalized = normalizeString(originalFilename).toLowerCase()
-                            
-                            // 计算每个匹配项的最高相似度（对比 title 和 title_jpn）
-                            const scoredMatches = []
-                            for (let idx = 0; idx < matchedTitles.length; idx++) {
-                              const { title, keys } = matchedTitles[idx]
-                              // 需要获取完整的 gallery 记录来访问 title_jpn
-                              // 为了性能，先使用标题本身计算
-                              const similarity = calculateSimilarity(originalNormalized, title)
-                              scoredMatches.push({ keys, similarity, title })
-                              
-                              // 每处理 100 个匹配项，让出事件循环
-                              if (idx % 100 === 0 && idx > 0) {
-                                await new Promise(resolve => setImmediate(resolve))
-                              }
-                            }
-                            
-                            // 按相似度降序排序
-                            scoredMatches.sort((a, b) => b.similarity - a.similarity)
-                            
-                            // 使用相似度最高的匹配
-                            foundKeys.push(...scoredMatches[0].keys)
-                            
-                            // 调试信息（可选）
-                            if (scoredMatches.length > 1) {
-                              sendMessageToWebContents(`🔍 [多匹配] "${originalFilename}" 找到 ${scoredMatches.length} 个候选，相似度最高: ${(scoredMatches[0].similarity * 100).toFixed(1)}%`)
-                            }
-                          }
-                        }
-                      }
+                  // 如果 hash 没匹配到，使用标题匹配（使用独立模块）
+                  if (foundKeys.length === 0) {
+                    foundKeys = await findMatchesByTitle(searchTerm, originalFilename, titleMap, global.titleArray)
+                    // 输出调试信息
+                    if (foundKeys.length > 1) {
+                      sendMessageToWebContents(`🔍 [多匹配] "${originalFilename}" 找到 ${foundKeys.length} 个候选`)
                     }
                   }
                   
-                  // 如果找到匹配，进一步使用 title_jpn 优化相似度（针对多个 gid/token）
-                  if (foundKeys.length > 1) {
-                    // 获取所有候选的完整元数据
-                    const candidates = []
-                    for (let idx = 0; idx < foundKeys.length; idx++) {
-                      const key = foundKeys[idx]
-                      const meta = await db.get('SELECT gid, token, title, title_jpn FROM gallery WHERE gid = ? AND token = ?', [key.gid, key.token])
-                      if (meta) candidates.push(meta)
-                      
-                      // 每处理 50 个候选项，让出事件循环
-                      if (idx % 50 === 0 && idx > 0) {
-                        await new Promise(resolve => setImmediate(resolve))
-                      }
-                    }
-                    
-                    // 使用原始文件名与 title 和 title_jpn 计算相似度
-                    const originalNormalized = normalizeString(originalFilename).toLowerCase()
-                    const scoredCandidates = []
-                    for (let idx = 0; idx < candidates.length; idx++) {
-                      const meta = candidates[idx]
-                      const titleSim = calculateSimilarity(originalNormalized, meta.title || '')
-                      const titleJpnSim = calculateSimilarity(originalNormalized, meta.title_jpn || '')
-                      const maxSim = Math.max(titleSim, titleJpnSim)
-                      scoredCandidates.push({ meta, similarity: maxSim })
-                      
-                      // 每处理 50 个候选项，让出事件循环
-                      if (idx % 50 === 0 && idx > 0) {
-                        await new Promise(resolve => setImmediate(resolve))
-                      }
-                    }
-                    
-                    // 按相似度降序排序
-                    scoredCandidates.sort((a, b) => b.similarity - a.similarity)
-                    
-                    // 使用最相似的
-                    metadata = scoredCandidates[0].meta
-                    matchType = 'FastSQL'
-                    
-                    if (scoredCandidates.length > 1) {
-                      sendMessageToWebContents(`🎯 [相似度匹配] "${originalFilename}" -> "${metadata.title_jpn || metadata.title}" (${(scoredCandidates[0].similarity * 100).toFixed(1)}%)`)
-                    }
-                  } else if (foundKeys.length === 1) {
-                    // 只有一个匹配，直接查询
-                    const firstKey = foundKeys[0]
-                    metadata = await db.get('SELECT * FROM gallery WHERE gid = ? AND token = ?', [firstKey.gid, firstKey.token])
+                  // 精炼匹配结果（使用独立模块）
+                  if (foundKeys.length > 0) {
+                    metadata = await refineMatchesWithJapaneseTitle(foundKeys, originalFilename, db)
                     if (metadata) {
                       matchType = 'FastSQL'
+                      if (foundKeys.length > 1) {
+                        sendMessageToWebContents(`🎯 [相似度匹配] "${originalFilename}" -> "${metadata.title_jpn || metadata.title}"`)
+                      }
                     }
                   }
                   
@@ -2042,24 +1854,8 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
               if (metadata) {
                 if (!matchType) matchType = 'SQL'; // 如果没有设置matchType，说明是SQL匹配
                 
-                metadata.tags = {
-                  language: metadata.language ? JSON.parse(metadata.language.replace(re, '"')) : undefined,
-                  parody: metadata.parody ? JSON.parse(metadata.parody.replace(re, '"')) : undefined,
-                  character: metadata.character ? JSON.parse(metadata.character.replace(re, '"')) : undefined,
-                  group: metadata.group ? JSON.parse(metadata.group.replace(re, '"')) : undefined,
-                  artist: metadata.artist ? JSON.parse(metadata.artist.replace(re, '"')) : undefined,
-                  male: metadata.male ? JSON.parse(metadata.male.replace(re, '"')) : undefined,
-                  female: metadata.female ? JSON.parse(metadata.female.replace(re, '"')) : undefined,
-                  mixed: metadata.mixed ? JSON.parse(metadata.mixed.replace(re, '"')) : undefined,
-                  other: metadata.other ? JSON.parse(metadata.other.replace(re, '"')) : undefined,
-                  cosplayer: metadata.cosplayer ? JSON.parse(metadata.cosplayer.replace(re, '"')) : undefined,
-                  rest: metadata.rest ? JSON.parse(metadata.rest.replace(re, '"')) : undefined,
-                };
-                metadata.filecount = +metadata.filecount;
-                metadata.rating = +metadata.rating;
-                metadata.posted = +metadata.posted;
-                metadata.filesize = +metadata.filesize;
-                metadata.url = `https://exhentai.org/g/${metadata.gid}/${metadata.token}/`;
+                // 使用独立模块解析元数据
+                metadata = parseMetadataTags(metadata);
                 
                 // 更新 book 对象
                 _.assign(book, _.pick(metadata, ['tags', 'title', 'title_jpn', 'filecount', 'rating', 'posted', 'filesize', 'category', 'url']), { status: 'tagged' });
