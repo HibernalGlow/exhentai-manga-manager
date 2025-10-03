@@ -88,15 +88,14 @@ const prepareCollectionList = () => {
   return collectionList
 }
 
-// 黑名单管理函数
-const getBlacklistPath = (customPath) => {
-  const basePath = customPath || STORE_PATH
-  return path.join(basePath, 'match-blacklist.json')
+// 黑名单管理函数（始终使用 STORE_PATH，与 zip_blacklist.json 保持一致）
+const getBlacklistPath = () => {
+  return path.join(STORE_PATH, 'match-blacklist.json')
 }
 
-const loadBlacklist = (customPath) => {
+const loadBlacklist = () => {
   try {
-    const blacklistPath = getBlacklistPath(customPath)
+    const blacklistPath = getBlacklistPath()
     if (fs.existsSync(blacklistPath)) {
       const data = JSON.parse(fs.readFileSync(blacklistPath, { encoding: 'utf-8' }))
       return new Set(data.blacklist || [])
@@ -107,9 +106,9 @@ const loadBlacklist = (customPath) => {
   return new Set()
 }
 
-const saveBlacklist = (blacklistSet, customPath) => {
+const saveBlacklist = (blacklistSet) => {
   try {
-    const blacklistPath = getBlacklistPath(customPath)
+    const blacklistPath = getBlacklistPath()
     const data = {
       version: '1.0',
       lastUpdate: new Date().toISOString(),
@@ -123,9 +122,9 @@ const saveBlacklist = (blacklistSet, customPath) => {
   }
 }
 
-const clearBlacklist = (customPath) => {
+const clearBlacklist = () => {
   try {
-    const blacklistPath = getBlacklistPath(customPath)
+    const blacklistPath = getBlacklistPath()
     if (fs.existsSync(blacklistPath)) {
       fs.unlinkSync(blacklistPath)
     }

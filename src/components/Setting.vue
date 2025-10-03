@@ -1138,8 +1138,7 @@ const importMetadataFromSqlite = async () => {
     matchTitleOnly: setting.value.matchTitleOnly,
     matchHash: setting.value.matchHash,
     fastMatch: setting.value.fastMatch,
-    trimTitleRegExp: setting.value.trimTitleRegExp,  // 传递裁剪标题正则表达式
-    blacklistPath: setting.value.blacklistPath  // 传递黑名单路径
+    trimTitleRegExp: setting.value.trimTitleRegExp  // 传递裁剪标题正则表达式
   }
   // 只传递未标记的书籍，避免不必要的遍历
   const untaggedBooks = bookList.value.filter(book => book.status !== 'tagged')
@@ -1180,7 +1179,7 @@ const clearMatchBlacklist = async () => {
       }
     )
     
-    const { success, path } = await ipcRenderer.invoke('clear-match-blacklist', setting.value.blacklistPath)
+    const { success, path } = await ipcRenderer.invoke('clear-match-blacklist')
     if (success) {
       printMessage('success', `已清空黑名单文件: ${path}`)
     } else {
@@ -1195,7 +1194,7 @@ const clearMatchBlacklist = async () => {
 
 const showBlacklistStats = async () => {
   try {
-    const { success, count, path } = await ipcRenderer.invoke('get-blacklist-stats', setting.value.blacklistPath)
+    const { success, count, path } = await ipcRenderer.invoke('get-blacklist-stats')
     if (success) {
       ElMessageBox.alert(
         `黑名单项目数: ${count}\n文件路径: ${path}`,

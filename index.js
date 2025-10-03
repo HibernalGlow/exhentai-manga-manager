@@ -1684,11 +1684,10 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
     let skippedTagged = 0
     let skippedBlacklist = 0
     
-    // 加载黑名单（从外部 JSON 文件）
-    const blacklistPath = matchOptions?.blacklistPath || setting.blacklistPath
-    const blacklist = loadBlacklist(blacklistPath)
+    // 加载黑名单（从 STORE_PATH/match-blacklist.json）
+    const blacklist = loadBlacklist()
     const initialBlacklistSize = blacklist.size
-    sendMessageToWebContents(`📋 黑名单: 已加载 ${blacklist.size} 个项目 (路径: ${getBlacklistPath(blacklistPath)})`)
+    sendMessageToWebContents(`📋 黑名单: 已加载 ${blacklist.size} 个项目 (路径: ${getBlacklistPath()})`)
     
     // 发送开始信息到前端
     const dbPath = path.basename(result.filePaths[0])
@@ -1749,7 +1748,7 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
         }
         
         const batch = [];
-        for (let j = 0; j < CONCURRENCY && i < bookListLength; j++, i++) {
+        for (; i < bookListLength; i++) {
           const book = bookList[i];
           
           // 跳过已标记和黑名单中的项目
@@ -1799,6 +1798,12 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                 if (matchOptions?.fastMatch && titleMap) {
                   // 归一化搜索词：全角转半角 + 转小写
                   const searchTerm = normalizeString(filename).toLowerCase()
+                  
+                  // 调试：显示前10个搜索词
+                  if (processed < 10) {
+                    sendMessageToWebContents(`🔍 [调试] 搜索词: "${searchTerm}" (原标题: "${filename}")`)
+                  }
+                  
                   let foundKeys = []
                   
                   // 优先使用 hash 匹配（使用独立模块）
@@ -1830,10 +1835,15 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                   }
                   
                   if (!metadata) {
+                    // 匹配失败，加入黑名单
+                    const bookKey = `${book.id}|${book.title}`
+                    blacklist.add(bookKey)
+                    blacklisted++
+                    
                     if (searchTerm.length < 3) {
-                      sendMessageToWebContents(`⚠️ [Fast] 标题过短跳过: "${filename}"`)
+                      sendMessageToWebContents(`⚠️ [Fast] 标题过短跳过: "${filename}" (已加入黑名单)`)
                     } else {
-                      sendMessageToWebContents(`❌ [Fast] 未匹配: "${filename}"`)
+                      sendMessageToWebContents(`❌ [Fast] 未匹配: "${filename}" (已加入黑名单)`)
                     }
                   }
                 } else {
@@ -1855,7 +1865,11 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                   metadata = await db.get(sql, ...params);
                   
                   if (!metadata) {
-                    sendMessageToWebContents(`❌ [SQL] 未匹配: "${filename}"`);
+                    // 匹配失败，加入黑名单
+                    const bookKey = `${book.id}|${book.title}`
+                    blacklist.add(bookKey)
+                    blacklisted++
+                    sendMessageToWebContents(`❌ [SQL] 未匹配: "${filename}" (已加入黑名单)`);
                   } else {
                     matchType = 'SQL';
                   }
@@ -1875,20 +1889,23 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                 
                 if (matchType === 'SQL' || matchType === 'FastSQL') {
                   // 使用完整的文件原名（包含扩展名前的完整部分）
-                  const originalFileName = path.parse(book.path).name;
+                  // 处理 folder 类型书籍可能没有 path 属性的情况
+                  const bookPath = book.path || book.filepath || book.title
+                  const originalFileName = path.parse(bookPath).name;
                   // 优先显示日文标题
                   const matchedTitle = metadata.title_jpn || metadata.title || 'N/A';
                   sendMessageToWebContents(`✅ [${matchType}] "${originalFileName}" -> "${matchedTitle}" (gid:${metadata.gid})`);
                 }
                 matched++;
-              } else {
-                // 匹配失败，加入黑名单
-                const bookKey = `${book.id}|${book.title}`
-                blacklist.add(bookKey)
-                blacklisted++
               }
               processed++;
             })())
+          
+          // 当 batch 达到并发数限制时，跳出循环处理这批数据
+          if (batch.length >= CONCURRENCY) {
+            i++ // 为下一次循环准备
+            break
+          }
         }
         await Promise.all(batch);
         setProgressBar(processed / bookListLength);
@@ -1921,10 +1938,15 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
       // 保存黑名单到文件
       const newBlacklistCount = blacklist.size - initialBlacklistSize
       if (newBlacklistCount > 0) {
-        const saved = saveBlacklist(blacklist, blacklistPath)
+        const actualBlacklistPath = getBlacklistPath()
+        const saved = saveBlacklist(blacklist)
         if (saved) {
-          sendMessageToWebContents(`💾 已保存 ${newBlacklistCount} 个新增黑名单项目`)
+          sendMessageToWebContents(`💾 已保存 ${newBlacklistCount} 个新增黑名单项目到: ${actualBlacklistPath}`)
+        } else {
+          sendMessageToWebContents(`⚠️ 黑名单保存失败: ${actualBlacklistPath}`)
         }
+      } else {
+        sendMessageToWebContents(`ℹ️ 无新增黑名单项目`)
       }
       
       // 最终统计
@@ -1964,11 +1986,10 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
 // 清空匹配黑名单
 ipcMain.handle('clear-match-blacklist', async (event, customPath) => {
   try {
-    const blacklistPath = customPath || setting.blacklistPath
-    const result = clearBlacklist(blacklistPath)
+    const result = clearBlacklist()
     if (result) {
-      sendMessageToWebContents(`✅ 已清空黑名单: ${getBlacklistPath(blacklistPath)}`)
-      return { success: true, path: getBlacklistPath(blacklistPath) }
+      sendMessageToWebContents(`✅ 已清空黑名单: ${getBlacklistPath()}`)
+      return { success: true, path: getBlacklistPath() }
     } else {
       sendMessageToWebContents(`❌ 清空黑名单失败`)
       return { success: false }
@@ -1983,12 +2004,11 @@ ipcMain.handle('clear-match-blacklist', async (event, customPath) => {
 // 获取黑名单统计信息
 ipcMain.handle('get-blacklist-stats', async (event, customPath) => {
   try {
-    const blacklistPath = customPath || setting.blacklistPath
-    const blacklist = loadBlacklist(blacklistPath)
+    const blacklist = loadBlacklist()
     return {
       success: true,
       count: blacklist.size,
-      path: getBlacklistPath(blacklistPath)
+      path: getBlacklistPath()
     }
   } catch (e) {
     console.log('Get blacklist stats error:', e)
