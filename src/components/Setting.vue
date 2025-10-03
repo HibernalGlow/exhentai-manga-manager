@@ -1141,8 +1141,10 @@ const importMetadataFromSqlite = async () => {
     trimTitleRegExp: setting.value.trimTitleRegExp,  // 传递裁剪标题正则表达式
     blacklistPath: setting.value.blacklistPath  // 传递黑名单路径
   }
-  const { success, matched, blacklisted, processed } = await ipcRenderer.invoke('import-sqlite', {
-    bookList: _.cloneDeep(bookList.value),
+  // 只传递未标记的书籍，避免不必要的遍历
+  const untaggedBooks = bookList.value.filter(book => book.status !== 'tagged')
+  const { success, matched, blacklisted, processed, skipped } = await ipcRenderer.invoke('import-sqlite', {
+    bookList: _.cloneDeep(untaggedBooks),
     matchOptions
   })
   if (success) {
@@ -1150,7 +1152,8 @@ const importMetadataFromSqlite = async () => {
     await ipcRenderer.invoke('load-book-list').then(res => {
       bookList.value = res
     })
-    printMessage('success', t('c.importMessage') + ` (匹配:${matched}, 新增黑名单:${blacklisted}, 总数:${processed})`)
+    const skipMsg = skipped > 0 ? `, 跳过已标记:${skipped}` : ''
+    printMessage('success', t('c.importMessage') + ` (匹配:${matched}, 新增黑名单:${blacklisted}, 处理:${processed}${skipMsg})`)
     emit('loadBookList')
   } else {
     printMessage('info', t('c.canceled'))

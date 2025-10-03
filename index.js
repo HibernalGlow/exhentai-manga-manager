@@ -1681,6 +1681,8 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
     let processed = 0
     let matched = 0
     let blacklisted = 0
+    let skippedTagged = 0
+    let skippedBlacklist = 0
     
     // 加载黑名单（从外部 JSON 文件）
     const blacklistPath = matchOptions?.blacklistPath || setting.blacklistPath
@@ -1752,10 +1754,13 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
           
           // 跳过已标记和黑名单中的项目
           const bookKey = `${book.id}|${book.title}`
-          if (book.status === 'tagged' || blacklist.has(bookKey)) {
-            if (blacklist.has(bookKey)) {
-              processed++
-            }
+          if (book.status === 'tagged') {
+            skippedTagged++
+            continue
+          }
+          if (blacklist.has(bookKey)) {
+            skippedBlacklist++
+            processed++
             continue
           }
           
@@ -1923,6 +1928,7 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
       }
       
       // 最终统计
+      const totalSkipped = skippedTagged + skippedBlacklist
       const matchRate = bookListLength > 0 ? ((matched / bookListLength) * 100).toFixed(1) : 0;
       console.log(`Import completed: ${matched} matched, ${blacklisted} blacklisted, out of ${processed} processed`)
       sendMessageToWebContents(`🎉 导入完成!`);
@@ -1930,6 +1936,9 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
       sendMessageToWebContents(`  ⛔ 新增黑名单: ${blacklisted}`);
       sendMessageToWebContents(`  📋 黑名单总数: ${blacklist.size}`);
       sendMessageToWebContents(`  📦 总处理: ${processed}`);
+      if (totalSkipped > 0) {
+        sendMessageToWebContents(`  ⏭️  跳过: 已标记 ${skippedTagged} 个，黑名单 ${skippedBlacklist} 个`);
+      }
     } catch (e) {
       console.log(e)
       sendMessageToWebContents(`❌ 导入错误: ${e.message || e}`);
@@ -1942,7 +1951,8 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
       success: true,
       matched,
       blacklisted,
-      processed
+      processed,
+      skipped: skippedTagged + skippedBlacklist
     }
   } else {
     return {
