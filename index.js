@@ -70,6 +70,7 @@ const {
   parseMetadataTags,
   matchByHash
 } = require('./modules/sqlite_import')
+const { cleanFolderManga } = require('./modules/clean_utils')
 
 preparePath()
 let setting = prepareSetting()
@@ -1631,6 +1632,10 @@ async function saveSettingExclusive(next) {
 }
 
 ipcMain.handle('save-setting', (_e, receiveSetting) => saveSettingExclusive(receiveSetting));
+
+ipcMain.handle('clean-folder-manga', async (event, arg) => {
+  return await cleanFolderManga(Manga, sendMessageToWebContents)
+})
 
 ipcMain.handle('export-database', async (event, folder) => {
   if (folder !== STORE_PATH && folder !== setting.metadataPath) {

@@ -1,6 +1,8 @@
 const fs = require('fs')
 const path = require('path')
-const blacklistPath = path.join(__dirname, '../resources/extraResources/zip_blacklist.json')
+const { STORE_PATH } = require('../modules/init_folder_setting.js')
+const blacklistPath = path.join(STORE_PATH, 'zip_blacklist.json')
+
 function addToZipBlacklist(filepath) {
   let data = { version: '1.0', lastUpdate: new Date().toISOString(), blacklist: [] }
   try {
@@ -48,7 +50,7 @@ const solveBookTypeZip = async (filepath, TEMP_PATH, opts = {}) => {
     zip = new AdmZip(filepath)
     zipFileList = zip.getEntries()
     fileList = zipFileList.map(zFile => zFile.entryName)
-    imageList = _.filter(fileList, filepath => _.includes(['.jpg', '.jpeg', '.png', '.webp', '.avif', '.gif'], path.extname(filepath).toLowerCase()))
+    imageList = _.filter(fileList, filepath => _.includes(['.jpg', '.jpeg', '.png', '.webp', '.avif', '.gif', '.jxl'], path.extname(filepath).toLowerCase()))
     imageList = imageList.sort((a, b) => a.localeCompare(b, undefined, {numeric: true, sensitivity: 'base'}))
   } catch (e) {
     const added = addToZipBlacklist(filepath)
@@ -90,7 +92,7 @@ const getImageListFromZip = async (filepath, VIEWER_PATH) => {
   const zip = new AdmZip(filepath)
   const tempFolder = path.join(VIEWER_PATH, nanoid(8))
   zip.extractAllTo(tempFolder, true)
-  let list = globSync('**/*.@(jpg|jpeg|png|webp|avif|gif)', {
+  let list = globSync('**/*.@(jpg|jpeg|png|webp|avif|gif|jxl)', {
     cwd: tempFolder,
     nocase: true
   })

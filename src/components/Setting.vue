@@ -608,6 +608,21 @@
               </el-button>
             </div>
           </el-col>
+          <el-col :span="8">
+            <div class="setting-line">
+              <el-popconfirm
+                  placement="top-start"
+                  title="确定要清理所有文件夹类型的漫画吗？此操作不可撤销。"
+                  @confirm="cleanFolderManga"
+              >
+                <template #reference>
+                  <el-button class="function-button" type="danger" plain>
+                    清理文件夹漫画
+                  </el-button>
+                </template>
+              </el-popconfirm>
+            </div>
+          </el-col>
         </el-row>
         <el-row :gutter="8">
           <el-col :span="6" class="setting-switch">
@@ -1192,6 +1207,22 @@ const showBlacklistStats = async () => {
     }
   } catch (e) {
     printMessage('error', '获取黑名单统计失败: ' + e.message)
+  }
+}
+
+const cleanFolderManga = async () => {
+  try {
+    printMessage('info', '正在清理文件夹类型漫画...')
+    const result = await ipcRenderer.invoke('clean-folder-manga')
+    if (result.success) {
+      printMessage('success', `已清理 ${result.count} 个文件夹类型漫画`)
+      // 刷新列表
+      emit('loadBookList')
+    } else {
+      printMessage('error', '清理失败: ' + (result.error || '未知错误'))
+    }
+  } catch (e) {
+    printMessage('error', '清理失败: ' + e.message)
   }
 }
 

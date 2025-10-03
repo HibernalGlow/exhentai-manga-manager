@@ -36,7 +36,7 @@ const getFolderlist = async (libraryPath) => {
 }
 
 const solveBookTypeFolder = async (folderpath, TEMP_PATH) => {
-  let list = globSync('*.@(jpg|jpeg|png|webp|avif|gif)', {
+  let list = globSync('*.@(jpg|jpeg|png|webp|avif|gif|jxl)', {
     cwd: folderpath,
     nocase: true
   })
@@ -54,7 +54,7 @@ const solveBookTypeFolder = async (folderpath, TEMP_PATH) => {
 }
 
 const getImageListFromFolder = async (folderpath, VIEWER_PATH) => {
-  let list = globSync('*.@(jpg|jpeg|png|webp|avif|gif)', {
+  let list = globSync('*.@(jpg|jpeg|png|webp|avif|gif|jxl)', {
     cwd: folderpath,
     nocase: true
   })
@@ -110,7 +110,7 @@ const findSameFile = async (filepath, type, Manga) => {
 
 async function solveBookTypeFolderInMem(folderpath) {
   // 1) list images (case-insensitive), natural sort
-  let list = globSync('*.@(jpg|jpeg|png|webp|avif|gif|bmp)', {
+  let list = globSync('*.@(jpg|jpeg|png|webp|avif|gif|bmp|jxl)', {
     cwd: folderpath,
     nocase: true,
   });

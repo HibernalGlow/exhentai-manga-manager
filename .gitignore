@@ -30,3 +30,4 @@ secret_key.json
 devtools
 .history
 test/
+/node_mod
