@@ -312,31 +312,20 @@ const getBookListFromWeb = async (bookHash, title, server = 'e-hentai', bookPath
     console.log('[NH Search] Searching nhentai with URL:', searchUrl)
     console.log('[NH Search] Search title:', title)
     
-    // Create a temporary webview session to handle Cloudflare challenges
-    const batchWcId = 'nhentai-batch-session'
-    
-    try {
-      // Ensure the webview exists
-      await window.ipcRenderer.invoke('wcv:create-if-needed', { id: batchWcId })
-      
-      // Use searchSessionFetchUrl which can execute JavaScript and pass Cloudflare
-      const html = await window.ipcRenderer.invoke('searchSessionFetchUrl', { 
-        url: searchUrl, 
-        wcId: batchWcId 
-      })
-      
-      console.log('[NH Search] Received HTML from browser session, length:', html?.length)
-      if (!html || html.length < 1000) {
-        console.error('[NH Search] Suspiciously short HTML, might be blocked')
-        console.error('[NH Search] HTML preview:', html?.substring(0, 200))
-        return []
-      }
-      console.log('[NH Search] Parsing results...')
-      resultList = resolveNhentaiResult(html)
-    } catch (err) {
-      console.error('[NH Search] Failed to search nhentai:', err)
-      resultList = []
-    }
+    // Use get-ex-webpage instead of fetch to avoid CORS and 403 issues
+    resultList = await ipcRenderer.invoke('get-ex-webpage', {
+      url: searchUrl,
+      cookie: '' // nhentai doesn't need cookies for search
+    })
+        .then(html => {
+          console.log('[NH Search] Received HTML, length:', html?.length)
+          if (!html) {
+            console.error('[NH Search] Empty HTML response')
+            return []
+          }
+          console.log('[NH Search] Parsing results...')
+          return resolveNhentaiResult(html)
+        })
     
     console.log('[NH Search] Final result list:', resultList.length, 'items')
   } else if (server === '.ehviewer') {

@@ -2969,49 +2969,6 @@ ipcMain.handle('wcv:detach', (_evt, id) => {
   return { ok: true }
 })
 
-// Create a hidden WebContentsView if it doesn't exist (for batch operations)
-ipcMain.handle('wcv:create-if-needed', async (evt, payload) => {
-  const { id } = payload
-  const existing = wcvById.get(id)
-  
-  // If already exists and not destroyed, return success
-  if (existing && existing.view && !existing.view.webContents.isDestroyed()) {
-    console.log(`[WCV] View ${id} already exists`)
-    return { ok: true, existed: true }
-  }
-  
-  // Create new hidden view (not attached to any window)
-  const host = resolveHostWindow(evt.sender)
-  if (!host) return { ok: false, error: 'No host window' }
-  
-  const ses = session.defaultSession
-  const view = new WebContentsView({
-    webPreferences: {
-      session: ses,
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
-  })
-  
-  // Set user agent to avoid bot detection
-  view.webContents.setUserAgent(
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-  )
-  
-  const rec = {
-    id,
-    host,
-    view,
-    target: evt.sender,
-    _unsubNav: null,
-  }
-  
-  wcvById.set(id, rec)
-  console.log(`[WCV] Created hidden view ${id}`)
-  
-  return { ok: true, existed: false }
-})
 
 ipcMain.handle('wcv:getState', (_e, id) => {
   const rec = wcvById.get(id); if (!rec) return null
