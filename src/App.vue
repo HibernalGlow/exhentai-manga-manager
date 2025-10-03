@@ -55,6 +55,7 @@
             <el-option :label="$t('m.hiddenOnly')" value="hidden"></el-option>
             <el-option :label="$t('m.recentReadOnly')" value="recentRead"></el-option>
             <el-option :label="$t('m.noTagOnly')" value="notag"></el-option>
+            <el-option :label="$t('m.noCategoryOnly')" value="nocategory"></el-option>
           </el-option-group>
           <el-option-group :label="$t('m.sort')">
             <el-option :label="$t('m.shuffle')" value="shuffle"></el-option>
@@ -783,6 +784,10 @@ export default defineComponent({
           this.displayBookList = _.filter(this.bookList, this.isNoTag)
           this.chunkList()
           break
+        case 'nocategory':
+          this.displayBookList = _.filter(this.bookList, this.isNoCategory)
+          this.chunkList()
+          break
         case 'recentRead':
           const recentReads = fetchRecentReads()
           this.displayBookList = _.uniqBy(
@@ -1306,6 +1311,10 @@ export default defineComponent({
     },
     isNoTag(book){
       return book.status === 'non-tag' || book.status === 'tag-failed';
+    },
+    isNoCategory(book){
+      // 筛选出已标记为 tagged 但没有 category 的书籍
+      return book.status === 'tagged' && (!book.category || book.category === '' || book.category === 'Misc');
     },
     // for cache
     async pushAppCache() {
