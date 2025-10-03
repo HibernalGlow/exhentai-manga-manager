@@ -1313,6 +1313,52 @@ ipcMain.handle('save-book', async (event, book) => {
   return await saveBookToDatabase(book)
 })
 
+// Apply exclude file rules to existing database
+ipcMain.handle('apply-exclude-rules', async (event) => {
+  const pattern = (setting.excludeFile || '').trim()
+  
+  if (!pattern) {
+    return { success: false, message: 'excludeFile pattern is empty' }
+  }
+  
+  try {
+    // Validate regex pattern
+    const excludeRe = new RegExp(pattern)
+    
+    // Get all books from database
+    const allBooks = await Manga.findAll({
+      attributes: ['id', 'filepath'],
+      raw: true
+    })
+    
+    // Find books that match exclude pattern
+    const toRemove = []
+    for (const book of allBooks) {
+      if (excludeRe.test(book.filepath)) {
+        toRemove.push(book.id)
+      }
+    }
+    
+    if (toRemove.length === 0) {
+      return { success: true, removedCount: 0, message: 'No matching records found' }
+    }
+    
+    // Remove matching books from database (but not delete files)
+    await Manga.destroy({
+      where: {
+        id: toRemove
+      }
+    })
+    
+    sendMessageToWebContents(`已应用排除规则，移除了 ${toRemove.length} 条记录`)
+    
+    return { success: true, removedCount: toRemove.length }
+  } catch (e) {
+    console.error('Apply exclude rules error:', e)
+    return { success: false, message: e.message }
+  }
+})
+
 // home
 // used in FolderTree.vue, but not anymore
 

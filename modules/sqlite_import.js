@@ -231,6 +231,41 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
     }
   }
   
+  // 策略3 (终极保底): 所有变体都失败，使用纯相似度匹配
+  // 这是最后的救命稻草，用于处理有很多干扰字符的情况
+  // 例如: "博士の研究 2 上 巫女たちの堕落" vs "[KeinV] 博士の研究 2 (上) 巫女たちの堕落 (原神) [無修正]"
+  if (titleArray && titleArray.length > 0) {
+    const MIN_SIMILARITY_FALLBACK = 0.6 // 保底相似度阈值，必须很高才能匹配
+    const originalNormalized = normalizeString(originalFilename).toLowerCase()
+    
+    let bestMatch = null
+    let bestSimilarity = 0
+    
+    const CHUNK_SIZE = 1000
+    for (let i = 0; i < titleArray.length; i++) {
+      const title = titleArray[i]
+      
+      // 计算相似度，记录最高的
+      const similarity = calculateSimilarity(originalNormalized, title)
+      
+      // 只记录相似度最高的匹配（必须超过阈值）
+      if (similarity >= MIN_SIMILARITY_FALLBACK && similarity > bestSimilarity) {
+        bestSimilarity = similarity
+        bestMatch = titleMap.get(title)
+      }
+      
+      // 每处理 CHUNK_SIZE 条记录，让出事件循环
+      if (i % CHUNK_SIZE === 0 && i > 0) {
+        await new Promise(resolve => setImmediate(resolve))
+      }
+    }
+    
+    // 遍历完所有标题后，返回相似度最高的那个
+    if (bestMatch) {
+      return bestMatch
+    }
+  }
+  
   return foundKeys
 }
 

@@ -443,6 +443,17 @@
             <div class="setting-line regexp">
               <el-input v-model="setting.excludeFile" :placeholder="$t('m.excludeFileInfo')" @change="saveSetting">
                 <template #prepend><span class="setting-label">{{$t('m.excludeFile')}}</span></template>
+                <template #append>
+                  <el-popconfirm
+                      placement="top-start"
+                      :title="$t('m.applyExcludeRulesWarning')"
+                      @confirm="applyExcludeRules"
+                  >
+                    <template #reference>
+                      <el-button>{{$t('m.applyExcludeRules')}}</el-button>
+                    </template>
+                  </el-popconfirm>
+                </template>
               </el-input>
             </div>
           </el-col>
@@ -1107,6 +1118,27 @@ const forceGeneBookList = async () => {
   emit('loadCollectionList')
   printMessage('success', t('c.rebuildMessage'))
 }
+
+const applyExcludeRules = async () => {
+  try {
+    const result = await ipcRenderer.invoke('apply-exclude-rules')
+    if (result.success) {
+      if (result.removedCount > 0) {
+        printMessage('success', t('c.applyExcludeRulesSuccess', { count: result.removedCount }))
+        // Reload book list to reflect changes
+        emit('loadBookList')
+      } else {
+        printMessage('info', t('c.applyExcludeRulesNoMatch'))
+      }
+    } else {
+      printMessage('error', t('c.applyExcludeRulesError') + ': ' + result.message)
+    }
+  } catch (e) {
+    console.error('Apply exclude rules error:', e)
+    printMessage('error', t('c.applyExcludeRulesError') + ': ' + e.message)
+  }
+}
+
 const patchLocalMetadata = async () => {
   await ipcRenderer.invoke('patch-local-metadata')
   emit('loadBookList')

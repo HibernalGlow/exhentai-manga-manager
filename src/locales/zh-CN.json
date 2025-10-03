@@ -124,7 +124,9 @@
     "systemDefault": "系统默认",
     "defaultScraper": "默认元数据来源",
     "excludeFile": "排除文件",
-    "excludeFileInfo": "用于排除的文件路径的正则表达式, 当匹配到文件路径的部分时排除该文件",
+    "excludeFileInfo": "用于排除的文件路径的正则表达式, 当匹配到文件路径的部分时排除该文件, 支持用|分隔多个关键词",
+    "applyExcludeRules": "应用排除规则",
+    "applyExcludeRulesWarning": "此操作将从数据库中移除匹配排除规则的记录(不删除文件)",
     "trimTitleRegExp": "修剪标题",
     "trimTitleRegExpInfo": "用于修剪标题的正则表达式, 匹配需要修剪掉的部分",
     "searchKeySuffix": "搜索关键字后缀",
@@ -254,7 +256,10 @@
     "outOfRange": "超出范围",
     "useTranslationCache": "使用翻译缓存",
     "moveSuccess": "移动成功",
-    "moveError": "移动失败"
+    "moveError": "移动失败",
+    "applyExcludeRulesSuccess": "已应用排除规则，移除了 {count} 条记录",
+    "applyExcludeRulesNoMatch": "没有找到匹配排除规则的记录",
+    "applyExcludeRulesError": "应用排除规则失败"
   },
   "ac": {
     "Global": "全局",
