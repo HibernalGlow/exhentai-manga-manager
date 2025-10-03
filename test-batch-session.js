@@ -1,0 +1,32 @@
+/**
+ * Test nhentai batch fetching with browser session
+ * This script tests if the batch operations can use WebContentsView to bypass Cloudflare
+ */
+
+console.log('=== Testing nhentai batch session ===')
+console.log('This test should be run from the Electron app, not Node.js')
+console.log('')
+console.log('Steps to test:')
+console.log('1. Open the app')
+console.log('2. Select some books without metadata')
+console.log('3. Choose "nhentai" as the metadata source')
+console.log('4. Click "Batch Get Metadata"')
+console.log('5. Check console logs for:')
+console.log('   - "[WCV] Created hidden view nhentai-batch-session"')
+console.log('   - "[NH Search] Received HTML from browser session" with reasonable length (> 10000)')
+console.log('   - "[NH Scraper] Received HTML from batch session" with reasonable length (> 50000)')
+console.log('   - Actual tag data being saved')
+console.log('')
+console.log('Expected behavior:')
+console.log('- Should create a hidden WebContentsView for nhentai requests')
+console.log('- Should use browser session to execute JavaScript and pass Cloudflare')
+console.log('- Should successfully extract tags from nhentai gallery pages')
+console.log('- Should show "Saved {title}" messages with actual changes to book data')
+console.log('')
+console.log('Key log messages to watch for:')
+console.log('✅ GOOD: "Received HTML from batch session, length: 50000+" (large HTML)')
+console.log('✅ GOOD: "Parsed data: {..., artists: 1+, groups: 1+, misc: 10+}"')
+console.log('✅ GOOD: "Tags built: [\'artist\', \'group\', \'female\', ...]"')
+console.log('❌ BAD: "Cloudflare challenge detected"')
+console.log('❌ BAD: "HTML suspiciously short"')
+console.log('❌ BAD: "Just a moment..." in HTML preview')

@@ -111,10 +111,16 @@ function parseNhentaiInfo(html) {
   const doc = new DOMParser().parseFromString(html, 'text/html')
   const boxes = doc.querySelectorAll('#info-block #tags .tag-container.field-name')
   const getText = (sel) => (doc.querySelector(sel)?.textContent || '').trim()
+  
+  console.log('[NH Parser] Found tag containers:', boxes.length)
+  console.log('[NH Parser] Document title:', doc.title)
 
   // there are two title lines;
   const title = getText('#info-block h1.title .pretty') || getText('#info-block h1.title') || ''
   const title_jpn = getText('#info-block h2.title .pretty') || getText('#info-block h2.title') || ''
+  
+  console.log('[NH Parser] Extracted title:', title)
+  console.log('[NH Parser] Extracted title_jpn:', title_jpn)
 
   const categoriesList = extractList(boxes, 'Categories')
   const category = pickCategory(categoriesList)
@@ -141,22 +147,57 @@ export async function fetchNhentaiMeta(url, wcId) {
   let html
   
   if (wcId) {
-    // Use search session when wcId is provided (from browser dialog)
-    console.log('[NH Scraper] Using searchSessionFetchUrl with wcId')
+    // Use search session when wcId is provided
+    console.log('[NH Scraper] Using searchSessionFetchUrl with wcId:', wcId)
     html = await window.ipcRenderer.invoke('searchSessionFetchUrl', { url, wcId })
     console.log('[NH Scraper] Received HTML from session, length:', html?.length)
   } else {
-    // Use get-ex-webpage when no wcId (from main window/batch operation)
-    // This avoids CORS and 403 issues
-    console.log('[NH Scraper] Using get-ex-webpage (no wcId)')
-    html = await window.ipcRenderer.invoke('get-ex-webpage', {
-      url: url,
-      cookie: '' // nhentai doesn't need cookies
-    })
-    console.log('[NH Scraper] Received HTML from get-ex-webpage, length:', html?.length)
-    if (!html) {
-      throw new Error('Empty response from get-ex-webpage')
+    // No wcId provided, create a temporary batch session
+    console.log('[NH Scraper] No wcId, creating temporary batch session')
+    const batchWcId = 'nhentai-batch-session'
+    
+    try {
+      // Ensure the webview exists
+      await window.ipcRenderer.invoke('wcv:create-if-needed', { id: batchWcId })
+      
+      // Use searchSessionFetchUrl which can handle Cloudflare
+      html = await window.ipcRenderer.invoke('searchSessionFetchUrl', { 
+        url, 
+        wcId: batchWcId 
+      })
+      console.log('[NH Scraper] Received HTML from batch session, length:', html?.length)
+    } catch (err) {
+      console.error('[NH Scraper] Failed to fetch with batch session:', err)
+      throw new Error(`Failed to fetch from nhentai: ${err.message}`)
     }
+    
+    if (!html) {
+      throw new Error('Empty response from searchSessionFetchUrl')
+    }
+  }
+  
+  // Check if it's a Cloudflare challenge page
+  if (html.includes('Just a moment') || html.includes('Checking your browser')) {
+    console.error('[NH Scraper] Received Cloudflare challenge page')
+    console.error('[NH Scraper] First 500 chars:', html.substring(0, 500))
+    throw new Error('Cloudflare challenge detected - please retry or use browser')
+  }
+  
+  // Check if it's an error page
+  if (html.includes('404') || html.includes('Not Found')) {
+    console.error('[NH Scraper] Received 404 page')
+    throw new Error('Gallery not found (404)')
+  }
+  
+  if (html.includes('403') || html.includes('Forbidden')) {
+    console.error('[NH Scraper] Received 403 forbidden page')
+    throw new Error('Access forbidden (403)')
+  }
+  
+  // Check if page is too short (likely error)
+  if (html.length < 10000) {
+    console.warn('[NH Scraper] HTML suspiciously short, might be error page')
+    console.log('[NH Scraper] First 500 chars:', html.substring(0, 500))
   }
   
   console.log('[NH Scraper] Parsing HTML...')
