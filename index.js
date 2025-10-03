@@ -62,7 +62,11 @@ const { findSameFile, makeShardedPath } = require('./fileLoader/folder.js')
 const { ElectronBlocker } = require('@ghostery/adblocker-electron')
 const { QueryTypes } = require("sequelize");
 // Custom modules for import functionality
-const { normalizeString, calculateSimilarity } = require('./modules/string_utils')
+const { 
+  normalizeString, 
+  calculateSimilarity,
+  generateVariants
+} = require('./modules/string_utils')
 const {
   buildTitleIndex,
   findMatchesByTitle,
@@ -71,6 +75,46 @@ const {
   matchByHash
 } = require('./modules/sqlite_import')
 const { cleanFolderManga } = require('./modules/clean_utils')
+
+// 标题索引缓存（2小时过期）
+const titleIndexCache = {
+  data: null,           // { titleMap, titleArray, hashIndex, hasHashColumn }
+  dbPath: null,         // 数据库文件路径
+  timestamp: null,      // 缓存时间戳
+  expiryMs: 2 * 60 * 60 * 1000, // 2小时过期时间
+  
+  // 检查缓存是否有效
+  isValid(dbPath) {
+    if (!this.data || !this.timestamp || this.dbPath !== dbPath) {
+      return false
+    }
+    const now = Date.now()
+    const age = now - this.timestamp
+    return age < this.expiryMs
+  },
+  
+  // 设置缓存
+  set(dbPath, data) {
+    this.data = data
+    this.dbPath = dbPath
+    this.timestamp = Date.now()
+    const expiryTime = new Date(this.timestamp + this.expiryMs).toLocaleTimeString()
+    console.log(`📦 标题索引已缓存，过期时间: ${expiryTime}`)
+  },
+  
+  // 获取缓存
+  get() {
+    return this.data
+  },
+  
+  // 清除缓存
+  clear() {
+    this.data = null
+    this.dbPath = null
+    this.timestamp = null
+    console.log('🗑️ 标题索引缓存已清除')
+  }
+}
 
 preparePath()
 let setting = prepareSetting()
@@ -1702,40 +1746,71 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
       // 快速匹配模式：先加载所有标题到内存
       let titleMap = null
       if (matchOptions?.fastMatch) {
-        sendMessageToWebContents(`⚡ 快速模式：正在加载标题索引...`)
-        const t0 = performance.now()
-        // 先检查数据库结构，看是否有 hash 列
-        let hasHashColumn = false
-        try {
-          const pragmaResult = await db.all(`PRAGMA table_info(gallery)`)
-          hasHashColumn = pragmaResult.some(col => col.name === 'hash')
-        } catch (e) {
-          console.log('Failed to check table structure:', e)
+        const dbFilePath = result.filePaths[0]
+        
+        // 检查缓存是否有效
+        if (titleIndexCache.isValid(dbFilePath)) {
+          sendMessageToWebContents(`⚡ 快速模式：使用缓存的标题索引...`)
+          const cached = titleIndexCache.get()
+          titleMap = cached.titleMap
+          const titleArray = cached.titleArray
+          const hashIndex = cached.hashIndex
+          
+          sendMessageToWebContents(`✅ 从缓存加载索引：`)
+          sendMessageToWebContents(`  - ${titleMap.size} 个唯一标题`)
+          sendMessageToWebContents(`  - ${titleArray.length} 个标题数组缓存`)
+          if (hashIndex) {
+            sendMessageToWebContents(`  - ${hashIndex.size} 个 hash 索引`)
+          }
+          
+          // 将索引存储到全局变量中
+          global.titleArray = titleArray
+          global.hashIndex = hashIndex
+        } else {
+          // 缓存无效，重新加载
+          sendMessageToWebContents(`⚡ 快速模式：正在加载标题索引...`)
+          const t0 = performance.now()
+          // 先检查数据库结构，看是否有 hash 列
+          let hasHashColumn = false
+          try {
+            const pragmaResult = await db.all(`PRAGMA table_info(gallery)`)
+            hasHashColumn = pragmaResult.some(col => col.name === 'hash')
+          } catch (e) {
+            console.log('Failed to check table structure:', e)
+          }
+          
+          // 根据是否有 hash 列选择不同的查询
+          const allTitles = hasHashColumn 
+            ? await db.all('SELECT gid, token, title, title_jpn, hash FROM gallery')
+            : await db.all('SELECT gid, token, title, title_jpn FROM gallery')
+          const t1 = performance.now()
+          sendMessageToWebContents(`✅ 加载了 ${allTitles.length} 个标题，耗时: ${((t1-t0)/1000).toFixed(2)}s`)
+          
+          // 使用独立模块构建索引
+          const indexResult = buildTitleIndex(allTitles, hasHashColumn)
+          titleMap = indexResult.titleMap
+          const titleArray = indexResult.titleArray
+          const hashIndex = indexResult.hashIndex
+          
+          sendMessageToWebContents(`✅ 标题索引构建完成：`)
+          sendMessageToWebContents(`  - ${titleMap.size} 个唯一标题`)
+          sendMessageToWebContents(`  - ${titleArray.length} 个标题数组缓存`)
+          if (hashIndex) {
+            sendMessageToWebContents(`  - ${hashIndex.size} 个 hash 索引`)
+          }
+          
+          // 将索引存储到全局变量中
+          global.titleArray = titleArray
+          global.hashIndex = hashIndex
+          
+          // 保存到缓存
+          titleIndexCache.set(dbFilePath, {
+            titleMap,
+            titleArray,
+            hashIndex,
+            hasHashColumn
+          })
         }
-        
-        // 根据是否有 hash 列选择不同的查询
-        const allTitles = hasHashColumn 
-          ? await db.all('SELECT gid, token, title, title_jpn, hash FROM gallery')
-          : await db.all('SELECT gid, token, title, title_jpn FROM gallery')
-        const t1 = performance.now()
-        sendMessageToWebContents(`✅ 加载了 ${allTitles.length} 个标题，耗时: ${((t1-t0)/1000).toFixed(2)}s`)
-        
-        // 使用独立模块构建索引
-        const indexResult = buildTitleIndex(allTitles, hasHashColumn)
-        titleMap = indexResult.titleMap
-        const titleArray = indexResult.titleArray
-        const hashIndex = indexResult.hashIndex
-        
-        sendMessageToWebContents(`✅ 标题索引构建完成：`)
-        sendMessageToWebContents(`  - ${titleMap.size} 个唯一标题`)
-        sendMessageToWebContents(`  - ${titleArray.length} 个标题数组缓存`)
-        if (hashIndex) {
-          sendMessageToWebContents(`  - ${hashIndex.size} 个 hash 索引`)
-        }
-        
-        // 将索引存储到全局变量中
-        global.titleArray = titleArray
-        global.hashIndex = hashIndex
       }
       
       // 并发处理部分，使用 setting.concurrentScan 配置
@@ -1799,9 +1874,11 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                   // 归一化搜索词：全角转半角 + 转小写
                   const searchTerm = normalizeString(filename).toLowerCase()
                   
-                  // 调试：显示前10个搜索词
+                  // 调试：显示前10个搜索词及其变体
                   if (processed < 10) {
-                    sendMessageToWebContents(`🔍 [调试] 搜索词: "${searchTerm}" (原标题: "${filename}")`)
+                    const variants = generateVariants(searchTerm)
+                    sendMessageToWebContents(`🔍 [调试] 搜索词: "${searchTerm}" (${variants.length} 个变体)`)
+                    sendMessageToWebContents(`  变体: ${variants.slice(0, 5).join(', ')}${variants.length > 5 ? '...' : ''}`)
                   }
                   
                   let foundKeys = []
@@ -1840,11 +1917,8 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                     blacklist.add(bookKey)
                     blacklisted++
                     
-                    if (searchTerm.length < 3) {
-                      sendMessageToWebContents(`⚠️ [Fast] 标题过短跳过: "${filename}" (已加入黑名单)`)
-                    } else {
-                      sendMessageToWebContents(`❌ [Fast] 未匹配: "${filename}" (已加入黑名单)`)
-                    }
+                    // 移除"标题过短跳过"的提示，所有未匹配的都显示相同消息
+                    sendMessageToWebContents(`❌ [Fast] 未匹配: "${filename}" (已加入黑名单)`)
                   }
                 } else {
                   // 原始匹配模式（直接 SQL 查询，无归一化支持，不推荐）
@@ -2012,6 +2086,48 @@ ipcMain.handle('get-blacklist-stats', async (event, customPath) => {
     }
   } catch (e) {
     console.log('Get blacklist stats error:', e)
+    return { success: false, error: e.message }
+  }
+})
+
+// 清除标题索引缓存
+ipcMain.handle('clear-title-index-cache', async () => {
+  try {
+    titleIndexCache.clear()
+    sendMessageToWebContents('✅ 标题索引缓存已清除')
+    return { success: true }
+  } catch (e) {
+    console.log('Clear title index cache error:', e)
+    return { success: false, error: e.message }
+  }
+})
+
+// 获取标题索引缓存状态
+ipcMain.handle('get-title-index-cache-status', async () => {
+  try {
+    if (!titleIndexCache.data || !titleIndexCache.timestamp) {
+      return {
+        success: true,
+        cached: false,
+        message: '无缓存'
+      }
+    }
+    
+    const now = Date.now()
+    const age = now - titleIndexCache.timestamp
+    const remaining = titleIndexCache.expiryMs - age
+    const remainingMinutes = Math.floor(remaining / 60000)
+    
+    return {
+      success: true,
+      cached: true,
+      dbPath: titleIndexCache.dbPath,
+      ageMinutes: Math.floor(age / 60000),
+      remainingMinutes,
+      titleCount: titleIndexCache.data.titleMap ? titleIndexCache.data.titleMap.size : 0
+    }
+  } catch (e) {
+    console.log('Get cache status error:', e)
     return { success: false, error: e.message }
   }
 })

@@ -610,6 +610,16 @@
           </el-col>
           <el-col :span="8">
             <div class="setting-line">
+              <el-button class="function-button" type="success" plain @click="showTitleIndexCacheStatus">
+                📦 标题索引缓存
+              </el-button>
+              <el-button class="function-button" type="warning" plain @click="clearTitleIndexCache">
+                清除缓存
+              </el-button>
+            </div>
+          </el-col>
+          <el-col :span="8">
+            <div class="setting-line">
               <el-popconfirm
                   placement="top-start"
                   title="确定要清理所有文件夹类型的漫画吗？此操作不可撤销。"
@@ -1209,6 +1219,66 @@ const showBlacklistStats = async () => {
     }
   } catch (e) {
     printMessage('error', '获取黑名单统计失败: ' + e.message)
+  }
+}
+
+// 显示标题索引缓存状态
+const showTitleIndexCacheStatus = async () => {
+  try {
+    const result = await ipcRenderer.invoke('get-title-index-cache-status')
+    if (result.success) {
+      if (result.cached) {
+        const message = `📦 缓存状态: 有效
+📊 标题数量: ${result.titleCount.toLocaleString()}
+📁 数据库: ${result.dbPath}
+⏱️ 已缓存: ${result.ageMinutes} 分钟
+⏳ 剩余时间: ${result.remainingMinutes} 分钟`
+        
+        ElMessageBox.alert(message, '标题索引缓存状态', {
+          confirmButtonText: '确定',
+          type: 'success'
+        })
+      } else {
+        ElMessageBox.alert(
+          '当前无缓存，首次导入时会自动缓存\n缓存有效期：2小时',
+          '标题索引缓存状态',
+          {
+            confirmButtonText: '确定',
+            type: 'info'
+          }
+        )
+      }
+    } else {
+      printMessage('error', '获取缓存状态失败: ' + result.error)
+    }
+  } catch (e) {
+    printMessage('error', '获取缓存状态失败: ' + e.message)
+  }
+}
+
+// 清除标题索引缓存
+const clearTitleIndexCache = async () => {
+  try {
+    await ElMessageBox.confirm(
+      '确定要清除标题索引缓存吗？\n下次导入时会重新加载索引（约8秒）',
+      '确认清除',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    
+    const { success } = await ipcRenderer.invoke('clear-title-index-cache')
+    if (success) {
+      printMessage('success', '已清除标题索引缓存')
+    } else {
+      printMessage('error', '清除缓存失败')
+    }
+  } catch (e) {
+    if (e !== 'cancel') {
+      printMessage('error', '清除缓存失败: ' + e.message)
+    }
   }
 }
 

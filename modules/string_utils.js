@@ -86,8 +86,176 @@ function getLCSLength(str1, str2) {
   return prev[n]
 }
 
+/**
+ * Convert Chinese numbers to Arabic numbers
+ * 中文数字转阿拉伯数字
+ * @param {string} str - Input string
+ * @returns {string} String with Chinese numbers converted to Arabic
+ */
+function chineseToArabic(str) {
+  if (!str) return str
+  
+  const chineseNums = {
+    '零': '0', '一': '1', '二': '2', '三': '3', '四': '4',
+    '五': '5', '六': '6', '七': '7', '八': '8', '九': '9',
+    '〇': '0', '壹': '1', '贰': '2', '叁': '3', '肆': '4',
+    '伍': '5', '陆': '6', '柒': '7', '捌': '8', '玖': '9'
+  }
+  
+  return str.replace(/[零一二三四五六七八九〇壹贰叁肆伍陆柒捌玖]/g, (char) => {
+    return chineseNums[char] || char
+  })
+}
+
+/**
+ * Convert Arabic numbers to Chinese numbers
+ * 阿拉伯数字转中文数字
+ * @param {string} str - Input string
+ * @returns {string} String with Arabic numbers converted to Chinese
+ */
+function arabicToChinese(str) {
+  if (!str) return str
+  
+  const arabicNums = {
+    '0': '〇', '1': '一', '2': '二', '3': '三', '4': '四',
+    '5': '五', '6': '六', '7': '七', '8': '八', '9': '九'
+  }
+  
+  return str.replace(/[0-9]/g, (char) => {
+    return arabicNums[char] || char
+  })
+}
+
+/**
+ * Remove all spaces from string
+ * 移除所有空格
+ * @param {string} str - Input string
+ * @returns {string} String without spaces
+ */
+function removeAllSpaces(str) {
+  if (!str) return str
+  return str.replace(/\s+/g, '')
+}
+
+/**
+ * Remove content after separator (for bonus/appendix content)
+ * 移除分隔符后的内容（用于去除附加内容如おまけ本、特典等）
+ * @param {string} str - Input string
+ * @returns {string} String with content after separator removed
+ */
+function removeSuffixAfterSeparator(str) {
+  if (!str) return str
+  
+  // 移除常见分隔符及其后面的内容
+  // 例如: "もよろしくおねがいします + おまけ本" -> "もよろしくおねがいします"
+  return str
+    // + 号及其后面的内容
+    .replace(/\s*[+＋]\s*.+$/i, '')
+    // & 号及其后面的内容
+    .replace(/\s*[&＆]\s*.+$/i, '')
+    // 、号及其后面的内容（日文顿号）
+    .replace(/\s*、\s*.+$/i, '')
+    // "附" "特典" "おまけ" "bonus" 等关键词开头的附加内容
+    .replace(/\s*[(\[（【]?\s*(附|特典|おまけ|ボーナス|bonus|extra|omake).+$/i, '')
+    .trim()
+}
+
+/**
+ * Remove trailing "1" or similar patterns (for series first volume)
+ * 移除末尾的 "1"、"01"、"1巻"、"第1话" 等模式（用于系列作品第一卷）
+ * @param {string} str - Input string
+ * @returns {string} String with trailing patterns removed
+ */
+function removeTrailingOne(str) {
+  if (!str) return str
+  
+  // 移除末尾的各种 "1" 模式
+  return str
+    // " 1", " 01", " 001" 等
+    .replace(/\s+0*1\s*$/i, '')
+    // "第1话", "第1集", "第1章", "第一话" 等
+    .replace(/[第]([一1])[话集章回期卷巻]?\s*$/i, '')
+    // "vol.1", "vol 1", "volume 1" 等
+    .replace(/\s*(vol\.?|volume)\s*0*1\s*$/i, '')
+    // 日文: "1巻", "一巻", "第1巻" 等
+    .replace(/([第])?([一1])[巻卷]?\s*$/i, '')
+    // 括号中的1: "(1)", "（1）", "[1]" 等
+    .replace(/\s*[(\[（【]0*1[)\]）】]\s*$/i, '')
+}
+
+/**
+ * Generate multiple variants of a string for fuzzy matching
+ * 生成字符串的多个变体用于模糊匹配
+ * @param {string} str - Input string
+ * @returns {Array<string>} Array of string variants
+ */
+function generateVariants(str) {
+  if (!str) return [str]
+  
+  const variants = new Set()
+  
+  // 原始字符串（归一化）
+  const normalized = normalizeString(str).toLowerCase()
+  variants.add(normalized)
+  
+  // 变体1: 移除所有空格
+  const noSpaces = removeAllSpaces(normalized)
+  variants.add(noSpaces)
+  
+  // 变体2: 移除分隔符后的内容（如 "+ おまけ本"）
+  const noSuffix = removeSuffixAfterSeparator(normalized)
+  variants.add(noSuffix)
+  variants.add(removeAllSpaces(noSuffix))
+  
+  // 变体3: 中文数字转阿拉伯数字
+  const withArabic = chineseToArabic(normalized)
+  variants.add(withArabic)
+  variants.add(removeAllSpaces(withArabic))
+  // 组合：移除后缀 + 数字转换
+  const noSuffixArabic = chineseToArabic(noSuffix)
+  variants.add(noSuffixArabic)
+  variants.add(removeAllSpaces(noSuffixArabic))
+  
+  // 变体4: 阿拉伯数字转中文数字
+  const withChinese = arabicToChinese(normalized)
+  variants.add(withChinese)
+  variants.add(removeAllSpaces(withChinese))
+  // 组合：移除后缀 + 数字转换
+  const noSuffixChinese = arabicToChinese(noSuffix)
+  variants.add(noSuffixChinese)
+  variants.add(removeAllSpaces(noSuffixChinese))
+  
+  // 变体5: 移除末尾的 "1"
+  const noTrailingOne = removeTrailingOne(normalized)
+  variants.add(noTrailingOne)
+  variants.add(removeAllSpaces(noTrailingOne))
+  variants.add(chineseToArabic(noTrailingOne))
+  variants.add(removeAllSpaces(chineseToArabic(noTrailingOne)))
+  variants.add(arabicToChinese(noTrailingOne))
+  variants.add(removeAllSpaces(arabicToChinese(noTrailingOne)))
+  // 组合：移除后缀 + 移除末尾1
+  const noSuffixNoOne = removeTrailingOne(noSuffix)
+  variants.add(noSuffixNoOne)
+  variants.add(removeAllSpaces(noSuffixNoOne))
+  variants.add(chineseToArabic(noSuffixNoOne))
+  variants.add(removeAllSpaces(chineseToArabic(noSuffixNoOne)))
+  variants.add(arabicToChinese(noSuffixNoOne))
+  variants.add(removeAllSpaces(arabicToChinese(noSuffixNoOne)))
+  
+  // 移除空字符串
+  variants.delete('')
+  
+  return Array.from(variants)
+}
+
 module.exports = {
   normalizeString,
   calculateSimilarity,
-  getLCSLength
+  getLCSLength,
+  chineseToArabic,
+  arabicToChinese,
+  removeAllSpaces,
+  removeSuffixAfterSeparator,
+  removeTrailingOne,
+  generateVariants
 }

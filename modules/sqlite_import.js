@@ -5,7 +5,11 @@
 
 const path = require('path')
 const _ = require('lodash')
-const { normalizeString, calculateSimilarity } = require('./string_utils')
+const { 
+  normalizeString, 
+  calculateSimilarity,
+  generateVariants
+} = require('./string_utils')
 
 /**
  * Build title index for fast matching
@@ -55,8 +59,8 @@ function buildTitleIndex(allTitles, hasHashColumn) {
 }
 
 /**
- * Find matches using title index with optimized search strategy
- * 使用标题索引查找匹配项（优化搜索策略）
+ * Find matches using title index with optimized search strategy and fuzzy variants
+ * 使用标题索引查找匹配项（优化搜索策略 + 模糊变体）
  * @param {string} searchTerm - Normalized search term
  * @param {string} originalFilename - Original filename for similarity calculation
  * @param {Object} titleMap - Title map from buildTitleIndex
@@ -66,17 +70,21 @@ function buildTitleIndex(allTitles, hasHashColumn) {
 async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleArray) {
   let foundKeys = []
   
-  if (searchTerm.length < 3) {
-    return foundKeys // Too short to search
+  // 移除长度限制，允许短标题匹配
+  // 像 "本能"、"雌吹"、"無題" 这样的短标题也应该能够匹配
+  
+  // 生成搜索词的多个变体
+  const searchVariants = generateVariants(searchTerm)
+  
+  // 策略1: 先尝试精确匹配所有变体（O(1)）
+  for (const variant of searchVariants) {
+    const exactMatch = titleMap.get(variant)
+    if (exactMatch) {
+      return exactMatch
+    }
   }
   
-  // 策略1: 先尝试精确匹配（O(1)）
-  const exactMatch = titleMap.get(searchTerm)
-  if (exactMatch) {
-    return exactMatch
-  }
-  
-  // 策略2: 使用优化的线性搜索，收集所有匹配项
+  // 策略2: 使用所有变体进行线性搜索，收集所有匹配项
   if (titleArray && titleArray.length > 0) {
     const matchedTitles = [] // 存储所有匹配的标题
     
@@ -84,7 +92,17 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
     const CHUNK_SIZE = 1000
     for (let i = 0; i < titleArray.length; i++) {
       const title = titleArray[i]
-      if (title.includes(searchTerm)) {
+      
+      // 尝试所有变体进行匹配
+      let matched = false
+      for (const variant of searchVariants) {
+        if (title.includes(variant)) {
+          matched = true
+          break
+        }
+      }
+      
+      if (matched) {
         const keys = titleMap.get(title)
         if (keys) {
           matchedTitles.push({ title, keys })
