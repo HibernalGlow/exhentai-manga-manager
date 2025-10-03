@@ -108,6 +108,39 @@ function chineseToArabic(str) {
 }
 
 /**
+ * Convert circled numbers to regular Arabic numbers
+ * 带圆圈的数字转换为普通阿拉伯数字
+ * @param {string} str - Input string
+ * @returns {string} String with circled numbers converted to regular numbers
+ */
+function convertCircledNumbers(str) {
+  if (!str) return str
+  
+  // Unicode范围:
+  // ① - ⑳ (U+2460 - U+2473): 带圈数字 1-20
+  // ⓪ (U+24EA): 带圈数字 0
+  // ㉑ - ㉟ (U+3251 - U+325F): 带圈数字 21-35
+  // ㊱ - ㊿ (U+32B1 - U+32BF): 带圈数字 36-50
+  const circledNums = {
+    '⓪': '0',
+    '①': '1', '②': '2', '③': '3', '④': '4', '⑤': '5',
+    '⑥': '6', '⑦': '7', '⑧': '8', '⑨': '9', '⑩': '10',
+    '⑪': '11', '⑫': '12', '⑬': '13', '⑭': '14', '⑮': '15',
+    '⑯': '16', '⑰': '17', '⑱': '18', '⑲': '19', '⑳': '20',
+    '㉑': '21', '㉒': '22', '㉓': '23', '㉔': '24', '㉕': '25',
+    '㉖': '26', '㉗': '27', '㉘': '28', '㉙': '29', '㉚': '30',
+    '㉛': '31', '㉜': '32', '㉝': '33', '㉞': '34', '㉟': '35',
+    '㊱': '36', '㊲': '37', '㊳': '38', '㊴': '39', '㊵': '40',
+    '㊶': '41', '㊷': '42', '㊸': '43', '㊹': '44', '㊺': '45',
+    '㊻': '46', '㊼': '47', '㊽': '48', '㊾': '49', '㊿': '50'
+  }
+  
+  return str.replace(/[⓪①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝㉞㉟㊱㊲㊳㊴㊵㊶㊷㊸㊹㊺㊻㊼㊽㊾㊿]/g, (char) => {
+    return circledNums[char] || char
+  })
+}
+
+/**
  * Convert Arabic numbers to Chinese numbers
  * 阿拉伯数字转中文数字
  * @param {string} str - Input string
@@ -135,6 +168,27 @@ function arabicToChinese(str) {
 function removeAllSpaces(str) {
   if (!str) return str
   return str.replace(/\s+/g, '')
+}
+
+/**
+ * Remove all punctuation marks from string
+ * 移除所有标点符号
+ * @param {string} str - Input string
+ * @returns {string} String without punctuation
+ */
+function removePunctuation(str) {
+  if (!str) return str
+  
+  // 移除常见的中英文标点符号
+  // 包括: 句号、逗号、感叹号、问号、冒号、分号、引号、括号、破折号等
+  return str
+    // 中文标点
+    .replace(/[，。！？；：、''""「」『』【】（）《》〈〉…—～·]/g, '')
+    // 英文标点
+    .replace(/[,\.!?;:'"\\[\]{}()<>\-_=+\*\/\\|~`]/g, '')
+    // 其他符号
+    .replace(/[＠＃＄％＾＆＊]/g, '')
+    .trim()
 }
 
 /**
@@ -201,7 +255,7 @@ function removeTrailingOne(str) {
     // " 1", " 01", " 001" 等
     .replace(/\s+0*1\s*$/i, '')
     // "第1话", "第1集", "第1章", "第一话" 等
-    .replace(/[第]([一1])[话集章回期卷巻]?\s*$/i, '')
+    .replace(/[第]([一1])[話话集章回期卷巻]?\s*$/i, '')
     // "vol.1", "vol 1", "volume 1" 等
     .replace(/\s*(vol\.?|volume)\s*0*1\s*$/i, '')
     // 日文: "1巻", "一巻", "第1巻" 等
@@ -225,16 +279,31 @@ function generateVariants(str) {
   const normalized = normalizeString(str).toLowerCase()
   variants.add(normalized)
   
+  // 预处理：转换带圆圈的数字（应用于所有后续变体）
+  const withConvertedCircled = convertCircledNumbers(normalized)
+  if (withConvertedCircled !== normalized) {
+    variants.add(withConvertedCircled)
+  }
+  
   // 变体1: 移除所有空格
   const noSpaces = removeAllSpaces(normalized)
   variants.add(noSpaces)
   
-  // 变体2: 移除拼音错误转换
+  // 变体2: 移除标点符号（新增）
+  const noPunctuation = removePunctuation(normalized)
+  variants.add(noPunctuation)
+  variants.add(removeAllSpaces(noPunctuation))
+  // 组合：带圆圈数字转换 + 移除标点
+  const noPunctuationCircled = removePunctuation(withConvertedCircled)
+  variants.add(noPunctuationCircled)
+  variants.add(removeAllSpaces(noPunctuationCircled))
+  
+  // 变体3: 移除拼音错误转换
   const noPinyin = removePinyinArtifacts(normalized)
   variants.add(noPinyin)
   variants.add(removeAllSpaces(noPinyin))
   
-  // 变体3: 移除分隔符后的内容（如 "+ おまけ本"）
+  // 变体4: 移除分隔符后的内容（如 "+ おまけ本"）
   const noSuffix = removeSuffixAfterSeparator(normalized)
   variants.add(noSuffix)
   variants.add(removeAllSpaces(noSuffix))
@@ -242,8 +311,12 @@ function generateVariants(str) {
   const noPinyinNoSuffix = removeSuffixAfterSeparator(noPinyin)
   variants.add(noPinyinNoSuffix)
   variants.add(removeAllSpaces(noPinyinNoSuffix))
+  // 组合：移除标点 + 移除后缀
+  const noPunctuationNoSuffix = removeSuffixAfterSeparator(noPunctuation)
+  variants.add(noPunctuationNoSuffix)
+  variants.add(removeAllSpaces(noPunctuationNoSuffix))
   
-  // 变体4: 中文数字转阿拉伯数字
+  // 变体5: 中文数字转阿拉伯数字
   const withArabic = chineseToArabic(normalized)
   variants.add(withArabic)
   variants.add(removeAllSpaces(withArabic))
@@ -255,8 +328,12 @@ function generateVariants(str) {
   const noSuffixArabic = chineseToArabic(noSuffix)
   variants.add(noSuffixArabic)
   variants.add(removeAllSpaces(noSuffixArabic))
+  // 组合：移除标点 + 数字转换
+  const noPunctuationArabic = chineseToArabic(noPunctuation)
+  variants.add(noPunctuationArabic)
+  variants.add(removeAllSpaces(noPunctuationArabic))
   
-  // 变体5: 阿拉伯数字转中文数字
+  // 变体6: 阿拉伯数字转中文数字
   const withChinese = arabicToChinese(normalized)
   variants.add(withChinese)
   variants.add(removeAllSpaces(withChinese))
@@ -268,8 +345,12 @@ function generateVariants(str) {
   const noSuffixChinese = arabicToChinese(noSuffix)
   variants.add(noSuffixChinese)
   variants.add(removeAllSpaces(noSuffixChinese))
+  // 组合：移除标点 + 数字转换
+  const noPunctuationChinese = arabicToChinese(noPunctuation)
+  variants.add(noPunctuationChinese)
+  variants.add(removeAllSpaces(noPunctuationChinese))
   
-  // 变体6: 移除末尾的 "1"
+  // 变体7: 移除末尾的 "1"
   const noTrailingOne = removeTrailingOne(normalized)
   variants.add(noTrailingOne)
   variants.add(removeAllSpaces(noTrailingOne))
@@ -298,8 +379,11 @@ module.exports = {
   getLCSLength,
   chineseToArabic,
   arabicToChinese,
+  convertCircledNumbers,
   removeAllSpaces,
+  removePunctuation,
   removeSuffixAfterSeparator,
+  removePinyinArtifacts,
   removeTrailingOne,
   generateVariants
 }

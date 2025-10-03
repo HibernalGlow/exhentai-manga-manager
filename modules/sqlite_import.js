@@ -64,19 +64,45 @@ function buildTitleIndex(allTitles, hasHashColumn) {
  * @param {string} searchTerm - Single normalized search term
  * @param {Object} titleMap - Title map from buildTitleIndex
  * @param {Array} titleArray - Title array from buildTitleIndex
+ * @param {string} originalFilename - Original filename for similarity check
  * @returns {Array|null} Array of matching keys or null if not found
  */
-async function quickLinearSearch(searchTerm, titleMap, titleArray) {
+async function quickLinearSearch(searchTerm, titleMap, titleArray, originalFilename) {
   const CHUNK_SIZE = 1000
+  
+  // 动态相似度阈值：短搜索词需要更高相似度
+  // 短词(<=4字符)容易误匹配,需要0.5以上相似度
+  // 长词(>4字符)可以接受0.3以上相似度
+  const searchLength = searchTerm.replace(/\s+/g, '').length // 去除空格后的长度
+  const MIN_SIMILARITY = searchLength <= 4 ? 0.5 : 0.3
+  
+  let bestMatch = null
+  let bestSimilarity = 0
   
   for (let i = 0; i < titleArray.length; i++) {
     const title = titleArray[i]
     
-    // 简单包含匹配
+    // 包含匹配 + 相似度验证
     if (title.includes(searchTerm)) {
-      const keys = titleMap.get(title)
-      if (keys) {
-        return keys
+      // 特殊情况1：如果标题以搜索词开头(前缀匹配)，认为是强匹配
+      // 例如: "温泉" 匹配 "温泉 [AI Generated]"
+      if (title.startsWith(searchTerm) || title.startsWith(searchTerm + ' ')) {
+        return titleMap.get(title)
+      }
+      
+      // 特殊情况2：如果搜索词占标题长度的50%以上，认为是强匹配
+      const searchRatio = searchTerm.length / title.length
+      if (searchRatio >= 0.5) {
+        return titleMap.get(title)
+      }
+      
+      // 否则计算相似度，确保匹配质量
+      const similarity = calculateSimilarity(originalFilename, title)
+      
+      // 只保留相似度最高且超过阈值的匹配
+      if (similarity >= MIN_SIMILARITY && similarity > bestSimilarity) {
+        bestSimilarity = similarity
+        bestMatch = titleMap.get(title)
       }
     }
     
@@ -86,7 +112,7 @@ async function quickLinearSearch(searchTerm, titleMap, titleArray) {
     }
   }
   
-  return null
+  return bestMatch
 }
 
 /**
@@ -116,7 +142,7 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
   
   // 步骤2: 尝试原标题模糊匹配（线性搜索但只用一个变体）
   if (titleArray && titleArray.length > 0) {
-    const quickMatch = await quickLinearSearch(normalizedOriginal, titleMap, titleArray)
+    const quickMatch = await quickLinearSearch(normalizedOriginal, titleMap, titleArray, originalFilename)
     if (quickMatch) {
       return quickMatch
     }
@@ -136,6 +162,7 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
   // 策略2: 使用所有变体进行线性搜索，收集所有匹配项
   if (titleArray && titleArray.length > 0) {
     const matchedTitles = [] // 存储所有匹配的标题
+    const originalNormalized = normalizeString(originalFilename).toLowerCase()
     
     // 分块处理，避免阻塞事件循环
     const CHUNK_SIZE = 1000
@@ -144,17 +171,44 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
       
       // 尝试所有变体进行匹配
       let matched = false
+      let matchedVariant = ''
       for (const variant of searchVariants) {
         if (title.includes(variant)) {
           matched = true
+          matchedVariant = variant
           break
         }
       }
       
       if (matched) {
-        const keys = titleMap.get(title)
-        if (keys) {
-          matchedTitles.push({ title, keys })
+        // 特殊情况1：如果标题以变体开头(前缀匹配)
+        if (title.startsWith(matchedVariant) || title.startsWith(matchedVariant + ' ')) {
+          const keys = titleMap.get(title)
+          if (keys) {
+            const similarity = calculateSimilarity(originalNormalized, title)
+            matchedTitles.push({ title, keys, similarity })
+          }
+        }
+        // 特殊情况2：如果变体占标题长度的50%以上，认为是强匹配
+        else if (matchedVariant.length / title.length >= 0.5) {
+          const keys = titleMap.get(title)
+          if (keys) {
+            const similarity = calculateSimilarity(originalNormalized, title)
+            matchedTitles.push({ title, keys, similarity })
+          }
+        } else {
+          // 动态相似度阈值：短变体需要更高相似度
+          const variantLength = matchedVariant.replace(/\s+/g, '').length
+          const MIN_SIMILARITY = variantLength <= 4 ? 0.5 : 0.3
+          
+          // 计算相似度，过滤掉不相关的匹配
+          const similarity = calculateSimilarity(originalNormalized, title)
+          if (similarity >= MIN_SIMILARITY) {
+            const keys = titleMap.get(title)
+            if (keys) {
+              matchedTitles.push({ title, keys, similarity })
+            }
+          }
         }
       }
       
@@ -169,25 +223,10 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
       if (matchedTitles.length === 1) {
         return matchedTitles[0].keys
       } else {
-        // 多个匹配，使用原始文件名计算相似度
-        const originalNormalized = normalizeString(originalFilename).toLowerCase()
+        // 多个匹配，按相似度降序排序（相似度已在上面计算）
+        matchedTitles.sort((a, b) => b.similarity - a.similarity)
         
-        const scoredMatches = []
-        for (let idx = 0; idx < matchedTitles.length; idx++) {
-          const { title, keys } = matchedTitles[idx]
-          const similarity = calculateSimilarity(originalNormalized, title)
-          scoredMatches.push({ keys, similarity, title })
-          
-          // 每处理 100 个匹配项，让出事件循环
-          if (idx % 100 === 0 && idx > 0) {
-            await new Promise(resolve => setImmediate(resolve))
-          }
-        }
-        
-        // 按相似度降序排序
-        scoredMatches.sort((a, b) => b.similarity - a.similarity)
-        
-        return scoredMatches[0].keys
+        return matchedTitles[0].keys
       }
     }
   }
