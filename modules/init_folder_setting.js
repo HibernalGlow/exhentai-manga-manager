@@ -40,12 +40,11 @@ const prepareSetting = () => {
   try {
     setting = JSON.parse(fs.readFileSync(path.join(STORE_PATH, 'setting.json'), { encoding: 'utf-8' }))
   } catch (e) {
-    console.log('preparesetting error', e)
     setting = {
       proxy: undefined,
       library: [], // app.getPath('downloads')
       metadataPath: undefined,
-      imageExplorer: '\"C:\\Windows\\explorer.exe\"',
+      imageExplorer: '"C:\Windows\explorer.exe"',
       pageSize: 42,
       loadOnStart: false,
       igneous: '',
@@ -70,7 +69,8 @@ const prepareSetting = () => {
       displayTitle: 'japaneseTitle',
       keepReadingProgress: true,
       concurrentScan: 4,
-      concurrentWrite: 2
+      concurrentWrite: 2,
+      allowFolderAsManga: false // 新增，默认关闭
     }
     fs.writeFileSync(path.join(STORE_PATH, 'setting.json'), JSON.stringify(setting, null, '  '), { encoding: 'utf-8' })
   }

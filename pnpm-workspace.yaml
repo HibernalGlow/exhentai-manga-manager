@@ -1,0 +1,7 @@
+ignoredBuiltDependencies:
+  - electron
+  - esbuild
+  - msgpackr-extract
+  - sharp
+  - sqlite3
+  - vue-demi

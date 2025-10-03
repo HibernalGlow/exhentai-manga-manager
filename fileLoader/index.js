@@ -24,14 +24,37 @@ const { getZipFilelist, solveBookTypeZip } = require('./zip.js')
 const { TEMP_PATH, COVER_PATH, VIEWER_PATH } = require('../modules/init_folder_setting.js')
 
 const getBookFilelist = async (library) => {
-  const folderList = await getFolderlist(library)
+  const { prepareSetting, STORE_PATH } = require('../modules/init_folder_setting.js')
+  const fs = require('fs')
+  const path = require('path')
+  const setting = prepareSetting()
+  // 黑名单文件路径优先使用 setting.zipBlacklistPath，否则默认 STORE_PATH/zip_blacklist.json
+  const zipBlacklistPath = setting.zipBlacklistPath || path.join(STORE_PATH, 'zip_blacklist.json')
+  let zipBlacklist = []
+  try {
+    if (fs.existsSync(zipBlacklistPath)) {
+      const data = JSON.parse(fs.readFileSync(zipBlacklistPath, { encoding: 'utf-8' }))
+      zipBlacklist = Array.isArray(data.blacklist) ? data.blacklist : []
+    }
+  } catch (e) {
+    console.log('读取zip黑名单失败:', e)
+  }
   const archiveList = await getArchivelist(library)
-  const zipList = await getZipFilelist(library)
-  return [
-    ...folderList.map(filepath => ({ filepath, type: 'folder' })),
+  let zipList = await getZipFilelist(library)
+  // 跳过黑名单中的压缩包路径
+  zipList = zipList.filter(filepath => !zipBlacklist.includes(filepath))
+  let result = [
     ...archiveList.map(filepath => ({ filepath, type: 'archive' })),
     ...zipList.map(filepath => ({ filepath, type: 'zip' })),
   ]
+  if (setting.allowFolderAsManga) {
+    const folderList = await getFolderlist(library)
+    result = [
+      ...folderList.map(filepath => ({ filepath, type: 'folder' })),
+      ...result
+    ]
+  }
+  return result
 }
 
 const geneCover = async (filepath, type) => {

@@ -1,5 +1,25 @@
 const fs = require('fs')
 const path = require('path')
+const blacklistPath = path.join(__dirname, '../resources/extraResources/zip_blacklist.json')
+function addToZipBlacklist(filepath) {
+  let data = { version: '1.0', lastUpdate: new Date().toISOString(), blacklist: [] }
+  try {
+    if (fs.existsSync(blacklistPath)) {
+      data = JSON.parse(fs.readFileSync(blacklistPath, { encoding: 'utf-8' }))
+    }
+    if (!data.blacklist.includes(filepath)) {
+      data.blacklist.push(filepath)
+      data.lastUpdate = new Date().toISOString()
+      fs.writeFileSync(blacklistPath, JSON.stringify(data, null, 2), { encoding: 'utf-8' })
+      console.log(`已加入黑名单: ${filepath}`)
+      return true
+    }
+    return false
+  } catch (e) {
+    console.log('写入zip黑名单失败:', e)
+    return false
+  }
+}
 const { globSync } = require('glob')
 const AdmZip = require('adm-zip')
 const { nanoid } = require('nanoid')
@@ -23,14 +43,18 @@ const solveBookTypeZip = async (filepath, TEMP_PATH, opts = {}) => {
   const tempFolder = path.join(TEMP_PATH, nanoid(8))
   await fs.promises.mkdir(tempFolder, { recursive: true })
 
-  const zip = new AdmZip(filepath)
-  const zipFileList = zip.getEntries()
-  const findZFile = (entryName) => {
-    return _.find(zipFileList, zFile => zFile.entryName === entryName)
+  let zip, zipFileList, fileList, imageList
+  try {
+    zip = new AdmZip(filepath)
+    zipFileList = zip.getEntries()
+    fileList = zipFileList.map(zFile => zFile.entryName)
+    imageList = _.filter(fileList, filepath => _.includes(['.jpg', '.jpeg', '.png', '.webp', '.avif', '.gif'], path.extname(filepath).toLowerCase()))
+    imageList = imageList.sort((a, b) => a.localeCompare(b, undefined, {numeric: true, sensitivity: 'base'}))
+  } catch (e) {
+    const added = addToZipBlacklist(filepath)
+    const msg = added ? ' (已加入黑名单)' : ''
+    throw new Error('ADM-ZIP: Invalid or unsupported zip format. ' + e.message + msg)
   }
-  const fileList = zipFileList.map(zFile => zFile.entryName)
-  let imageList = _.filter(fileList, filepath => _.includes(['.jpg', ',jpeg', '.png', '.webp', '.avif', '.gif'], path.extname(filepath).toLowerCase()))
-  imageList = imageList.sort((a, b) => a.localeCompare(b, undefined, {numeric: true, sensitivity: 'base'}))
 
   let targetFile
   let targetFilePath
@@ -40,14 +64,16 @@ const solveBookTypeZip = async (filepath, TEMP_PATH, opts = {}) => {
   if (imageList.length > 8) {
     targetFile = imageList[7]
     coverFile = imageList[0]
-    zip.extractEntryTo(findZFile(targetFile), tempFolder, true, true)
-    zip.extractEntryTo(findZFile(coverFile), tempFolder, true, true)
+    zip.extractEntryTo(_.find(zipFileList, zFile => zFile.entryName === targetFile), tempFolder, true, true)
+    zip.extractEntryTo(_.find(zipFileList, zFile => zFile.entryName === coverFile), tempFolder, true, true)
   } else if (imageList.length > 0) {
     targetFile = imageList[0]
     coverFile = imageList[0]
-    zip.extractEntryTo(findZFile(targetFile), tempFolder, true, true)
+    zip.extractEntryTo(_.find(zipFileList, zFile => zFile.entryName === targetFile), tempFolder, true, true)
   } else {
-    throw new Error('compression package isnot include image')
+    const added = addToZipBlacklist(filepath)
+    const msg = added ? ' (已加入黑名单)' : ''
+    throw new Error('compression package isnot include image' + msg)
   }
 
   targetFilePath = path.join(TEMP_PATH, nanoid(8) + path.extname(targetFile))
