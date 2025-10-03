@@ -51,6 +51,7 @@ export const useAppStore = defineStore('appStore', {
       { label: "e-hentai(sha1)", value: "e-hentai" },
       { label: "exhentai(keyword)", value: "exsearch" },
       { label: "e-hentai(keyword)", value: "e-search" },
+      { label: "nhentai", value: "nhentai" },
       { label: "hentag(keyword)", value: "hentag" },
       { label: "exhentai(.ehviewer file from EhViewer)", value: ".ehviewer" },
     ],

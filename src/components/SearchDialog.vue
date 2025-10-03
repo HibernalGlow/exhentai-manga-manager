@@ -58,6 +58,9 @@ const resolveSearchResult = (bookId, url, type) => {
   } else if (type === 'e-hentai') {
     book.url = url
     getBookInfoFromEh(book)
+  } else if (type === 'nhentai') {
+    book.url = url
+    getBookInfoFromNH(book)
   }
   dialogVisibleEhSearch.value = false
 }
@@ -160,9 +163,18 @@ const getBookInfoFromEh = async (book) => {
 }
 
 const getBookInfoFromNH = async (book) => {
-  const meta = await fetchNhentaiMeta(book.url)
-
+  console.log('[NH Meta] Fetching metadata for:', book.url)
   try {
+    const meta = await fetchNhentaiMeta(book.url)
+    console.log('[NH Meta] Received metadata:', {
+      title: meta.title,
+      title_jpn: meta.title_jpn,
+      category: meta.category,
+      pages: meta.pages,
+      tagKeys: Object.keys(meta.tags),
+      tagCounts: Object.entries(meta.tags).map(([k, v]) => `${k}:${v.length}`).join(', ')
+    })
+    
     _.assign(book, {
       title: meta.title,
       title_jpn: meta.title_jpn,
@@ -172,8 +184,15 @@ const getBookInfoFromNH = async (book) => {
     })
     book.status = 'tagged'
     await saveBook(book)
+    console.log('[NH Meta] Successfully saved book with tags')
+    printMessage('success', t('c.getMetadataSuccess'))
   } catch (e) {
-    console.log(e)
+    console.error('[NH Meta] Failed to fetch nhentai metadata:', e)
+    console.error('[NH Meta] Error details:', {
+      name: e.name,
+      message: e.message,
+      stack: e.stack
+    })
     book.status = 'tag-failed'
     printMessage('error', t('c.getMetadataFailed'))
     await saveBook(book)
@@ -192,6 +211,9 @@ const getBookInfo = (book) => {
 // use in the main window to batch get metadata
 const getBooksMetadata = async (bookList, gap, callback) => {
   const server = setting.value.defaultScraper || 'exhentai'
+  console.log('[Batch Metadata] Starting batch operation for', bookList.length, 'books')
+  console.log('[Batch Metadata] Using server:', server)
+  
   serviceAvailable.value = true
   const timer = ms => new Promise(res => setTimeout(res, ms))
   const messageInstance = ElMessage({
@@ -203,33 +225,43 @@ const getBooksMetadata = async (bookList, gap, callback) => {
       serviceAvailable.value = false
     }
   })
+  
   for (let i = 0; i < bookList.length; i++) {
     ipcRenderer.invoke('set-progress-bar', (i + 1) / bookList.length)
     const book = bookList[i]
+    console.log(`[Batch Metadata] Processing book ${i + 1}/${bookList.length}:`, book.filepath)
+    console.log('[Batch Metadata] Book has URL:', book.url)
+    
     try {
       if (serviceAvailable.value) {
         if (!book.url) {
+          console.log('[Batch Metadata] No URL, searching with title:', returnTrimFileName(book))
           const resultList = await getBookListFromWeb(
               book.hash.toUpperCase(),
               returnTrimFileName(book),
               server,
               book.filepath
           )
+          console.log('[Batch Metadata] Search results:', resultList.length, 'items')
+          
           if (!resultList[0]) {
+            console.warn('[Batch Metadata] No results found')
             book.status = 'tag-failed'
             await saveBook(book)
           } else {
+            console.log('[Batch Metadata] Using first result:', resultList[0].url, resultList[0].type)
             resolveSearchResult(book.id, resultList[0].url, resultList[0].type)
           }
         } else {
+          console.log('[Batch Metadata] Book already has URL, fetching metadata directly')
           getBookInfo(book)
         }
         await timer(gap)
       }
     } catch (error) {
+      console.error('[Batch Metadata] Error processing book:', error)
       book.status = 'tag-failed'
       await saveBook(book)
-      console.error(error)
     }
   }
   messageInstance.close()
@@ -275,6 +307,27 @@ const getBookListFromWeb = async (bookHash, title, server = 'e-hentai', bookPath
         .then(res => {
           return resolveHentagResult(res)
         })
+  } else if (server === 'nhentai') {
+    const searchUrl = `https://nhentai.net/search/?q=${encodeURIComponent(title)}`
+    console.log('[NH Search] Searching nhentai with URL:', searchUrl)
+    console.log('[NH Search] Search title:', title)
+    
+    // Use get-ex-webpage instead of fetch to avoid CORS and 403 issues
+    resultList = await ipcRenderer.invoke('get-ex-webpage', {
+      url: searchUrl,
+      cookie: '' // nhentai doesn't need cookies for search
+    })
+        .then(html => {
+          console.log('[NH Search] Received HTML, length:', html?.length)
+          if (!html) {
+            console.error('[NH Search] Empty HTML response')
+            return []
+          }
+          console.log('[NH Search] Parsing results...')
+          return resolveNhentaiResult(html)
+        })
+    
+    console.log('[NH Search] Final result list:', resultList.length, 'items')
   } else if (server === '.ehviewer') {
     const ehviewerData = await ipcRenderer.invoke('get-ehviewer-data', bookPath)
 
@@ -316,6 +369,49 @@ const resolveEhentaiResult = (htmlString) => {
   }
 }
 
+const resolveNhentaiResult = (htmlString) => {
+  console.log('[NH Search] Parsing HTML, length:', htmlString.length)
+  try {
+    const doc = new DOMParser().parseFromString(htmlString, 'text/html')
+    const resultNodes = doc.querySelectorAll('.gallery')
+    console.log('[NH Search] Found gallery nodes:', resultNodes.length)
+    
+    ehSearchResultList.value = []
+    
+    resultNodes.forEach((node, index) => {
+      const linkElement = node.querySelector('a.cover')
+      const titleElement = node.querySelector('.caption')
+      
+      console.log(`[NH Search] Gallery ${index}:`, {
+        hasLink: !!linkElement,
+        hasTitle: !!titleElement
+      })
+      
+      if (linkElement && titleElement) {
+        const href = linkElement.getAttribute('href')
+        const title = titleElement.textContent.trim()
+        
+        console.log(`[NH Search] Gallery ${index} data:`, { href, title })
+        
+        if (href && title) {
+          ehSearchResultList.value.push({
+            title: title,
+            url: `https://nhentai.net${href}`,
+            type: 'nhentai'
+          })
+        }
+      }
+    })
+    
+    console.log('[NH Search] Total results parsed:', ehSearchResultList.value.length)
+    return ehSearchResultList.value
+  } catch (e) {
+    console.error('[NH Search] Failed to parse nhentai result:', e)
+    printMessage('error', t('c.getMetadataFailed'))
+    return []
+  }
+}
+
 const resolveHentagResult = (data) => {
   const resultList = data.works.slice(0, 10)
   ehSearchResultList.value = []
@@ -348,24 +444,29 @@ async function onConfirm({bookDetail, url}) {
 
 async function onConfirmPartialUpdate({bookDetail, url, wcId}) {
   // only update the artist/group/category/cosplayer tags
-  let meta
-  if (url.includes('exhentai') || url.includes('e-hentai')) {
-    meta = await fetchEhExPartialMeta(url, wcId)
-  } else if (url.includes('nhentai')) {
-    meta = await fetchNhentaiPartialMeta(url, wcId)
-  }
   try {
-    _.assign(bookDetail, {
-      tags: meta.tags,
-      category: meta.category,
-    })
-    bookDetail.status = 'tagged'
-    await saveBook(bookDetail)
+    let meta
+    if (url.includes('exhentai') || url.includes('e-hentai')) {
+      meta = await fetchEhExPartialMeta(url, wcId)
+    } else if (url.includes('nhentai')) {
+      meta = await fetchNhentaiPartialMeta(url, wcId)
+    }
+    
+    if (meta) {
+      _.assign(bookDetail, {
+        tags: meta.tags,
+        category: meta.category,
+      })
+      bookDetail.status = 'tagged'
+      await saveBook(bookDetail)
+      printMessage('success', t('c.getMetadataSuccess'))
+    }
   } catch (e) {
-    console.log(e)
+    console.error('Failed to partial update metadata:', e)
     bookDetail.status = 'tag-failed'
+    printMessage('error', t('c.getMetadataFailed'))
     await saveBook(bookDetail)
-  }finally{
+  } finally {
     dialogVisibleEhSearch.value = false
   }
 }

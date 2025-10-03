@@ -137,17 +137,51 @@ function parseNhentaiInfo(html) {
 }
 
 export async function fetchNhentaiMeta(url, wcId) {
-  const res = await window.ipcRenderer.invoke('searchSessionFetchUrl', { url, wcId })
-  if (res.status !== 200) throw new Error(`Failed to fetch: ${res.status}`)
-  const data = parseNhentaiInfo(res.body)
+  console.log('[NH Scraper] fetchNhentaiMeta called with:', { url, wcId })
+  let html
+  
+  if (wcId) {
+    // Use search session when wcId is provided (from browser dialog)
+    console.log('[NH Scraper] Using searchSessionFetchUrl with wcId')
+    html = await window.ipcRenderer.invoke('searchSessionFetchUrl', { url, wcId })
+    console.log('[NH Scraper] Received HTML from session, length:', html?.length)
+  } else {
+    // Use get-ex-webpage when no wcId (from main window/batch operation)
+    // This avoids CORS and 403 issues
+    console.log('[NH Scraper] Using get-ex-webpage (no wcId)')
+    html = await window.ipcRenderer.invoke('get-ex-webpage', {
+      url: url,
+      cookie: '' // nhentai doesn't need cookies
+    })
+    console.log('[NH Scraper] Received HTML from get-ex-webpage, length:', html?.length)
+    if (!html) {
+      throw new Error('Empty response from get-ex-webpage')
+    }
+  }
+  
+  console.log('[NH Scraper] Parsing HTML...')
+  const data = parseNhentaiInfo(html)
+  console.log('[NH Scraper] Parsed data:', {
+    title: data.title?.substring(0, 50),
+    category: data.category,
+    artists: data.artists?.length,
+    groups: data.groups?.length,
+    misc: data.misc?.length,
+    pages: data.pages
+  })
+  
+  console.log('[NH Scraper] Building facet dict...')
   data.tags = buildFacetDict(data)
+  console.log('[NH Scraper] Tags built:', Object.keys(data.tags))
+  
   return data
 }
 
 export async function fetchNhentaiPartialMeta(url, wcId) {
   const data = await fetchNhentaiMeta(url, wcId)
+  // Include all available tags, not just groups and artists
   const tags = Object.fromEntries(
-    Object.entries({ groups: data.groups, artists: data.artists }).filter(([, v]) =>
+    Object.entries(data.tags).filter(([, v]) =>
       Array.isArray(v) ? v.length > 0 : Boolean(v),
     ),
   )
