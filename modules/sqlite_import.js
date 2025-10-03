@@ -231,38 +231,77 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
     }
   }
   
-  // 策略3 (终极保底): 所有变体都失败，使用纯相似度匹配
-  // 这是最后的救命稻草，用于处理有很多干扰字符的情况
-  // 例如: "博士の研究 2 上 巫女たちの堕落" vs "[KeinV] 博士の研究 2 (上) 巫女たちの堕落 (原神) [無修正]"
+  // 策略3 (最终变体): 使用第一个空格前的关键词预筛选，再计算相似度
+  // 大大减少需要比较相似度的数据量
+  // 例如: "博士の研究 2 上 巫女たちの堕落" -> 提取 "博士の研究" 作为关键词
   if (titleArray && titleArray.length > 0) {
-    const MIN_SIMILARITY_FALLBACK = 0.6 // 保底相似度阈值，必须很高才能匹配
     const originalNormalized = normalizeString(originalFilename).toLowerCase()
     
-    let bestMatch = null
-    let bestSimilarity = 0
+    // 从裁剪后的标题 (searchTerm) 提取关键词，而不是原始文件名
+    const searchTermNormalized = normalizeString(searchTerm).toLowerCase()
     
-    const CHUNK_SIZE = 1000
-    for (let i = 0; i < titleArray.length; i++) {
-      const title = titleArray[i]
+    // 提取第一个空格前的关键词
+    const firstSpaceIndex = searchTermNormalized.indexOf(' ')
+    const keyword = firstSpaceIndex > 0 ? searchTermNormalized.substring(0, firstSpaceIndex) : searchTermNormalized
+    
+    // 如果关键词太短（少于2个字符），跳过此策略
+    if (keyword.length >= 2) {
+      // console.log(`\n[关键词预筛选] 原始文件: ${originalFilename}`)
+      // console.log(`[关键词预筛选] 裁剪标题: "${searchTerm}"`)
+      console.log(`[关键词预筛选] 提取关键词: "${keyword}"`)
       
-      // 计算相似度，记录最高的
-      const similarity = calculateSimilarity(originalNormalized, title)
-      
-      // 只记录相似度最高的匹配（必须超过阈值）
-      if (similarity >= MIN_SIMILARITY_FALLBACK && similarity > bestSimilarity) {
-        bestSimilarity = similarity
-        bestMatch = titleMap.get(title)
+      // 预筛选：只保留包含关键词的标题
+      const candidates = []
+      for (const title of titleArray) {
+        if (title.includes(keyword)) {
+          candidates.push(title)
+        }
       }
       
-      // 每处理 CHUNK_SIZE 条记录，让出事件循环
-      if (i % CHUNK_SIZE === 0 && i > 0) {
-        await new Promise(resolve => setImmediate(resolve))
+      console.log(`[关键词预筛选] 数据库总量: ${titleArray.length} -> 筛选后候选: ${candidates.length}`)
+      
+      // 对筛选后的候选标题计算相似度
+      if (candidates.length > 0) {
+        // 动态相似度阈值：根据候选数量调整
+        // 候选越少 = 关键词越精准 = 可以用更低的阈值
+        // 候选越多 = 关键词太泛 = 需要更高的阈值避免误匹配
+        let MIN_SIMILARITY_FALLBACK
+        if (candidates.length <= 5) {
+          MIN_SIMILARITY_FALLBACK = 0.35 // 1-5个候选：很精准，用低阈值
+        } else if (candidates.length <= 20) {
+          MIN_SIMILARITY_FALLBACK = 0.45 // 6-20个候选：较精准，用中低阈值
+        } else if (candidates.length <= 100) {
+          MIN_SIMILARITY_FALLBACK = 0.55 // 21-100个候选：一般精准，用中等阈值
+        } else {
+          MIN_SIMILARITY_FALLBACK = 0.65 // 100+个候选：不够精准，用高阈值
+        }
+        
+        console.log(`[关键词预筛选] 动态阈值: ${MIN_SIMILARITY_FALLBACK} (基于候选数: ${candidates.length})`)
+        
+        let bestMatch = null
+        let bestSimilarity = 0
+        let bestTitle = ''
+        
+        for (const title of candidates) {
+          const similarity = calculateSimilarity(originalNormalized, title)
+          
+          if (similarity >= MIN_SIMILARITY_FALLBACK && similarity > bestSimilarity) {
+            bestSimilarity = similarity
+            bestMatch = titleMap.get(title)
+            bestTitle = title
+          }
+        }
+        
+        if (bestMatch) {
+          console.log(`[关键词预筛选] ✅ 匹配成功! 相似度: ${bestSimilarity.toFixed(3)}`)
+          console.log(`[关键词预筛选] 匹配标题: "${bestTitle}"`)
+          return bestMatch
+        } else {
+          console.log(`[关键词预筛选] ❌ 匹配失败: 所有候选项相似度均低于阈值 ${MIN_SIMILARITY_FALLBACK}`)
+        }
+      } else {
+        console.log(`[关键词预筛选] ❌ 匹配失败: 数据库中没有包含关键词 "${keyword}" 的标题`)
       }
-    }
-    
-    // 遍历完所有标题后，返回相似度最高的那个
-    if (bestMatch) {
-      return bestMatch
     }
   }
   

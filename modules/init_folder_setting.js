@@ -96,12 +96,19 @@ const getBlacklistPath = () => {
 const loadBlacklist = () => {
   try {
     const blacklistPath = getBlacklistPath()
+    console.log(`[黑名单加载] STORE_PATH: ${STORE_PATH}`)
+    console.log(`[黑名单加载] 加载路径: ${blacklistPath}`)
+    
     if (fs.existsSync(blacklistPath)) {
       const data = JSON.parse(fs.readFileSync(blacklistPath, { encoding: 'utf-8' }))
-      return new Set(data.blacklist || [])
+      const blacklistSet = new Set(data.blacklist || [])
+      console.log(`[黑名单加载] ✅ 加载成功! 黑名单数量: ${blacklistSet.size}`)
+      return blacklistSet
+    } else {
+      console.log(`[黑名单加载] ℹ️ 文件不存在，返回空黑名单`)
     }
   } catch (e) {
-    console.log('Load blacklist error:', e)
+    console.log('[黑名单加载] ❌ 加载失败:', e)
   }
   return new Set()
 }
@@ -109,15 +116,29 @@ const loadBlacklist = () => {
 const saveBlacklist = (blacklistSet) => {
   try {
     const blacklistPath = getBlacklistPath()
+    console.log(`[黑名单保存] STORE_PATH: ${STORE_PATH}`)
+    console.log(`[黑名单保存] 保存路径: ${blacklistPath}`)
+    console.log(`[黑名单保存] 黑名单数量: ${blacklistSet.size}`)
+    
     const data = {
       version: '1.0',
       lastUpdate: new Date().toISOString(),
       blacklist: Array.from(blacklistSet)
     }
+    
     fs.writeFileSync(blacklistPath, JSON.stringify(data, null, 2), { encoding: 'utf-8' })
+    
+    // 验证文件是否真的被写入
+    if (fs.existsSync(blacklistPath)) {
+      const fileSize = fs.statSync(blacklistPath).size
+      console.log(`[黑名单保存] ✅ 保存成功! 文件大小: ${fileSize} 字节`)
+    } else {
+      console.log(`[黑名单保存] ⚠️ 文件未找到，写入可能失败`)
+    }
+    
     return true
   } catch (e) {
-    console.log('Save blacklist error:', e)
+    console.log('[黑名单保存] ❌ 保存失败:', e)
     return false
   }
 }

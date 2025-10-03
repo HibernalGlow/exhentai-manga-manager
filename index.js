@@ -2036,6 +2036,8 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
       
       // 每批次报告进度，并让出更多时间给主线程
       let lastReportTime = Date.now();
+      let lastSaveBlacklistSize = initialBlacklistSize;
+      
       while (i < bookListLength && !controller.signal.aborted) {
         await processBatch();
         
@@ -2045,6 +2047,15 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
           const percent = ((processed / bookListLength) * 100).toFixed(1);
           sendMessageToWebContents(`📊 进度: ${processed}/${bookListLength} (${percent}%), 已匹配: ${matched}`);
           lastReportTime = now;
+        }
+        
+        // 定期保存黑名单（每新增100个项目保存一次）
+        if (blacklist.size - lastSaveBlacklistSize >= 100) {
+          const saved = saveBlacklist(blacklist);
+          if (saved) {
+            console.log(`[定期保存] 黑名单已保存, 当前总数: ${blacklist.size}`);
+          }
+          lastSaveBlacklistSize = blacklist.size;
         }
       }
       
@@ -2086,6 +2097,18 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
       sendMessageToWebContents(`❌ 导入错误: ${e.message || e}`);
       await db.close()
       setProgressBar(-1)
+      
+      // 即使出错或中断，也要保存已收集的黑名单
+      const newBlacklistCount = blacklist.size - initialBlacklistSize
+      if (newBlacklistCount > 0) {
+        const actualBlacklistPath = getBlacklistPath()
+        const saved = saveBlacklist(blacklist)
+        if (saved) {
+          sendMessageToWebContents(`💾 已保存 ${newBlacklistCount} 个新增黑名单项目到: ${actualBlacklistPath}`)
+        } else {
+          sendMessageToWebContents(`⚠️ 黑名单保存失败: ${actualBlacklistPath}`)
+        }
+      }
     }
     // 不返回整个 bookList，避免 IPC 传输大量数据导致卡死
     // 让前端重新加载书籍列表
