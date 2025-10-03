@@ -59,6 +59,37 @@ function buildTitleIndex(allTitles, hasHashColumn) {
 }
 
 /**
+ * Quick linear search for a single search term (used for original title only)
+ * 快速线性搜索单个搜索词（仅用于原标题）
+ * @param {string} searchTerm - Single normalized search term
+ * @param {Object} titleMap - Title map from buildTitleIndex
+ * @param {Array} titleArray - Title array from buildTitleIndex
+ * @returns {Array|null} Array of matching keys or null if not found
+ */
+async function quickLinearSearch(searchTerm, titleMap, titleArray) {
+  const CHUNK_SIZE = 1000
+  
+  for (let i = 0; i < titleArray.length; i++) {
+    const title = titleArray[i]
+    
+    // 简单包含匹配
+    if (title.includes(searchTerm)) {
+      const keys = titleMap.get(title)
+      if (keys) {
+        return keys
+      }
+    }
+    
+    // 每处理 CHUNK_SIZE 条记录，让出事件循环
+    if (i % CHUNK_SIZE === 0 && i > 0) {
+      await new Promise(resolve => setImmediate(resolve))
+    }
+  }
+  
+  return null
+}
+
+/**
  * Find matches using title index with optimized search strategy and fuzzy variants
  * 使用标题索引查找匹配项（优化搜索策略 + 模糊变体）
  * @param {string} searchTerm - Normalized search term
@@ -73,7 +104,25 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
   // 移除长度限制，允许短标题匹配
   // 像 "本能"、"雌吹"、"無題" 这样的短标题也应该能够匹配
   
-  // 生成搜索词的多个变体
+  // 优化策略: 先用原标题直接匹配，不行再生成变体
+  // 这样可以避免大部分情况下的不必要字符串转换
+  
+  // 步骤1: 尝试原标题精确匹配（最快，O(1)）
+  const normalizedOriginal = normalizeString(searchTerm).toLowerCase()
+  const exactMatch = titleMap.get(normalizedOriginal)
+  if (exactMatch) {
+    return exactMatch
+  }
+  
+  // 步骤2: 尝试原标题模糊匹配（线性搜索但只用一个变体）
+  if (titleArray && titleArray.length > 0) {
+    const quickMatch = await quickLinearSearch(normalizedOriginal, titleMap, titleArray)
+    if (quickMatch) {
+      return quickMatch
+    }
+  }
+  
+  // 步骤3: 原标题匹配失败，生成所有变体再尝试
   const searchVariants = generateVariants(searchTerm)
   
   // 策略1: 先尝试精确匹配所有变体（O(1)）

@@ -161,6 +161,33 @@ function removeSuffixAfterSeparator(str) {
 }
 
 /**
+ * Remove accidental pinyin characters (misconverted Chinese characters)
+ * 移除错误转换的拼音字符（通常是输入法错误导致的）
+ * 例如: "xi 島さん" -> "島さん", "to 本" -> "本"
+ * @param {string} str - Input string
+ * @returns {string} String with pinyin removed
+ */
+function removePinyinArtifacts(str) {
+  if (!str) return str
+  
+  // 策略：移除孤立的1-20个拉丁字母，它们前后被非拉丁字符包围
+  // 这些通常是输入法错误转换的拼音（支持多字拼音如 "shimadao san"）
+  return str
+    // 移除被CJK字符（中日韩文字）包围的短拉丁词
+    // 例如: "xi 島" -> "島", "shimadao san エッチ" -> "エッチ"
+    .replace(/(?<=[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\u3400-\u4dbf])\s*[a-z]{1,20}\s+(?=[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\u3400-\u4dbf])/gi, '')
+    // 移除标点符号后的孤立拉丁字母（支持更长的拼音）
+    // 例如: ", xi 島" -> ", 島"
+    .replace(/(?<=[,，.。、:：;；!！?？])\s*[a-z]{1,20}\s+(?=[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff])/gi, '')
+    // 移除空格后的孤立单字母或短拼音词（最常见的错误）
+    // 例如: " xi " -> " ", " shimadao " -> " "
+    .replace(/\s+[a-z]{1,20}\s+/gi, ' ')
+    // 清理多余空格
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
  * Remove trailing "1" or similar patterns (for series first volume)
  * 移除末尾的 "1"、"01"、"1巻"、"第1话" 等模式（用于系列作品第一卷）
  * @param {string} str - Input string
@@ -202,30 +229,47 @@ function generateVariants(str) {
   const noSpaces = removeAllSpaces(normalized)
   variants.add(noSpaces)
   
-  // 变体2: 移除分隔符后的内容（如 "+ おまけ本"）
+  // 变体2: 移除拼音错误转换
+  const noPinyin = removePinyinArtifacts(normalized)
+  variants.add(noPinyin)
+  variants.add(removeAllSpaces(noPinyin))
+  
+  // 变体3: 移除分隔符后的内容（如 "+ おまけ本"）
   const noSuffix = removeSuffixAfterSeparator(normalized)
   variants.add(noSuffix)
   variants.add(removeAllSpaces(noSuffix))
+  // 组合：移除拼音 + 移除后缀
+  const noPinyinNoSuffix = removeSuffixAfterSeparator(noPinyin)
+  variants.add(noPinyinNoSuffix)
+  variants.add(removeAllSpaces(noPinyinNoSuffix))
   
-  // 变体3: 中文数字转阿拉伯数字
+  // 变体4: 中文数字转阿拉伯数字
   const withArabic = chineseToArabic(normalized)
   variants.add(withArabic)
   variants.add(removeAllSpaces(withArabic))
+  // 组合：移除拼音 + 数字转换
+  const noPinyinArabic = chineseToArabic(noPinyin)
+  variants.add(noPinyinArabic)
+  variants.add(removeAllSpaces(noPinyinArabic))
   // 组合：移除后缀 + 数字转换
   const noSuffixArabic = chineseToArabic(noSuffix)
   variants.add(noSuffixArabic)
   variants.add(removeAllSpaces(noSuffixArabic))
   
-  // 变体4: 阿拉伯数字转中文数字
+  // 变体5: 阿拉伯数字转中文数字
   const withChinese = arabicToChinese(normalized)
   variants.add(withChinese)
   variants.add(removeAllSpaces(withChinese))
+  // 组合：移除拼音 + 数字转换
+  const noPinyinChinese = arabicToChinese(noPinyin)
+  variants.add(noPinyinChinese)
+  variants.add(removeAllSpaces(noPinyinChinese))
   // 组合：移除后缀 + 数字转换
   const noSuffixChinese = arabicToChinese(noSuffix)
   variants.add(noSuffixChinese)
   variants.add(removeAllSpaces(noSuffixChinese))
   
-  // 变体5: 移除末尾的 "1"
+  // 变体6: 移除末尾的 "1"
   const noTrailingOne = removeTrailingOne(normalized)
   variants.add(noTrailingOne)
   variants.add(removeAllSpaces(noTrailingOne))
