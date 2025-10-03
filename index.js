@@ -1851,6 +1851,8 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                       if (titleArray && titleArray.length > 0) {
                         const matchedTitles = [] // 存储所有匹配的标题
                         
+                        // 分块处理，避免阻塞事件循环
+                        const CHUNK_SIZE = 1000; // 每次处理 1000 条
                         for (let i = 0; i < titleArray.length; i++) {
                           const title = titleArray[i]
                           if (title.includes(searchTerm)) {
@@ -1859,6 +1861,11 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                               // 存储标题和对应的 keys
                               matchedTitles.push({ title, keys })
                             }
+                          }
+                          
+                          // 每处理 CHUNK_SIZE 条记录，让出事件循环
+                          if (i % CHUNK_SIZE === 0 && i > 0) {
+                            await new Promise(resolve => setImmediate(resolve))
                           }
                         }
                         
@@ -1873,11 +1880,17 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                             
                             // 计算每个匹配项的最高相似度（对比 title 和 title_jpn）
                             const scoredMatches = []
-                            for (const { title, keys } of matchedTitles) {
+                            for (let idx = 0; idx < matchedTitles.length; idx++) {
+                              const { title, keys } = matchedTitles[idx]
                               // 需要获取完整的 gallery 记录来访问 title_jpn
                               // 为了性能，先使用标题本身计算
                               const similarity = calculateSimilarity(originalNormalized, title)
                               scoredMatches.push({ keys, similarity, title })
+                              
+                              // 每处理 100 个匹配项，让出事件循环
+                              if (idx % 100 === 0 && idx > 0) {
+                                await new Promise(resolve => setImmediate(resolve))
+                              }
                             }
                             
                             // 按相似度降序排序
@@ -1900,19 +1913,32 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                   if (foundKeys.length > 1) {
                     // 获取所有候选的完整元数据
                     const candidates = []
-                    for (const key of foundKeys) {
+                    for (let idx = 0; idx < foundKeys.length; idx++) {
+                      const key = foundKeys[idx]
                       const meta = await db.get('SELECT gid, token, title, title_jpn FROM gallery WHERE gid = ? AND token = ?', [key.gid, key.token])
                       if (meta) candidates.push(meta)
+                      
+                      // 每处理 50 个候选项，让出事件循环
+                      if (idx % 50 === 0 && idx > 0) {
+                        await new Promise(resolve => setImmediate(resolve))
+                      }
                     }
                     
                     // 使用原始文件名与 title 和 title_jpn 计算相似度
                     const originalNormalized = normalizeString(originalFilename).toLowerCase()
-                    const scoredCandidates = candidates.map(meta => {
+                    const scoredCandidates = []
+                    for (let idx = 0; idx < candidates.length; idx++) {
+                      const meta = candidates[idx]
                       const titleSim = calculateSimilarity(originalNormalized, meta.title || '')
                       const titleJpnSim = calculateSimilarity(originalNormalized, meta.title_jpn || '')
                       const maxSim = Math.max(titleSim, titleJpnSim)
-                      return { meta, similarity: maxSim }
-                    })
+                      scoredCandidates.push({ meta, similarity: maxSim })
+                      
+                      // 每处理 50 个候选项，让出事件循环
+                      if (idx % 50 === 0 && idx > 0) {
+                        await new Promise(resolve => setImmediate(resolve))
+                      }
+                    }
                     
                     // 按相似度降序排序
                     scoredCandidates.sort((a, b) => b.similarity - a.similarity)
@@ -1994,9 +2020,11 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                 await saveBookToDatabase(book);
                 
                 if (matchType === 'SQL' || matchType === 'FastSQL') {
-                  const fileName = path.parse(book.title).name;
+                  // 使用完整的文件原名（包含扩展名前的完整部分）
+                  const originalFileName = path.parse(book.path).name;
+                  // 优先显示日文标题
                   const matchedTitle = metadata.title_jpn || metadata.title || 'N/A';
-                  sendMessageToWebContents(`✅ [${matchType}] "${fileName}" -> "${matchedTitle}" (gid:${metadata.gid})`);
+                  sendMessageToWebContents(`✅ [${matchType}] "${originalFileName}" -> "${matchedTitle}" (gid:${metadata.gid})`);
                 }
                 matched++;
               } else {
