@@ -6,6 +6,68 @@ const { spawn } = require('child_process')
 const _ = require('lodash')
 const { getRootPath } = require('../modules/utils.js')
 const sharp = require('sharp')
+// JXL support using djxl CLI tool
+const djxlPath = path.join(getRootPath(), 'resources/extraResources/djxl.exe')
+
+let jxlInitialized = false
+
+// Decode JXL using djxl CLI tool
+async function decodeJxlWithDjxl(jxlBuffer) {
+  return new Promise((resolve, reject) => {
+    // Create temporary files for input and output
+    const tempDir = require('os').tmpdir()
+    const inputFile = path.join(tempDir, `jxl_input_${nanoid(8)}.jxl`)
+    const outputFile = path.join(tempDir, `jxl_output_${nanoid(8)}.png`)
+
+    // Write JXL buffer to temporary file
+    fs.writeFileSync(inputFile, jxlBuffer)
+
+    // Run djxl to decode JXL to PNG
+    const djxl = spawn(djxlPath, [inputFile, outputFile], {
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+
+    let stderr = ''
+    djxl.stderr.on('data', (data) => {
+      stderr += data.toString()
+    })
+
+    djxl.on('close', (code) => {
+      try {
+        // Clean up input file
+        if (fs.existsSync(inputFile)) {
+          fs.unlinkSync(inputFile)
+        }
+
+        if (code === 0 && fs.existsSync(outputFile)) {
+          // Read decoded PNG file
+          const pngBuffer = fs.readFileSync(outputFile)
+          // Clean up output file
+          fs.unlinkSync(outputFile)
+          resolve(pngBuffer)
+        } else {
+          // Clean up output file if it exists
+          if (fs.existsSync(outputFile)) {
+            fs.unlinkSync(outputFile)
+          }
+          reject(new Error(`djxl failed with code ${code}: ${stderr}`))
+        }
+      } catch (error) {
+        reject(error)
+      }
+    })
+
+    djxl.on('error', (error) => {
+      // Clean up files
+      try {
+        if (fs.existsSync(inputFile)) fs.unlinkSync(inputFile)
+        if (fs.existsSync(outputFile)) fs.unlinkSync(outputFile)
+      } catch {}
+      reject(error)
+    })
+  })
+}
 
 const _7z = path.join(getRootPath(), 'resources/extraResources/7z.exe')
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.avif', '.jxl'])
@@ -254,11 +316,86 @@ function openSharp(buf) {
   try { return sharp(buf, { failOn: 'none', sequentialRead: true, limitInputPixels: false }) } catch { return sharp(buf, { failOnError: false, sequentialRead: true, limitInputPixels: false }) }
 }
 
+// Decode JXL using djxl CLI tool
+async function decodeJxlWithDjxl(jxlBuffer) {
+  return new Promise((resolve, reject) => {
+    const { spawn } = require('child_process')
+    const tempInput = path.join(require('../modules/init_folder_setting.js').TEMP_PATH, `temp_${nanoid(8)}.jxl`)
+    const tempOutput = path.join(require('../modules/init_folder_setting.js').TEMP_PATH, `temp_${nanoid(8)}.png`)
+
+    // Write JXL buffer to temp file
+    fs.writeFileSync(tempInput, jxlBuffer)
+
+    // Spawn djxl process
+    const djxl = spawn(djxlPath, [tempInput, tempOutput], {
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+
+    let stderr = ''
+    djxl.stderr.on('data', (data) => {
+      stderr += data.toString()
+    })
+
+    djxl.on('close', (code) => {
+      try {
+        // Clean up temp input file
+        if (fs.existsSync(tempInput)) {
+          fs.unlinkSync(tempInput)
+        }
+
+        if (code === 0 && fs.existsSync(tempOutput)) {
+          // Read decoded PNG
+          const pngBuffer = fs.readFileSync(tempOutput)
+          // Clean up temp output file
+          fs.unlinkSync(tempOutput)
+          resolve(pngBuffer)
+        } else {
+          // Clean up temp output file if it exists
+          if (fs.existsSync(tempOutput)) {
+            fs.unlinkSync(tempOutput)
+          }
+          reject(new Error(`djxl failed with code ${code}: ${stderr}`))
+        }
+      } catch (err) {
+        reject(err)
+      }
+    })
+
+    djxl.on('error', (err) => {
+      // Clean up temp files
+      try {
+        if (fs.existsSync(tempInput)) fs.unlinkSync(tempInput)
+        if (fs.existsSync(tempOutput)) fs.unlinkSync(tempOutput)
+      } catch {}
+      reject(err)
+    })
+  })
+}
+
 async function geneCoverSharp(coverBuffer) {
-  // Check if it's JXL format (not supported by current Sharp build)
+  // Check if it's JXL format and decode it first
   if (isJxl(coverBuffer)) {
-    console.log('Detected JXL format, using placeholder')
-    return sharp({ create: { width: 500, height: 707, channels: 3, background: '#303133' } })
+    try {
+      console.log('Detected JXL format, decoding with djxl CLI')
+      // Check if djxl.exe exists
+      if (!fs.existsSync(djxlPath)) {
+        console.log('djxl.exe not found, using placeholder for JXL')
+        return sharp({ create: { width: 500, height: 707, channels: 3, background: '#303133' } })
+      }
+
+      const pngBuffer = await decodeJxlWithDjxl(coverBuffer)
+      // Now process the decoded PNG with Sharp
+      return sharp(pngBuffer).rotate().resize(500, 707, {
+        fit: 'contain',
+        background: '#303133',
+        withoutEnlargement: true,
+        fastShrinkOnLoad: true,
+      })
+    } catch (jxlError) {
+      console.log('JXL decode with djxl failed, using placeholder:', jxlError.message)
+      return sharp({ create: { width: 500, height: 707, channels: 3, background: '#303133' } })
+    }
   }
 
   const build = (buf) =>
