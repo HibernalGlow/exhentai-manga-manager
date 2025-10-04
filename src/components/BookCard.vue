@@ -26,7 +26,7 @@
       <el-tag
         v-for="tag in filterCollectTag(book.tags)" :key="tag.id"
         @click="$emit('searchFromTag', tag.tag, tag.cat)"
-        class="book-collect-tag"
+        :class="['book-collect-tag', tag.isMixedMatch ? 'mixed-match-tag' : '']"
         :color="tag.color"
         size="small"
         effect="dark"
@@ -94,11 +94,16 @@ const filterCollectTag = (tagObject) => {
     const collectTag = setting.value.collectTag || []
     const isMixed = enableMixedGenderSearch()
     const result = []
+    const seen = new Set() // 避免重复添加
     
     collectTag.forEach(tag => {
       // 精确匹配：书籍有这个标签
       if (tagObject[tag.cat] && tagObject[tag.cat].includes(tag.tag)) {
-        result.push(tag)
+        const key = `${tag.cat}-${tag.tag}`
+        if (!seen.has(key)) {
+          result.push(tag)
+          seen.add(key)
+        }
         return
       }
       
@@ -107,14 +112,19 @@ const filterCollectTag = (tagObject) => {
         const altCats = ['female', 'male', 'mixed'].filter(c => c !== tag.cat)
         for (const altCat of altCats) {
           if (tagObject[altCat] && tagObject[altCat].includes(tag.tag)) {
-            // 创建新标签对象，使用书籍实际的类别，但保留收藏标签的颜色
-            const letter = cat2letter.value?.[altCat] || altCat.charAt(0)
-            result.push({
-              ...tag,
-              cat: altCat,
-              letter: letter,
-              id: `${altCat}-${tag.tag}`
-            })
+            const key = `${altCat}-${tag.tag}`
+            if (!seen.has(key)) {
+              // 创建新标签对象，使用书籍实际的类别，但保留收藏标签的颜色
+              const letter = cat2letter.value?.[altCat] || altCat.charAt(0)
+              result.push({
+                ...tag,
+                cat: altCat,
+                letter: letter,
+                id: `${altCat}-${tag.tag}`,
+                isMixedMatch: true // 标记这是混合匹配的标签
+              })
+              seen.add(key)
+            }
             break
           }
         }
@@ -193,6 +203,9 @@ const categoryColors = {
       border-width: 0
       padding-left: 4px
       padding-right: 4px
+    .mixed-match-tag
+      border: 1px dashed currentColor
+      opacity: 0.85
 .book-title
   height: 36px
   overflow-y: hidden
