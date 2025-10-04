@@ -26,7 +26,7 @@
       <el-tag
         v-for="tag in filterCollectTag(book.tags)" :key="tag.id"
         @click="$emit('searchFromTag', tag.tag, tag.cat)"
-        :class="['book-collect-tag', tag.isMixedMatch ? 'mixed-match-tag' : '']"
+        :class="['book-collect-tag', tag.isMixedMatch ? 'mixed-match-tag' : '', tag.isSearchTag && !tag.isCollected ? 'search-only-tag' : '']"
         :color="tag.color"
         size="small"
         effect="dark"
@@ -80,7 +80,8 @@ const emit = defineEmits([
 ])
 
 const props = defineProps({
-  book: Object
+  book: Object,
+  searchString: String
 })
 
 const bookRating = ref(props.book.rating)
@@ -90,51 +91,113 @@ watchEffect(() => {
 })
 
 const filterCollectTag = (tagObject) => {
-  if (setting.value.showCollectTag) {
-    const collectTag = setting.value.collectTag || []
-    const isMixed = enableMixedGenderSearch()
-    const result = []
-    const seen = new Set() // 避免重复添加
-    
-    collectTag.forEach(tag => {
-      // 精确匹配：书籍有这个标签
-      if (tagObject[tag.cat] && tagObject[tag.cat].includes(tag.tag)) {
-        const key = `${tag.cat}-${tag.tag}`
-        if (!seen.has(key)) {
-          result.push(tag)
-          seen.add(key)
-        }
-        return
-      }
-      
-      // 混合性别搜索：f/m/x 标签互相匹配，但显示书籍实际的标签
-      if (isMixed && ['female', 'male', 'mixed'].includes(tag.cat)) {
-        const altCats = ['female', 'male', 'mixed'].filter(c => c !== tag.cat)
-        for (const altCat of altCats) {
-          if (tagObject[altCat] && tagObject[altCat].includes(tag.tag)) {
-            const key = `${altCat}-${tag.tag}`
-            if (!seen.has(key)) {
-              // 创建新标签对象，使用书籍实际的类别，但保留收藏标签的颜色
-              const letter = cat2letter.value?.[altCat] || altCat.charAt(0)
-              result.push({
-                ...tag,
-                cat: altCat,
-                letter: letter,
-                id: `${altCat}-${tag.tag}`,
-                isMixedMatch: true // 标记这是混合匹配的标签
-              })
-              seen.add(key)
-            }
-            break
-          }
-        }
-      }
-    })
-    
-    return result
-  } else {
+  if (!setting.value.showCollectTag) {
     return []
   }
+
+  const collectTag = setting.value.collectTag || []
+  const isMixed = enableMixedGenderSearch()
+  const result = []
+  const seen = new Set() // 避免重复添加
+  
+  // 解析搜索字符串中的标签
+  const searchTags = []
+  if (props.searchString) {
+    const tagPattern = /([a-z]):"([^"]+)"/g
+    let match
+    while ((match = tagPattern.exec(props.searchString)) !== null) {
+      const [, letter, tag] = match
+      // 找到对应的 category
+      const cat = Object.entries(cat2letter.value || {}).find(([_, l]) => l === letter)?.[0]
+      if (cat) {
+        searchTags.push({ cat, tag, letter })
+      }
+    }
+  }
+  
+  // 首先处理收藏标签
+  collectTag.forEach(tag => {
+    // 精确匹配：书籍有这个标签
+    if (tagObject[tag.cat] && tagObject[tag.cat].includes(tag.tag)) {
+      const key = `${tag.cat}-${tag.tag}`
+      if (!seen.has(key)) {
+        result.push({ ...tag, isCollected: true })
+        seen.add(key)
+      }
+      return
+    }
+    
+    // 混合性别搜索：f/m/x 标签互相匹配，但显示书籍实际的标签
+    if (isMixed && ['female', 'male', 'mixed'].includes(tag.cat)) {
+      const altCats = ['female', 'male', 'mixed'].filter(c => c !== tag.cat)
+      for (const altCat of altCats) {
+        if (tagObject[altCat] && tagObject[altCat].includes(tag.tag)) {
+          const key = `${altCat}-${tag.tag}`
+          if (!seen.has(key)) {
+            const letter = cat2letter.value?.[altCat] || altCat.charAt(0)
+            result.push({
+              ...tag,
+              cat: altCat,
+              letter: letter,
+              id: `${altCat}-${tag.tag}`,
+              isMixedMatch: true,
+              isCollected: true
+            })
+            seen.add(key)
+          }
+          break
+        }
+      }
+    }
+  })
+  
+  // 然后处理搜索标签（未被收藏的）
+  searchTags.forEach(searchTag => {
+    // 精确匹配
+    if (tagObject[searchTag.cat] && tagObject[searchTag.cat].includes(searchTag.tag)) {
+      const key = `${searchTag.cat}-${searchTag.tag}`
+      if (!seen.has(key)) {
+        result.push({
+          cat: searchTag.cat,
+          tag: searchTag.tag,
+          letter: searchTag.letter,
+          id: key,
+          color: '#606266', // 未收藏标签使用默认灰色
+          isSearchTag: true,
+          isCollected: false
+        })
+        seen.add(key)
+      }
+      return
+    }
+    
+    // 混合性别搜索的搜索标签
+    if (isMixed && ['female', 'male', 'mixed'].includes(searchTag.cat)) {
+      const altCats = ['female', 'male', 'mixed'].filter(c => c !== searchTag.cat)
+      for (const altCat of altCats) {
+        if (tagObject[altCat] && tagObject[altCat].includes(searchTag.tag)) {
+          const key = `${altCat}-${searchTag.tag}`
+          if (!seen.has(key)) {
+            const letter = cat2letter.value?.[altCat] || altCat.charAt(0)
+            result.push({
+              cat: altCat,
+              tag: searchTag.tag,
+              letter: letter,
+              id: key,
+              color: '#606266',
+              isMixedMatch: true,
+              isSearchTag: true,
+              isCollected: false
+            })
+            seen.add(key)
+          }
+          break
+        }
+      }
+    }
+  })
+  
+  return result
 }
 
 const onMangaTitleContextMenu = (e, book) => {
@@ -206,6 +269,9 @@ const categoryColors = {
     .mixed-match-tag
       border: 1px dashed currentColor
       opacity: 0.85
+    .search-only-tag
+      border: 2px dotted #409EFF !important
+      opacity: 0.9
 .book-title
   height: 36px
   overflow-y: hidden

@@ -138,6 +138,7 @@
               and book isn't hidden by folder select -->
             <BookCard
                 :book="book"
+                :search-string="searchString"
                 v-if="!book.isCollection && !book.collectionHide && (sortValue === 'hidden' || !book.hiddenBook) && !book.folderHide && visibilityMap[book.id]"
                 @open-book-detail="$refs.BookDetailDialogRef.openBookDetail(book)"
                 @handle-click-cover="handleClickCover(book)"
@@ -198,6 +199,7 @@
         >
           <BookCard
               :book="book"
+              :search-string="searchString"
               :tabindex="index + 1"
               @open-book-detail="$refs.BookDetailDialogRef.openBookDetail(book)"
               @handle-click-cover="handleClickCover(book)"
