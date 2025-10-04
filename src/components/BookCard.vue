@@ -54,7 +54,7 @@
 </template>
 
 <script setup>
-import { ref, watchEffect } from 'vue'
+import { ref, watchEffect, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { BookmarkTwotone } from '@vicons/material'
 import ContextMenu from '@imengyu/vue3-context-menu'
@@ -62,8 +62,10 @@ import ContextMenu from '@imengyu/vue3-context-menu'
 import { storeToRefs } from 'pinia'
 import { useAppStore } from '../pinia.js'
 const appStore = useAppStore()
-const { setting, resolvedTranslation } = storeToRefs(appStore)
+const { setting, resolvedTranslation, cat2letter } = storeToRefs(appStore)
 const { getDisplayTitle, isChineseTranslatedManga, saveBook, switchMark } = appStore
+
+const enableMixedGenderSearch = inject('enableMixedGenderSearch', () => false)
 
 const { t } = useI18n()
 
@@ -90,7 +92,36 @@ watchEffect(() => {
 const filterCollectTag = (tagObject) => {
   if (setting.value.showCollectTag) {
     const collectTag = setting.value.collectTag || []
-    return collectTag.filter(tag => tagObject[tag.cat] && tagObject[tag.cat].includes(tag.tag))
+    const isMixed = enableMixedGenderSearch()
+    const result = []
+    
+    collectTag.forEach(tag => {
+      // 精确匹配：书籍有这个标签
+      if (tagObject[tag.cat] && tagObject[tag.cat].includes(tag.tag)) {
+        result.push(tag)
+        return
+      }
+      
+      // 混合性别搜索：f/m/x 标签互相匹配，但显示书籍实际的标签
+      if (isMixed && ['female', 'male', 'mixed'].includes(tag.cat)) {
+        const altCats = ['female', 'male', 'mixed'].filter(c => c !== tag.cat)
+        for (const altCat of altCats) {
+          if (tagObject[altCat] && tagObject[altCat].includes(tag.tag)) {
+            // 创建新标签对象，使用书籍实际的类别，但保留收藏标签的颜色
+            const letter = cat2letter.value?.[altCat] || altCat.charAt(0)
+            result.push({
+              ...tag,
+              cat: altCat,
+              letter: letter,
+              id: `${altCat}-${tag.tag}`
+            })
+            break
+          }
+        }
+      }
+    })
+    
+    return result
   } else {
     return []
   }

@@ -284,6 +284,11 @@ export default defineComponent({
       TreeViewAlt, CicsSystemGroup, TagGroup
     }
   },
+  provide() {
+    return {
+      enableMixedGenderSearch: () => this.enableMixedGenderSearch
+    }
+  },
   data() {
     return {
       // home
