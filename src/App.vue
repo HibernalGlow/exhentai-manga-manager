@@ -8,21 +8,57 @@
                    :title="$t('m.folderTree')"></el-button>
       </el-col>
       <el-col :span="8">
-        <el-autocomplete
-            :model-value="searchString"
-            :fetch-suggestions="querySearch"
-            @keyup.enter="searchBook"
-            @change="handleSearchStringChange"
-            @input="handleInput"
-            clearable
-            :trigger-on-focus="false"
-            class="search-input"
-        >
-          <template #default="{ item }">
-            <span class="autocomplete-label">{{item.label}}</span>
-            <span class="autocomplete-value">{{item.value}}</span>
-          </template>
-        </el-autocomplete>
+        <div class="search-input-wrapper" ref="searchInputWrapper">
+          <el-autocomplete
+              ref="searchAutocomplete"
+              :model-value="searchString"
+              :fetch-suggestions="querySearch"
+              @focus="handleSearchFocus"
+              @blur="handleSearchBlur"
+              @keyup.enter="searchBook"
+              @change="handleSearchStringChange"
+              @input="handleInput"
+              clearable
+              :trigger-on-focus="false"
+              class="search-input"
+          >
+            <template #default="{ item }">
+              <span class="autocomplete-label">{{item.label}}</span>
+              <span class="autocomplete-value">{{item.value}}</span>
+            </template>
+          </el-autocomplete>
+          <transition name="fade-in">
+            <div
+                v-if="favoriteTagPanelVisible && favoriteTagsForSearch.length"
+                class="favorite-tag-panel"
+                @mousedown.prevent
+                @mouseenter="clearFavoriteHideTimer"
+                @mouseleave="scheduleFavoriteHide"
+            >
+              <div class="favorite-tag-header">
+                <span>{{ $t('m.collectTagQuickPick') }}</span>
+                <el-button text size="small" @click="favoriteTagPanelVisible = false">{{$t('m.close')}}</el-button>
+              </div>
+              <el-space wrap size="small" class="favorite-tag-chips">
+                <el-tag
+                    v-for="tag in favoriteTagsForSearch"
+                    :key="tag.id"
+                    class="favorite-tag-chip"
+                    :style="{ '--tag-color': tag.color || '#409EFF' }"
+                    effect="plain"
+                    size="small"
+                    @click="appendCollectTag(tag, '', $event)"
+                    @contextmenu.prevent="appendCollectTag(tag, '-', $event)"
+                >
+                  <span class="favorite-tag-chip-dot" :style="{ backgroundColor: tag.color || '#409EFF' }"></span>
+                  <span class="favorite-tag-chip-label">{{tag.display}}</span>
+                  <span class="favorite-tag-chip-value">{{tag.value}}</span>
+                </el-tag>
+              </el-space>
+              <p class="favorite-tag-hint">{{$t('m.collectTagQuickPickHint')}}</p>
+            </div>
+          </transition>
+        </div>
       </el-col>
       <el-col :span="1">
         <el-button type="primary" :icon="Search32Filled" plain @click="searchBook" :title="$t('m.search')"></el-button>
@@ -286,6 +322,8 @@ export default defineComponent({
       visibilityMap: {},
       buttonLoadBookListLoading: false,
       buttonGetMetadatasLoading: false,
+      favoriteTagPanelVisible: false,
+      favoriteTagHideTimer: null,
       // collection
       drawerVisibleCollection: false,
       openCollectionTitle: undefined,
@@ -314,6 +352,7 @@ export default defineComponent({
       'tag2cat',
       'customOptions',
       'visibleChunkDisplayBookList',
+      'resolvedTranslation',
     ]),
     currentPage: {
       get() {
@@ -332,6 +371,23 @@ export default defineComponent({
         }
       }
     },
+    favoriteTagsForSearch() {
+      const collectTag = Array.isArray(this.setting?.collectTag) ? this.setting.collectTag : []
+      const translations = this.resolvedTranslation || {}
+      return collectTag.map(tag => {
+        const translatedCat = this.setting.showTranslation
+          ? (translations[tag.cat]?.name || tag.cat)
+          : tag.cat
+        const translatedTag = this.setting.showTranslation
+          ? (translations[tag.tag]?.name || tag.tag)
+          : tag.tag
+        return {
+          ...tag,
+          value: `${tag.letter}:"${tag.tag}"$`,
+          display: `${translatedCat}:${translatedTag}`
+        }
+      })
+    }
   },
   mounted() {
     ipcRenderer.on('send-message', (event, arg) => {
@@ -394,6 +450,7 @@ export default defineComponent({
     })
   },
   beforeUnmount() {
+    this.clearFavoriteHideTimer()
     window.removeEventListener('keydown', this.resolveKey)
     window.removeEventListener('wheel', this.resolveWheel)
     window.removeEventListener('mousedown', this.resolveMouseDown)
@@ -414,6 +471,44 @@ export default defineComponent({
       'copyTagClipboard',
       'pasteTagClipboard',
     ]),
+
+    handleSearchFocus() {
+      if (this.favoriteTagsForSearch.length) {
+        this.clearFavoriteHideTimer()
+        this.favoriteTagPanelVisible = true
+      }
+    },
+    handleSearchBlur() {
+      this.scheduleFavoriteHide()
+    },
+    clearFavoriteHideTimer() {
+      if (this.favoriteTagHideTimer) {
+        clearTimeout(this.favoriteTagHideTimer)
+        this.favoriteTagHideTimer = null
+      }
+    },
+    scheduleFavoriteHide() {
+      this.clearFavoriteHideTimer()
+      this.favoriteTagHideTimer = setTimeout(() => {
+        this.favoriteTagPanelVisible = false
+        this.favoriteTagHideTimer = null
+      }, 180)
+    },
+    appendCollectTag(tag, modifier = '', event) {
+      if (event?.shiftKey && !modifier) {
+        modifier = '~'
+      }
+      const baseToken = `${tag.letter}:"${tag.tag}"$`
+      const token = modifier === '-' ? `-${baseToken}` : modifier === '~' ? `~${baseToken}` : baseToken
+      const trimmed = this.searchString.trim()
+      const nextValue = trimmed ? `${trimmed} ${token}` : token
+      this.handleInput(nextValue)
+      this.$nextTick(() => {
+        this.$refs.searchAutocomplete?.focus?.()
+      })
+      this.clearFavoriteHideTimer()
+      this.favoriteTagPanelVisible = true
+    },
 
     // base function
     currentUI() {
@@ -1384,6 +1479,80 @@ body
 .autocomplete-value
   margin-left: 2em
   float: right
+
+.search-input-wrapper
+  position: relative
+
+.favorite-tag-panel
+  position: absolute
+  top: calc(100% + 6px)
+  left: 0
+  right: 0
+  z-index: 1200
+  background: var(--el-bg-color)
+  border: 1px solid var(--el-border-color)
+  border-radius: 8px
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.15)
+  padding: 12px 14px 10px
+  text-align: left
+  max-height: 240px
+  overflow-y: auto
+
+.favorite-tag-header
+  display: flex
+  align-items: center
+  justify-content: space-between
+  gap: 8px
+  margin-bottom: 6px
+  font-weight: 600
+  font-size: 13px
+
+.favorite-tag-chips
+  width: 100%
+
+.favorite-tag-chip
+  display: inline-flex
+  align-items: center
+  gap: 6px
+  cursor: pointer
+  padding: 4px 8px 4px 6px
+  border: 1px solid var(--tag-color)
+  background: unquote('color-mix(in srgb, var(--tag-color) 16%, transparent)')
+  transition: transform .12s ease, border-color .12s ease
+
+.favorite-tag-chip:hover
+  transform: translateY(-1px)
+  border-color: unquote('color-mix(in srgb, var(--tag-color) 60%, var(--el-border-color))')
+
+.favorite-tag-chip-dot
+  width: 8px
+  height: 8px
+  border-radius: 50%
+
+.favorite-tag-chip-label
+  font-weight: 600
+  max-width: 140px
+  overflow: hidden
+  white-space: nowrap
+  text-overflow: ellipsis
+
+.favorite-tag-chip-value
+  font-size: 11px
+  color: var(--el-text-color-secondary)
+
+.favorite-tag-hint
+  margin-top: 10px
+  font-size: 12px
+  color: var(--el-text-color-secondary)
+
+.fade-in-enter-from,
+.fade-in-leave-to
+  opacity: 0
+  transform: translateY(-4px)
+
+.fade-in-enter-active,
+.fade-in-leave-active
+  transition: all .12s ease
 
 // search-input sort-select
 .el-autocomplete-suggestion__wrap, .el-select-dropdown__wrap
