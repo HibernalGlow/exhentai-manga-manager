@@ -174,19 +174,11 @@ const geneCoverFromBuffer = async (filepath, type, opts={}) => {
     const copyTempCoverPath = path.join(TEMP_PATH, nanoid(8) + path.extname(tempCoverPath))
     await fs.promises.copyFile(tempCoverPath, copyTempCoverPath)
     coverPath = makeShardedPath(COVER_PATH, coverHash + '.webp')
-    
-    // 检测 JXL 格式，使用占位符封面
-    const ext = path.extname(tempCoverPath).toLowerCase()
-    if (ext === '.jxl') {
-      console.log(`检测到 JXL 格式图片: ${path.basename(filepath)}，使用占位符封面（Sharp 暂不支持 JXL 解码）`)
-      coverSharp = sharp({ create: { width: 500, height: 707, channels: 3, background: '#303133' } })
-    } else {
-      coverSharp = await sharp(copyTempCoverPath, { failOnError: false })
-          .resize(500, 707, {
-            fit: 'contain',
-            background: '#303133'
-          })
-    }
+    coverSharp = await sharp(copyTempCoverPath, { failOnError: false })
+        .resize(500, 707, {
+          fit: 'contain',
+          background: '#303133'
+        })
   }
   return { hash, coverPath, pageCount, bundleSize, mtime, coverHash, coverSharp }
 }

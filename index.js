@@ -1223,6 +1223,87 @@ ipcMain.handle('patch-local-metadata-by-book', async (event, book) => {
   }
 })
 
+// Function to repair missing covers manually
+ipcMain.handle('repair-missing-covers', async (event, arg) => {
+  const bookList = await loadBookListFromDatabase()
+  const bookListLength = bookList.length
+  let repairedCount = 0
+
+  sendMessageToWebContents(`开始检查并修复缺失的封面...`)
+
+  const context = createAbortableContext(event)
+  const { signal } = context.controller
+
+  const workLimit = createLimiter(setting.concurrentScan)
+  const coverLimit = createLimiter(setting.concurrentWrite)
+  const dbLimit = createLimiter(1)
+  const BATCH_SIZE = 50
+
+  for (let offset = 0; offset < bookListLength; offset += BATCH_SIZE) {
+    signal?.throwIfAborted?.()
+    const chunk = bookList.slice(offset, Math.min(offset + BATCH_SIZE, bookListLength))
+    const chunkTasks = chunk.map((book) => {
+      return workLimit(async () => {
+        signal?.throwIfAborted?.()
+        try {
+          const { coverPath } = book
+          // Check if cover file exists
+          const coverExists = await fs.promises.access(coverPath).then(() => true).catch(() => false)
+
+          if (!coverExists) {
+            sendMessageToWebContents(`修复缺失封面: ${book.filepath}`)
+            const { filepath, type } = book
+            if (!type) type = 'archive'
+
+            // Check if the book file still exists
+            const fileExists = await fs.promises.access(filepath).then(() => true).catch(() => false)
+            if (!fileExists) {
+              sendMessageToWebContents(`跳过 (文件不存在): ${filepath}`)
+              return
+            }
+
+            const { coverSharp, coverHash: newCoverHash } = await geneCoverFromBuffer(filepath, type, { signal })
+
+            if (coverSharp && newCoverHash) {
+              const newCoverPath = makeShardedPath(COVER_PATH, newCoverHash + '.webp')
+
+              await coverLimit(async () => {
+                // Ensure directory exists
+                await fs.promises.mkdir(path.dirname(newCoverPath), { recursive: true })
+                await coverSharp.toFile(newCoverPath)
+              })
+
+              // Update book object
+              book.coverPath = newCoverPath
+              book.coverHash = newCoverHash
+
+              await dbLimit(() => saveBookToDatabase(book))
+              repairedCount++
+            }
+          }
+        } catch (e) {
+          if (e?.name === 'AbortError') throw e
+          sendMessageToWebContents(`修复 ${book.filepath} 失败: ${e.message}`)
+        }
+      })
+    })
+
+    const results = await Promise.allSettled(chunkTasks)
+
+    if (results.some(r => r.status === 'rejected' && r.reason?.name === 'AbortError')) {
+      throw Object.assign(new Error('修复已中止'), { name: 'AbortError' })
+    }
+
+    const processed = offset + chunk.length
+    setProgressBar(processed / bookListLength)
+  }
+
+  await clearFolder(TEMP_PATH)
+  setProgressBar(-1)
+  sendMessageToWebContents(`封面修复完成，共修复 ${repairedCount} 个缺失封面`)
+  return { repairedCount }
+})
+
 // Function to read the .ehviewer file
 function getEhviewerDataManually(dir) {
   try {

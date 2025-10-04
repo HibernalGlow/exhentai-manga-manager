@@ -753,6 +753,320 @@
           </el-descriptions-item>
         </el-descriptions>
       </el-tab-pane>
+      <el-tab-pane label="高级" name="advanced">
+        <el-row :gutter="8">
+          <el-col :span="24">
+            <div class="setting-line">
+              <el-input class="label-input">
+                <template #prepend><span class="setting-label">{{$t('m.concurrentScan')}} </span></template>
+                <template #append>
+                  <el-select
+                      v-model="setting.concurrentScan"
+                      @change="saveSetting"
+                      placeholder=" "
+                      placement="bottom-start"
+                      :fit-input-width="true"
+                      :teleported="true"
+                  >
+                    <el-option
+                        v-for="n in concurrencyOptionCeiling"
+                        :key="'scan-' + n"
+                        :label="n"
+                        :value="n"
+                    />
+                  </el-select>
+                </template>
+              </el-input>
+            </div>
+          </el-col>
+          <el-col :span="24">
+            <div class="setting-line">
+              <el-input class="label-input">
+                <template #prepend><span class="setting-label">{{$t('m.concurrentWrite')}}</span></template>
+                <template #append>
+                  <el-select
+                      v-model="setting.concurrentWrite"
+                      @change="saveSetting"
+                      placeholder=" "
+                      placement="bottom-start"
+                      :fit-input-width="true"
+                      :teleported="true"
+                  >
+                    <el-option
+                        v-for="n in concurrencyOptionCeiling"
+                        :key="'write-' + n"
+                        :label="n"
+                        :value="n"
+                    />
+                  </el-select>
+                </template>
+              </el-input>
+            </div>
+          </el-col>
+          <el-col :span="24">
+            <div class="setting-line">
+              <el-input v-model.number="setting.requireGap" :placeholder="$t('m.requireGapInfo')" @change="saveSetting">
+                <template #prepend><span class="setting-label">{{$t('m.requestGap')}}</span></template>
+              </el-input>
+            </div>
+          </el-col>
+          <el-col :span="24">
+            <NameFormItem class="setting-line" prependWidth="110px">
+              <template #prepend>{{$t('m.customOptions')}}</template>
+              <template #default>
+                <el-input
+                    v-model="setting.customOptions" :placeholder="$t('m.customOptionsPlaceholder')"
+                    @change="saveSetting"
+                    type="textarea" :autosize="{ minRows: 2, maxRows: 4 }"
+                ></el-input>
+              </template>
+            </NameFormItem>
+          </el-col>
+          <el-col :span="24">
+            <div class="setting-line regexp">
+              <el-input v-model="setting.trimTitleRegExp" :placeholder="$t('m.trimTitleRegExpInfo')"
+                        @change="saveSetting">
+                <template #prepend><span class="setting-label">{{$t('m.trimTitleRegExp')}}</span></template>
+              </el-input>
+            </div>
+          </el-col>
+          <el-col :span="24">
+            <div class="setting-line">
+              <el-input v-model="setting.searchKeySuffix" :placeholder="$t('m.searchKeySuffixInfo')"
+                        @change="saveSetting">
+                <template #prepend><span class="setting-label">{{$t('m.searchKeySuffix')}}</span></template>
+              </el-input>
+            </div>
+          </el-col>
+          <el-col :span="24">
+            <div class="setting-line regexp">
+              <el-input v-model="setting.excludeFile" :placeholder="$t('m.excludeFileInfo')" @change="saveSetting">
+                <template #prepend><span class="setting-label">{{$t('m.excludeFile')}}</span></template>
+                <template #append>
+                  <el-popconfirm
+                      placement="top-start"
+                      :title="$t('m.applyExcludeRulesWarning')"
+                      @confirm="applyExcludeRules"
+                  >
+                    <template #reference>
+                      <el-button>{{$t('m.applyExcludeRules')}}</el-button>
+                    </template>
+                  </el-popconfirm>
+                </template>
+              </el-input>
+            </div>
+          </el-col>
+          <el-col :span="24">
+            <div class="setting-line">
+              <el-input v-model="setting.folderTreeWidth" :placeholder="$t('m.folderTreeWidthInfo')"
+                        @change="saveSetting">
+                <template #prepend><span class="setting-label">{{$t('m.folderTreeWidth')}}</span></template>
+              </el-input>
+            </div>
+          </el-col>
+          <el-col :span="24">
+            <NameFormItem class="setting-line" prependWidth="110px" appendWidth="0">
+              <template #prepend>{{$t('m.customCss')}}</template>
+              <template #default>
+                <el-input
+                    v-model="setting.customCss" :placeholder="$t('m.customCssPlaceholder')" @change="saveSetting"
+                    type="textarea" :autosize="{ minRows: 2, maxRows: 4 }"
+                ></el-input>
+              </template>
+              <template #append>
+                <el-button text :icon="MdRefresh" @click="reloadWindow"></el-button>
+              </template>
+            </NameFormItem>
+          </el-col>
+          <!-- Concurrent Scan / Write (value on top, dropdown below) -->
+          <el-col :span="24">
+            <el-row :gutter="12">
+              <!-- Left: concurrent scan -->
+              <el-col :span="12">
+                <div class="setting-line setting-line--concurrency">
+                  <el-input class="label-input">
+                    <template #prepend>
+                      <span class="setting-label-wide">{{$t('m.concurrentScan')}} </span>
+                    </template>
+                    <template #append>
+                      <el-select
+                          v-model="setting.concurrentScan"
+                          @change="saveSetting"
+                          placeholder=" "
+                          placement="bottom-start"
+                          :fit-input-width="true"
+                          :teleported="true"
+                      >
+                        <el-option
+                            v-for="n in concurrencyOptionCeiling"
+                            :key="'scan-' + n"
+                            :label="n"
+                            :value="n"
+                        />
+                      </el-select>
+                    </template>
+                  </el-input>
+                </div>
+              </el-col>
+
+              <!-- Right: concurrent write -->
+              <el-col :span="12">
+                <div class="setting-line setting-line--concurrency">
+                  <el-input class="label-input">
+                    <template #prepend>
+                      <span class="setting-label-wide">{{$t('m.concurrentWrite')}}</span>
+                    </template>
+                    <template #append>
+                      <el-select
+                          v-model="setting.concurrentWrite"
+                          @change="saveSetting"
+                          placeholder=" "
+                          placement="bottom-start"
+                          :fit-input-width="true"
+                          :teleported="true"
+                      >
+                        <el-option
+                            v-for="n in concurrencyOptionCeiling"
+                            :key="'write-' + n"
+                            :label="n"
+                            :value="n"
+                        />
+                      </el-select>
+                    </template>
+                  </el-input>
+                </div>
+              </el-col>
+            </el-row>
+          </el-col>
+          <el-col :span="8">
+            <div class="setting-line">
+              <el-checkbox v-model="setting.autoMatchOnRebuild" @change="saveSetting" style="margin-bottom: 8px;">
+                {{$t('m.autoMatchOnRebuild')}}
+              </el-checkbox>
+              <el-popconfirm
+                  placement="top-start"
+                  :title="$t('m.rebuildWarning')"
+                  @confirm="forceGeneBookList"
+              >
+                <template #reference>
+                  <el-button class="function-button" plain>{{$t('m.rebuildLibrary')}}</el-button>
+                </template>
+              </el-popconfirm>
+            </div>
+          </el-col>
+          <el-col :span="8">
+            <div class="setting-line">
+              <el-popconfirm
+                  placement="top-start"
+                  :title="$t('m.patchWarning')"
+                  @confirm="patchLocalMetadata"
+              >
+                <template #reference>
+                  <el-button class="function-button" type="primary" plain>{{$t('m.patchLocalMetadata')}}</el-button>
+                </template>
+              </el-popconfirm>
+            </div>
+          </el-col>
+          <el-col :span="8">
+            <div class="setting-line">
+              <el-button class="function-button" type="primary" plain @click="exportDatabase">{{
+                  $t('m.exportMetadata')
+                }}
+              </el-button>
+            </div>
+          </el-col>
+          <el-col :span="8">
+            <div class="setting-line">
+              <el-button class="function-button" type="primary" plain @click="importDatabase">{{
+                  $t('m.importMetadata')
+                }}
+              </el-button>
+            </div>
+          </el-col>
+          <el-col :span="8">
+            <div class="setting-line">
+                <el-checkbox v-model="setting.matchTitleOnly" style="margin-right:12px">
+                  仅用标题匹配（title/title_jpn）
+                </el-checkbox>
+                <el-checkbox v-model="setting.matchHash" style="margin-right:12px">
+                  启用 hash 匹配
+                </el-checkbox>
+                <el-checkbox v-model="setting.fastMatch" style="margin-right:12px">
+                  ⚡ 快速匹配模式
+                </el-checkbox>
+                <el-button class="function-button" type="primary" plain @click="importMetadataFromSqlite">{{
+                    $t('m.importMetadataFromSqlite')
+                  }}
+                </el-button>
+            </div>
+          </el-col>
+          <el-col :span="8">
+            <div class="setting-line">
+              <el-button class="function-button" type="danger" :icon="Delete"
+                         :loading="busyRemove" :disabled="busyRemove" @click="removeMissingRecords"
+              >{{$t('m.removeMissingRecords')}}
+              </el-button>
+            </div>
+          </el-col>
+          <el-col :span="8">
+            <div class="setting-line">
+              <el-button class="function-button" type="warning" plain @click="fillNoCategoryMetadata">
+                {{$t('m.fillNoCategoryMetadata')}}
+              </el-button>
+            </div>
+          </el-col>
+          <el-col :span="8">
+            <div class="setting-line">
+              <el-button class="function-button" type="warning" plain @click="clearMatchBlacklist">
+                清空匹配黑名单
+              </el-button>
+              <el-button class="function-button" type="info" plain @click="showBlacklistStats">
+                查看黑名单
+              </el-button>
+            </div>
+          </el-col>
+          <el-col :span="8">
+            <div class="setting-line">
+              <el-button class="function-button" type="success" plain @click="showTitleIndexCacheStatus">
+                📦 标题索引缓存
+              </el-button>
+              <el-button class="function-button" type="warning" plain @click="clearTitleIndexCache">
+                清除缓存
+              </el-button>
+            </div>
+          </el-col>
+          <el-col :span="8">
+            <div class="setting-line">
+              <el-popconfirm
+                  placement="top-start"
+                  title="确定要清理所有文件夹类型的漫画吗？此操作不可撤销。"
+                  @confirm="cleanFolderManga"
+              >
+                <template #reference>
+                  <el-button class="function-button" type="danger" plain>
+                    清理文件夹漫画
+                  </el-button>
+                </template>
+              </el-popconfirm>
+            </div>
+          </el-col>
+          <el-col :span="8">
+            <div class="setting-line">
+              <el-popconfirm
+                  placement="top-start"
+                  title="确定要修复缺失的封面吗？这将检查所有书籍并重新生成缺失的封面缩略图。"
+                  @confirm="repairMissingCovers"
+              >
+                <template #reference>
+                  <el-button class="function-button" type="primary" plain>
+                    修复缺失封面
+                  </el-button>
+                </template>
+              </el-popconfirm>
+            </div>
+          </el-col>
+        </el-row>
+      </el-tab-pane>
       <el-tab-pane :label="$t('m.about')" name="about">
         <el-descriptions :column="1">
           <el-descriptions-item :label="$t('m.appName')+':'">exhentai-manga-manager</el-descriptions-item>
@@ -1541,6 +1855,22 @@ const removeTag = (id) => {
 
 const reloadWindow = () => {
   window.location.reload()
+}
+
+const repairMissingCovers = async () => {
+  try {
+    printMessage('info', '开始修复缺失的封面...')
+    const result = await ipcRenderer.invoke('repair-missing-covers')
+    if (result && typeof result.repairedCount === 'number') {
+      printMessage('success', `封面修复完成，共修复 ${result.repairedCount} 个缺失封面`)
+      // 刷新书籍列表以显示新的封面
+      emit('loadBookList')
+    } else {
+      printMessage('error', '封面修复失败')
+    }
+  } catch (e) {
+    printMessage('error', '封面修复失败: ' + e.message)
+  }
 }
 
 async function onSettingOpen() {

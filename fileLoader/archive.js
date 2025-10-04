@@ -244,26 +244,20 @@ async function solveBookTypeArchiveInMem(filepath, opts = {}) {
 const JPEG_EOI = Buffer.from([0xFF, 0xD9])
 const isJpeg = (buf) => buf && buf.length > 3 && buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF
 const hasEOI = (buf) => buf && buf.length > 1 && buf[buf.length - 2] === 0xFF && buf[buf.length - 1] === 0xD9
-// detect JXL format (starts with 0xFF 0x0A or "JXL " or ISO BMFF box)
-const isJXL = (buf) => {
-  if (!buf || buf.length < 12) return false
-  // JXL codestream: 0xFF 0x0A
-  if (buf[0] === 0xFF && buf[1] === 0x0A) return true
-  // JXL container: starts with 0x00 0x00 0x00 0x0C 0x4A 0x58 0x4C 0x20 ("....JXL ")
-  if (buf[0] === 0x00 && buf[1] === 0x00 && buf[2] === 0x00 && buf[3] === 0x0C &&
-      buf[4] === 0x4A && buf[5] === 0x58 && buf[6] === 0x4C && buf[7] === 0x20) return true
-  return false
-}
-
+// JXL magic number: 00 00 00 0C 4A 58 4C 20 0D 0A 87 0A
+const isJxl = (buf) => buf && buf.length >= 12 &&
+  buf[0] === 0x00 && buf[1] === 0x00 && buf[2] === 0x00 && buf[3] === 0x0C &&
+  buf[4] === 0x4A && buf[5] === 0x58 && buf[6] === 0x4C && buf[7] === 0x20 &&
+  buf[8] === 0x0D && buf[9] === 0x0A && buf[10] === 0x87 && buf[11] === 0x0A
 // open sharp tolerantly (newer + older sharp)
 function openSharp(buf) {
   try { return sharp(buf, { failOn: 'none', sequentialRead: true, limitInputPixels: false }) } catch { return sharp(buf, { failOnError: false, sequentialRead: true, limitInputPixels: false }) }
 }
 
 async function geneCoverSharp(coverBuffer) {
-  // JXL 格式检测：跳过 Sharp 处理，直接返回占位符
-  if (isJXL(coverBuffer)) {
-    console.log('检测到 JXL 格式图片，使用占位符封面（Sharp 暂不支持 JXL 解码）')
+  // Check if it's JXL format (not supported by current Sharp build)
+  if (isJxl(coverBuffer)) {
+    console.log('Detected JXL format, using placeholder')
     return sharp({ create: { width: 500, height: 707, channels: 3, background: '#303133' } })
   }
 
