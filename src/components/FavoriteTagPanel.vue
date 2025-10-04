@@ -7,7 +7,11 @@
     >
       <div class="favorite-tag-header">
         <span>{{ $t('m.collectTagQuickPick') }}</span>
-        <el-button text size="small" @click="$emit('hide-panel')">{{ $t('m.close') }}</el-button>
+        <div class="header-controls">
+          <el-switch v-model="localEnableMixed" size="small" />
+          <span class="mixed-label">{{ $t('m.enableMixedGenderSearch') }}</span>
+          <el-button text size="small" @click="$emit('hide-panel')">{{ $t('m.close') }}</el-button>
+        </div>
       </div>
       <div class="favorite-tag-chips">
         <el-space wrap size="small">
@@ -47,12 +51,20 @@ export default defineComponent({
     visible: {
       type: Boolean,
       default: false
+    },
+    enableMixed: {
+      type: Boolean,
+      default: false
     }
   },
-  emits: ['append-tag', 'hide-panel'],
-  data() {
-    return {
-      hideTimer: null
+  computed: {
+    localEnableMixed: {
+      get() {
+        return this.enableMixed
+      },
+      set(val) {
+        this.$emit('update:enableMixed', val)
+      }
     }
   },
   methods: {
@@ -104,6 +116,15 @@ export default defineComponent({
   margin-bottom: 6px
   font-weight: 600
   font-size: 13px
+
+.header-controls
+  display: flex
+  align-items: center
+  gap: 6px
+
+.mixed-label
+  font-size: 12px
+  color: var(--el-text-color-secondary)
 
 .favorite-tag-chips
   width: 100%

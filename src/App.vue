@@ -27,7 +27,7 @@
               <span class="autocomplete-value">{{item.value}}</span>
             </template>
           </el-autocomplete>
-          <FavoriteTagPanel :favorite-tags="favoriteTagsForSearch" :visible="favoriteTagPanelVisible" @append-tag="appendCollectTag" @hide-panel="handlePanelHide" />
+          <FavoriteTagPanel :favorite-tags="favoriteTagsForSearch" :visible="favoriteTagPanelVisible" :enable-mixed="enableMixedGenderSearch" @append-tag="appendCollectTag" @hide-panel="handlePanelHide" @update:enable-mixed="enableMixedGenderSearch = $event" />
         </div>
       </el-col>
       <el-col :span="1">
@@ -296,6 +296,7 @@ export default defineComponent({
       buttonGetMetadatasLoading: false,
       favoriteTagPanelVisible: false,
       favoriteTagHideTimer: null,
+      enableMixedGenderSearch: false,
       // collection
       drawerVisibleCollection: false,
       openCollectionTitle: undefined,
@@ -1023,7 +1024,7 @@ export default defineComponent({
       }
     },
     searchBook() {
-      const checkCondition = (bookString, bookInfo) => {
+      const checkCondition = (bookString, bookInfo, enableMixed, cat2letter) => {
         const searchStringArray = this.searchString ? this.searchString.split(/\s+(?=(?:[^\'"]*[\'"][^\'"]*[\'"])*[^\'"]*$)/) : []
         const orCondition = _.filter(searchStringArray, (str) => str.startsWith('~'))
         const andCondition = _.filter(searchStringArray, (str) => !str.startsWith('~'))
@@ -1063,6 +1064,22 @@ export default defineComponent({
                   } else {
                     return false
                   }
+                } else if (str.match(/^([a-z]):"([^"]+)"\$/)) {
+                  const cat = RegExp.$1
+                  const tag = RegExp.$2
+                  const cats = enableMixed && ['f','m','x'].includes(cat) ? ['f','m','x'] : [cat]
+                  return cats.some(c => {
+                    const letter = cat2letter?.[c] || c
+                    return bookString.includes(`${letter}:${tag}`) || bookString.includes(`${c}:${tag}`)
+                  })
+                } else if (str.match(/^-([a-z]):"([^"]+)"\$/)) {
+                  const cat = RegExp.$1
+                  const tag = RegExp.$2
+                  const cats = enableMixed && ['f','m','x'].includes(cat) ? ['f','m','x'] : [cat]
+                  return !cats.some(c => {
+                    const letter = cat2letter?.[c] || c
+                    return bookString.includes(`${letter}:${tag}`) || bookString.includes(`${c}:${tag}`)
+                  })
                 } else if (_.startsWith(str, '-')) {
                   return !bookString.includes(str.slice(1).replace(/["']/g, '').replace(/[$]/g, '"').toLowerCase())
                 } else {
@@ -1073,7 +1090,18 @@ export default defineComponent({
               }
             })
           } else {
-            return bookString.includes(condition.slice(1).replace(/["']/g, '').replace(/[$]/g, '"').toLowerCase())
+            const str = condition.slice(1)
+            if (str.match(/^([a-z]):"([^"]+)"\$/)) {
+              const cat = RegExp.$1
+              const tag = RegExp.$2
+              const cats = enableMixed && ['f','m','x'].includes(cat) ? ['f','m','x'] : [cat]
+              return cats.some(c => {
+                const letter = cat2letter?.[c] || c
+                return bookString.includes(`${letter}:${tag}`) || bookString.includes(`${c}:${tag}`)
+              })
+            } else {
+              return bookString.includes(str.replace(/["']/g, '').replace(/[$]/g, '"').toLowerCase())
+            }
           }
         })
       }
@@ -1101,7 +1129,7 @@ export default defineComponent({
           ptime: new Date(book.posted * 1000),
           count: book.readCount
         }
-        return checkCondition(bookString, bookInfo)
+        return checkCondition(bookString, bookInfo, this.enableMixedGenderSearch, this.cat2letter)
       })
       if (!this.sortValue || ['mark', 'hidden', 'collection'].includes(this.sortValue)) this.sortValue = 'addDescend'
       this.handleSortChange(this.sortValue, this.displayBookList)
