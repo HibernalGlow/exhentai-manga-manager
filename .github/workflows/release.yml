@@ -114,27 +114,42 @@ jobs:
             $version = "${{ inputs.version }}" -replace '^v', ''
           }
           
-          $body = @{
-            event_type = "emm-release"
-            client_payload = @{
-              version = $version
-              repository = "${{ github.repository }}"
-              ref = "${{ github.ref }}"
-              sha = "${{ github.sha }}"
+          Write-Host "New EMM version released: $version"
+          Write-Host "To trigger Extras-Glow workflow manually, go to:"
+          Write-Host "https://github.com/HibernalGlow/Extras-Glow/actions/workflows/schedule.yml"
+          Write-Host "And dispatch workflow with the following inputs:"
+          Write-Host "event_type: emm-release"
+          Write-Host "version: $version"
+          Write-Host "repository: ${{ github.repository }}"
+          Write-Host "ref: ${{ github.ref }}"
+          Write-Host "sha: ${{ github.sha }}"
+          
+          # 如果配置了token，尝试自动触发
+          if ($env:extrasglow) {
+            $body = @{
+              event_type = "emm-release"
+              client_payload = @{
+                version = $version
+                repository = "${{ github.repository }}"
+                ref = "${{ github.ref }}"
+                sha = "${{ github.sha }}"
+              }
+            } | ConvertTo-Json
+            
+            $headers = @{
+              "Authorization" = "Bearer ${{ secrets.extrasglow }}"
+              "Accept" = "application/vnd.github.v3+json"
             }
-          } | ConvertTo-Json
-          
-          $headers = @{
-            "Authorization" = "Bearer ${{ secrets.EXTRAS_GLOW_TOKEN }}"
-            "Accept" = "application/vnd.github.v3+json"
-          }
-          
-          try {
-            Invoke-RestMethod -Uri "https://api.github.com/repos/HibernalGlow/Extras-Glow/dispatches" -Method Post -Headers $headers -Body $body -ContentType "application/json"
-            Write-Host "Successfully triggered Extras-Glow workflow for version $version"
-          } catch {
-            Write-Host "Failed to trigger Extras-Glow workflow: $($_.Exception.Message)"
-            # 不让这个失败阻止整个workflow
+            
+            try {
+              Invoke-RestMethod -Uri "https://api.github.com/repos/HibernalGlow/Extras-Glow/dispatches" -Method Post -Headers $headers -Body $body -ContentType "application/json"
+              Write-Host "✅ Successfully triggered Extras-Glow workflow automatically"
+            } catch {
+              Write-Host "⚠️  Auto-trigger failed, manual trigger required: $($_.Exception.Message)"
+              Write-Host "📋 Copy the information above to manually trigger the workflow"
+            }
+          } else {
+            Write-Host "ℹ️  No extrasglow configured, manual trigger required"
           }
           
       - name: Upload to workflow dispatch release
