@@ -362,6 +362,55 @@ async function refineMatchesWithJapaneseTitle(foundKeys, originalFilename, db) {
   return scoredCandidates[0] ? parseMetadataTags(scoredCandidates[0].meta) : null
 }
 
+/**
+ * Parse metadata tags from SQLite record
+ * 解析 SQLite 记录中的标签数据
+ * @param {Object} metadata - Raw metadata from database
+ * @returns {Object} Parsed metadata with tags
+ */
+function parseMetadataTags(metadata) {
+  const re = /'/g
+  
+  metadata.tags = {
+    language: metadata.language ? JSON.parse(metadata.language.replace(re, '"')) : undefined,
+    parody: metadata.parody ? JSON.parse(metadata.parody.replace(re, '"')) : undefined,
+    character: metadata.character ? JSON.parse(metadata.character.replace(re, '"')) : undefined,
+    group: metadata.group ? JSON.parse(metadata.group.replace(re, '"')) : undefined,
+    artist: metadata.artist ? JSON.parse(metadata.artist.replace(re, '"')) : undefined,
+    male: metadata.male ? JSON.parse(metadata.male.replace(re, '"')) : undefined,
+    female: metadata.female ? JSON.parse(metadata.female.replace(re, '"')) : undefined,
+    mixed: metadata.mixed ? JSON.parse(metadata.mixed.replace(re, '"')) : undefined,
+    other: metadata.other ? JSON.parse(metadata.other.replace(re, '"')) : undefined,
+    cosplayer: metadata.cosplayer ? JSON.parse(metadata.cosplayer.replace(re, '"')) : undefined,
+    rest: metadata.rest ? JSON.parse(metadata.rest.replace(re, '"')) : undefined,
+  }
+  
+  metadata.filecount = +metadata.filecount
+  metadata.rating = +metadata.rating
+  metadata.posted = +metadata.posted
+  metadata.filesize = +metadata.filesize
+  metadata.url = `https://exhentai.org/g/${metadata.gid}/${metadata.token}/`
+  
+  return metadata
+}
+
+/**
+ * Match book against database using hash (highest priority)
+ * 使用 hash 匹配书籍（最高优先级）
+ * @param {Object} book - Book object
+ * @param {Map} hashIndex - Hash index from buildTitleIndex
+ * @returns {Array} Array of matching keys or empty array
+ */
+function matchByHash(book, hashIndex) {
+  if (!book.hash || !hashIndex) return []
+  
+  const hashMatches = hashIndex.get(book.hash)
+  if (hashMatches && hashMatches.length > 0) {
+    return hashMatches.map(m => ({ gid: m.gid, token: m.token, hash: book.hash }))
+  }
+  
+  return []
+}
 module.exports = {
   buildTitleIndex,
   findMatchesByTitle,
