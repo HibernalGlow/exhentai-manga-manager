@@ -522,7 +522,8 @@ export default defineComponent({
     updatePanelHeight(height) {
       this.favoriteTagPanelHeight = height
       // 保存到设置
-      this.saveSetting()
+      this.setting.favoriteTagPanelHeight = height
+      this.$refs.SettingRef.saveSetting()
     },
 
     // base function

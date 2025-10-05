@@ -13,36 +13,38 @@
           <el-button text size="small" @click="$emit('hide-panel')">{{ $t('m.close') }}</el-button>
         </div>
       </div>
-      <div class="favorite-tag-chips">
-        <template v-for="(category, categoryIndex) in groupedTags" :key="category.name">
-          <div class="category-group" v-if="category.tags.length > 0">
-            <div class="category-header">
-              <span class="category-name">{{ category.name }}</span>
-              <span class="category-count">{{ category.tags.length }}</span>
+      <div class="favorite-tag-content">
+        <div class="favorite-tag-chips">
+          <template v-for="(category, categoryIndex) in groupedTags" :key="category.name">
+            <div class="category-group" v-if="category.tags.length > 0">
+              <div class="category-header">
+                <span class="category-name">{{ category.name }}</span>
+                <span class="category-count">{{ category.tags.length }}</span>
+              </div>
+              <div class="category-tags">
+                <el-space wrap size="small">
+                  <el-tag
+                      v-for="tag in category.tags"
+                      :key="`${tag.cat}-${tag.tag}`"
+                      class="favorite-tag-chip"
+                      :style="{ '--tag-color': tag.color || '#409EFF' }"
+                      effect="plain"
+                      size="small"
+                      @click="appendTag(tag)"
+                      @contextmenu.prevent="appendTag(tag, '-')"
+                  >
+                    <span class="favorite-tag-chip-dot" :style="{ backgroundColor: tag.color || '#409EFF' }"></span>
+                    <span class="favorite-tag-chip-label">{{ tag.display.split(':')[1] }}</span>
+                    <span class="favorite-tag-chip-value">{{ tag.value }}</span>
+                  </el-tag>
+                </el-space>
+              </div>
             </div>
-            <div class="category-tags">
-              <el-space wrap size="small">
-                <el-tag
-                    v-for="tag in category.tags"
-                    :key="`${tag.cat}-${tag.tag}`"
-                    class="favorite-tag-chip"
-                    :style="{ '--tag-color': tag.color || '#409EFF' }"
-                    effect="plain"
-                    size="small"
-                    @click="appendTag(tag)"
-                    @contextmenu.prevent="appendTag(tag, '-')"
-                >
-                  <span class="favorite-tag-chip-dot" :style="{ backgroundColor: tag.color || '#409EFF' }"></span>
-                  <span class="favorite-tag-chip-label">{{ tag.display.split(':')[1] }}</span>
-                  <span class="favorite-tag-chip-value">{{ tag.value }}</span>
-                </el-tag>
-              </el-space>
-            </div>
-          </div>
-        </template>
-      </div>
-      <div class="favorite-tag-hint">
-        {{ $t('m.collectTagQuickPickHint') }}
+          </template>
+        </div>
+        <div class="favorite-tag-hint">
+          {{ $t('m.collectTagQuickPickHint') }}
+        </div>
       </div>
       <div class="resize-handle" @mousedown="startResize"></div>
     </div>
@@ -164,13 +166,15 @@ export default defineComponent({
   border: 1px solid var(--el-border-color)
   border-radius: 8px
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.15)
-  padding: 12px 14px 10px
+  padding: 12px 14px 16px
   text-align: left
   height: v-bind('panelHeight + "px"')
   max-height: 600px
   min-height: 120px
   overflow-y: auto
   resize: none
+  display: flex
+  flex-direction: column
 
 .favorite-tag-header
   display: flex
@@ -189,6 +193,12 @@ export default defineComponent({
 .mixed-label
   font-size: 12px
   color: var(--el-text-color-secondary)
+
+.favorite-tag-content
+  flex: 1
+  min-height: 0
+  overflow-y: auto
+  padding-bottom: 6px
 
 .favorite-tag-chips
   width: 100%
@@ -263,6 +273,7 @@ export default defineComponent({
   cursor: ns-resize
   background: linear-gradient(to bottom, transparent 0%, var(--el-border-color-light) 50%, transparent 100%)
   border-radius: 0 0 8px 8px
+  flex-shrink: 0
 
 .resize-handle:hover
   background: linear-gradient(to bottom, transparent 0%, var(--el-color-primary-light-5) 50%, transparent 100%)
