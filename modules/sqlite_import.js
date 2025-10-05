@@ -199,7 +199,7 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
         } else {
           // 动态相似度阈值：短变体需要更高相似度
           const variantLength = matchedVariant.replace(/\s+/g, '').length
-          const MIN_SIMILARITY = variantLength <= 4 ? 0.5 : 0.3
+          const MIN_SIMILARITY = variantLength <= 4 ? 0.6 : 0.4
           
           // 计算相似度，过滤掉不相关的匹配
           const similarity = calculateSimilarity(originalNormalized, title)
@@ -267,13 +267,13 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
         // 候选越多 = 关键词太泛 = 需要更高的阈值避免误匹配
         let MIN_SIMILARITY_FALLBACK
         if (candidates.length <= 5) {
-          MIN_SIMILARITY_FALLBACK = 0.35 // 1-5个候选：很精准，用低阈值
+          MIN_SIMILARITY_FALLBACK = 0.5 // 1-5个候选：很精准，用中等阈值
         } else if (candidates.length <= 20) {
-          MIN_SIMILARITY_FALLBACK = 0.45 // 6-20个候选：较精准，用中低阈值
+          MIN_SIMILARITY_FALLBACK = 0.6 // 6-20个候选：较精准，用较高阈值
         } else if (candidates.length <= 100) {
-          MIN_SIMILARITY_FALLBACK = 0.55 // 21-100个候选：一般精准，用中等阈值
+          MIN_SIMILARITY_FALLBACK = 0.7 // 21-100个候选：一般精准，用高阈值
         } else {
-          MIN_SIMILARITY_FALLBACK = 0.65 // 100+个候选：不够精准，用高阈值
+          MIN_SIMILARITY_FALLBACK = 0.8 // 100+个候选：不够精准，用很高阈值
         }
         
         console.log(`[关键词预筛选] 动态阈值: ${MIN_SIMILARITY_FALLBACK} (基于候选数: ${candidates.length})`)
@@ -295,6 +295,7 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
         if (bestMatch) {
           console.log(`[关键词预筛选] ✅ 匹配成功! 相似度: ${bestSimilarity.toFixed(3)}`)
           console.log(`[关键词预筛选] 匹配标题: "${bestTitle}"`)
+          console.log(`[关键词预筛选] 原始文件名: "${originalFilename}"`)
           return bestMatch
         } else {
           console.log(`[关键词预筛选] ❌ 匹配失败: 所有候选项相似度均低于阈值 ${MIN_SIMILARITY_FALLBACK}`)
@@ -359,56 +360,6 @@ async function refineMatchesWithJapaneseTitle(foundKeys, originalFilename, db) {
   scoredCandidates.sort((a, b) => b.similarity - a.similarity)
   
   return scoredCandidates[0] ? parseMetadataTags(scoredCandidates[0].meta) : null
-}
-
-/**
- * Parse metadata tags from SQLite record
- * 解析 SQLite 记录中的标签数据
- * @param {Object} metadata - Raw metadata from database
- * @returns {Object} Parsed metadata with tags
- */
-function parseMetadataTags(metadata) {
-  const re = /'/g
-  
-  metadata.tags = {
-    language: metadata.language ? JSON.parse(metadata.language.replace(re, '"')) : undefined,
-    parody: metadata.parody ? JSON.parse(metadata.parody.replace(re, '"')) : undefined,
-    character: metadata.character ? JSON.parse(metadata.character.replace(re, '"')) : undefined,
-    group: metadata.group ? JSON.parse(metadata.group.replace(re, '"')) : undefined,
-    artist: metadata.artist ? JSON.parse(metadata.artist.replace(re, '"')) : undefined,
-    male: metadata.male ? JSON.parse(metadata.male.replace(re, '"')) : undefined,
-    female: metadata.female ? JSON.parse(metadata.female.replace(re, '"')) : undefined,
-    mixed: metadata.mixed ? JSON.parse(metadata.mixed.replace(re, '"')) : undefined,
-    other: metadata.other ? JSON.parse(metadata.other.replace(re, '"')) : undefined,
-    cosplayer: metadata.cosplayer ? JSON.parse(metadata.cosplayer.replace(re, '"')) : undefined,
-    rest: metadata.rest ? JSON.parse(metadata.rest.replace(re, '"')) : undefined,
-  }
-  
-  metadata.filecount = +metadata.filecount
-  metadata.rating = +metadata.rating
-  metadata.posted = +metadata.posted
-  metadata.filesize = +metadata.filesize
-  metadata.url = `https://exhentai.org/g/${metadata.gid}/${metadata.token}/`
-  
-  return metadata
-}
-
-/**
- * Match book against database using hash (highest priority)
- * 使用 hash 匹配书籍（最高优先级）
- * @param {Object} book - Book object
- * @param {Map} hashIndex - Hash index from buildTitleIndex
- * @returns {Array} Array of matching keys or empty array
- */
-function matchByHash(book, hashIndex) {
-  if (!book.hash || !hashIndex) return []
-  
-  const hashMatches = hashIndex.get(book.hash)
-  if (hashMatches && hashMatches.length > 0) {
-    return hashMatches.map(m => ({ gid: m.gid, token: m.token, hash: book.hash }))
-  }
-  
-  return []
 }
 
 module.exports = {

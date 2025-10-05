@@ -32,3 +32,4 @@ devtools
 test/
 /node_mod
 /test-nhentai-parse.html
+/__pycache__
