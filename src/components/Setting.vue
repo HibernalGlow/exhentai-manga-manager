@@ -315,7 +315,25 @@
                 ></el-select-v2>
               </el-form-item>
               <el-form-item :label="$t('m.tagColor')">
-                <el-color-picker v-model="formTagAdd.color" show-alpha :predefine="moderateSoftColors"/>
+                <el-select v-model="formTagAdd.colorMode" style="width: 120px" @change="updateTagColor">
+                  <el-option label="自动" value="auto"></el-option>
+                  <el-option label="随机" value="random"></el-option>
+                  <el-option label="自定义" value="custom"></el-option>
+                </el-select>
+                <el-color-picker
+                    v-if="formTagAdd.colorMode === 'custom'"
+                    v-model="formTagAdd.color"
+                    show-alpha
+                    :predefine="moderateSoftColors"
+                    style="margin-left: 8px"
+                />
+                <el-tag
+                    v-else
+                    :color="formTagAdd.color"
+                    style="margin-left: 8px"
+                >
+                  预览颜色
+                </el-tag>
               </el-form-item>
               <el-form-item>
                 <el-button plain @click="addTagToCollect">{{$t('m.addTag')}}</el-button>
@@ -1510,6 +1528,17 @@ const removeMissingRecords = async () => {
 const formTagAdd = ref({
   tag: null,
   color: '#42A5F5',
+  colorMode: 'auto', // auto, random, custom
+})
+
+// 监听标签选择变化，自动更新颜色预览
+watch(() => formTagAdd.value.tag, (newTagId) => {
+  if (newTagId && formTagAdd.value.colorMode === 'auto') {
+    const tag = tagListRaw.value.find(tag => tag.id === newTagId)
+    if (tag) {
+      formTagAdd.value.color = generateColorFromTag(tag.tag)
+    }
+  }
 })
 
 const tagListForCollect = computed(() => {
@@ -1567,15 +1596,66 @@ const moderateSoftColors = [
   '#78909C',  // 鲜明的灰蓝色
 ]
 
+// 根据标签名生成颜色的函数
+const generateColorFromTag = (tagName) => {
+  // 简单的hash函数
+  let hash = 0
+  for (let i = 0; i < tagName.length; i++) {
+    const char = tagName.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash & hash // 转换为32位整数
+  }
+
+  // 使用hash生成颜色
+  const hue = Math.abs(hash) % 360
+  const saturation = 65 + (Math.abs(hash) % 20) // 65-85%
+  const lightness = 45 + (Math.abs(hash >> 8) % 20) // 45-65%
+
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`
+}
+
+// 获取随机颜色的函数
+const getRandomColor = () => {
+  const randomIndex = Math.floor(Math.random() * moderateSoftColors.length)
+  return moderateSoftColors[randomIndex]
+}
+
+// 更新标签颜色的函数
+const updateTagColor = () => {
+  const tag = tagListRaw.value.find(tag => tag.id === formTagAdd.value.tag)
+  if (!tag) return
+
+  switch (formTagAdd.value.colorMode) {
+    case 'auto':
+      formTagAdd.value.color = generateColorFromTag(tag.tag)
+      break
+    case 'random':
+      formTagAdd.value.color = getRandomColor()
+      break
+    case 'custom':
+      // 保持用户选择的颜色
+      break
+  }
+}
+
 const addTagToCollect = () => {
   const tag = tagListRaw.value.find(tag => tag.id === formTagAdd.value.tag)
   if (!setting.value.collectTag) setting.value.collectTag = []
+  
+  // 根据模式生成颜色
+  let finalColor = formTagAdd.value.color
+  if (formTagAdd.value.colorMode === 'auto') {
+    finalColor = generateColorFromTag(tag.tag)
+  } else if (formTagAdd.value.colorMode === 'random') {
+    finalColor = getRandomColor()
+  }
+  
   setting.value.collectTag.push({
     id: tag.id,
     letter: tag.letter,
     cat: tag.cat,
     tag: tag.tag,
-    color: formTagAdd.value.color,
+    color: finalColor,
   })
   setting.value.collectTag = _.uniqBy(setting.value.collectTag, 'id')
   formTagAdd.value.tag = null
