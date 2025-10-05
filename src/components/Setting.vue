@@ -300,6 +300,13 @@
                 @change="saveSetting"
             />
           </el-col>
+          <el-col :span="24" class="setting-switch">
+            <el-switch
+                v-model="setting.deleteMode"
+                :active-text="$t('m.deleteMode')"
+                @change="saveSetting"
+            />
+          </el-col>
         </el-row>
       </el-tab-pane>
       <el-tab-pane :label="$t('m.collectTag')" name="collectTag">

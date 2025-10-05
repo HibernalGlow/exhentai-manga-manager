@@ -43,6 +43,9 @@
         <el-button type="success" size="small" class="outer-read-button" plain @click="$emit('openLocalBook')">{{$t('m.re')}}</el-button>
         <el-button type="success" size="small" class="outer-read-button" plain @click="$emit('viewManga')">{{$t('m.ad')}}</el-button>
       </el-button-group>
+      <el-button-group v-if="setting.deleteMode" class="outer-delete-button-group">
+        <el-button type="danger" size="small" class="outer-delete-button" plain @click="deleteBook(book)">{{$t('m.deleteFile')}}</el-button>
+      </el-button-group>
       <el-tag
         class="book-status-tag"
         effect="plain"
@@ -62,6 +65,7 @@
 <script setup>
 import { ref, watchEffect, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
+// import { ElMessageBox } from 'element-plus'
 import { BookmarkTwotone } from '@vicons/material'
 import ContextMenu from '@imengyu/vue3-context-menu'
 
@@ -69,7 +73,7 @@ import { storeToRefs } from 'pinia'
 import { useAppStore } from '../pinia.js'
 import { filterAndHighlightTags } from '../utils/tagFilter.js'
 const appStore = useAppStore()
-const { setting, resolvedTranslation, cat2letter } = storeToRefs(appStore)
+const { setting, resolvedTranslation, cat2letter, bookList, displayBookList, collectionList, openCollectionBookList } = storeToRefs(appStore)
 const { getDisplayTitle, isChineseTranslatedManga, saveBook, switchMark } = appStore
 
 const enableMixedGenderSearch = inject('enableMixedGenderSearch', () => false)
@@ -158,6 +162,58 @@ const onTagContextMenu = (e, tag) => {
       }
     ]
   })
+}
+
+// 删除书籍
+const deleteBook = async (book) => {
+  try {
+    // 确认删除 - 默认不显示确认对话框，直接删除
+    /*
+    const confirmResult = await ElMessageBox.confirm(
+      t('c.confirmDelete'),
+      t('c.deleteFile'),
+      {
+        confirmButtonText: t('c.confirm'),
+        cancelButtonText: t('c.cancel'),
+        type: 'warning',
+      }
+    )
+    
+    if (confirmResult) {
+    */
+      // 执行删除
+      await ipcRenderer.invoke('delete-local-book', book.filepath)
+      
+      // 从书籍列表中移除
+      const findBookInBookList = bookList.value.findIndex(b => b.filepath === book.filepath)
+      if (findBookInBookList !== -1) {
+        bookList.value.splice(findBookInBookList, 1)
+      }
+      
+      // 从显示列表中移除
+      const findBookInDisplayList = displayBookList.value.findIndex(b => b.filepath === book.filepath)
+      if (findBookInDisplayList !== -1) {
+        displayBookList.value.splice(findBookInDisplayList, 1)
+      }
+      
+      // 如果在合集中，也要从合集中移除
+      if (book.collectionHide) {
+        collectionList.value.forEach(collection => {
+          collection.list = collection.list.filter(hash => hash !== book.id && hash !== book.hash)
+        })
+        openCollectionBookList.value = openCollectionBookList.value.filter(bookOfCollection => {
+          return bookOfCollection.id !== book.id && bookOfCollection.id !== book.hash
+        })
+      }
+      
+      appStore.printMessage('success', t('c.deleteSuccess'))
+    /*
+    }
+    */
+  } catch (error) {
+    console.error('删除书籍失败:', error)
+    appStore.printMessage('error', t('c.deleteError'))
+  }
 }
 
 // 切换标签收藏状态
