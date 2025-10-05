@@ -305,20 +305,6 @@
       <el-tab-pane :label="$t('m.collectTag')" name="collectTag">
         <el-row :gutter="8">
           <el-col :span="24" class="setting-line collect-tag">
-            <draggable
-                v-model="setting.collectTag"
-                item-key="id"
-                animation="200"
-                @change="saveSetting"
-            >
-              <template #item="{element}">
-                <el-tag :color="element.color" effect="dark" closable @close="removeTag(element.id)">
-                  {{element.letter}}:{{resolvedTranslation[element.tag]?.name || element.tag}}
-                </el-tag>
-              </template>
-            </draggable>
-          </el-col>
-          <el-col :span="24" class="setting-line collect-tag">
             <el-form :inline="true" :model="formTagAdd" :show-message="false">
               <el-form-item :label="$t('m.tag')">
                 <el-select-v2
@@ -335,6 +321,31 @@
                 <el-button plain @click="addTagToCollect">{{$t('m.addTag')}}</el-button>
               </el-form-item>
             </el-form>
+          </el-col>
+          <el-col :span="24" class="setting-line collect-tag">
+            <template v-for="(category, categoryIndex) in groupedCollectTags" :key="category.name">
+              <div class="category-group" v-if="category.tags.length > 0">
+                <div class="category-header">
+                  <span class="category-name">{{ category.name }}</span>
+                  <span class="category-count">{{ category.tags.length }}</span>
+                </div>
+                <div class="category-tags">
+                  <draggable
+                      v-model="category.tags"
+                      item-key="id"
+                      animation="200"
+                      group="collectTags"
+                      @change="saveSetting"
+                  >
+                    <template #item="{element}">
+                      <el-tag :color="element.color" effect="dark" closable @close="removeTag(element.id)">
+                        {{element.letter}}:{{resolvedTranslation[element.tag]?.name || element.tag}}
+                      </el-tag>
+                    </template>
+                  </draggable>
+                </div>
+              </div>
+            </template>
           </el-col>
           <el-col :span="24" class="setting-switch">
             <el-switch
@@ -1521,6 +1532,28 @@ const tagListForCollect = computed(() => {
   }
 })
 
+const groupedCollectTags = computed(() => {
+  const groups = {}
+  if (!setting.value.collectTag) return []
+
+  setting.value.collectTag.forEach(tag => {
+    const category = setting.value.showTranslation
+      ? (tag.cat === 'group' ? '团队' : resolvedTranslation.value[tag.cat]?.name || tag.cat)
+      : tag.cat
+
+    if (!groups[category]) {
+      groups[category] = {
+        name: category,
+        tags: []
+      }
+    }
+    groups[category].tags.push(tag)
+  })
+
+  // 按照类别名称排序
+  return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name))
+})
+
 const moderateSoftColors = [
   '#FF6F61', // 略微柔和但鲜艳的珊瑚红
   '#F48FB1', // 鲜明的粉红色
@@ -1796,6 +1829,43 @@ defineExpose({
   border-left-color: var(--el-border-color);
   /* optional: extra left padding to match the Actions side spacing */
   padding-left: 3px;
+}
+
+/* Collect tag category styles */
+.category-group {
+  margin-bottom: 12px;
+}
+
+.category-group:last-child {
+  margin-bottom: 0;
+}
+
+.category-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  padding: 4px 8px;
+  background: var(--el-fill-color-light);
+  border-radius: 4px;
+}
+
+.category-name {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--el-text-color-primary);
+}
+
+.category-count {
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  background: var(--el-border-color-light);
+  padding: 2px 6px;
+  border-radius: 10px;
+}
+
+.category-tags {
+  padding-left: 4px;
 }
 
 </style>
