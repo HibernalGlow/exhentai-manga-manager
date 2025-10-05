@@ -151,6 +151,7 @@
     <el-divider content-position="left">{{$t('m.other')}}</el-divider>
     <el-space wrap class="book-tag-edit-buttons">
       <el-button type="primary" plain @click="groupGetMetadata">{{$t('m.batchGetMetadata')}}</el-button>
+      <el-button type="warning" plain @click="groupResetMetadata">{{$t('m.clearMetadata')}}</el-button>
       <el-button type="danger" plain @click="groupDeleteLocalBook">{{$t('m.deleteFile')}}</el-button>
       <el-button type="primary" plain @click="groupRescanBook">{{$t('m.rescan')}}</el-button>
       <el-button type="primary" plain @click="groupTriggerHiddenBook(false)">{{$t('m.showManga')}}</el-button>
@@ -190,7 +191,7 @@ const {
   visibleChunkDisplayBookListForCollectView,
   visibleChunkDisplayBookListForEditTagView,
 } = storeToRefs(appStore)
-const { getDisplayTitle, saveBook, printMessage, filterFolderMethod } = appStore
+const { getDisplayTitle, saveBook, printMessage, filterFolderMethod, resetMetadata } = appStore
 
 const { t } = useI18n()
 
@@ -602,6 +603,24 @@ const groupTriggerHiddenBook = async (val) => {
     updateTagsLoading.value = false
   } catch (error) {
     console.error(error)
+    updateTagsLoading.value = false
+  }
+}
+
+const groupResetMetadata = async () => {
+  try {
+    updateTagsLoading.value = true
+    for (const id of selectBookList.value) {
+      const book = _.find(displayBookList.value, { id })
+      if (book) {
+        await resetMetadata(book)
+      }
+    }
+    printMessage('success', t('c.resetMetadataSuccess'))
+    updateTagsLoading.value = false
+  } catch (error) {
+    console.error(error)
+    printMessage('error', t('c.resetMetadataError'))
     updateTagsLoading.value = false
   }
 }

@@ -1804,6 +1804,10 @@ ipcMain.handle('save-collection-list', async (event, list) => {
   return await fs.promises.writeFile(path.join(STORE_PATH, 'collectionList.json'), JSON.stringify(list, null, '  '), { encoding: 'utf-8' })
 })
 
+ipcMain.handle('save-book', async (event, book) => {
+  return await saveBookToDatabase(book)
+})
+
 // detail
 ipcMain.handle('open-url', async (event, url) => {
   shell.openExternal(url)
