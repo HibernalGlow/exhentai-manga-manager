@@ -250,7 +250,10 @@ const createWindow = () => {
     'height': mainWindowState.height,
     webPreferences: {
       webSecurity: app.isPackaged ? true : false,
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
+      sandbox: false,  // 禁用沙盒以支持软连接目录
+      nodeIntegration: false,
+      contextIsolation: true
     },
     show: false
   })
@@ -312,6 +315,9 @@ const createWindow = () => {
 }
 
 app.commandLine.appendSwitch('js-flags', '--max-old-space-size=65536')
+// 禁用网络沙盒以支持软连接目录（如使用 mklink 创建的符号链接）
+app.commandLine.appendSwitch('--no-sandbox')
+app.commandLine.appendSwitch('--disable-features', 'NetworkServiceSandbox')
 
 // app.disableHardwareAcceleration()
 
