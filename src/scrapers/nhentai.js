@@ -107,6 +107,81 @@ function pickCategory(candidates) {
   return 'Misc'
 }
 
+function parseNhentaiApiResponse(apiData) {
+  console.log('[NH Parser] Parsing API response')
+  
+  // Extract title information
+  const title = apiData.title?.english || apiData.title?.pretty || ''
+  const title_jpn = apiData.title?.japanese || ''
+  
+  console.log('[NH Parser] Extracted title:', title)
+  console.log('[NH Parser] Extracted title_jpn:', title_jpn)
+  
+  // Parse tags array - tags contain type information
+  const artists = []
+  const groups = []
+  const languages = []
+  const parodies = []
+  const characters = []
+  const misc = []
+  const categories = []
+  
+  if (apiData.tags && Array.isArray(apiData.tags)) {
+    console.log('[NH Parser] Processing', apiData.tags.length, 'tags')
+    
+    for (const tag of apiData.tags) {
+      const tagName = tag.name
+      const tagType = tag.type
+      
+      switch (tagType) {
+        case 'artist':
+          artists.push(tagName)
+          break
+        case 'group':
+          groups.push(tagName)
+          break
+        case 'language':
+          languages.push(tagName)
+          break
+        case 'parody':
+          parodies.push(tagName)
+          break
+        case 'character':
+          characters.push(tagName)
+          break
+        case 'category':
+          categories.push(tagName)
+          break
+        case 'tag':
+          misc.push(tagName)
+          break
+        default:
+          console.warn('[NH Parser] Unknown tag type:', tagType, 'for tag:', tagName)
+          misc.push(tagName)
+      }
+    }
+  }
+  
+  console.log('[NH Parser] Tag counts:', {
+    artists: artists.length,
+    groups: groups.length,
+    languages: languages.length,
+    parodies: parodies.length,
+    characters: characters.length,
+    categories: categories.length,
+    misc: misc.length
+  })
+  
+  // Pick category
+  const category = pickCategory(categories)
+  
+  // Get page count
+  const pages = apiData.num_pages || 0
+  
+  let tags = {} // to be filled by buildFacetDict
+  return { title, title_jpn, category, artists, groups, languages, pages, parodies, characters, misc, tags }
+}
+
 function parseNhentaiInfo(html) {
   const doc = new DOMParser().parseFromString(html, 'text/html')
   const boxes = doc.querySelectorAll('#info-block #tags .tag-container.field-name')
@@ -144,47 +219,51 @@ function parseNhentaiInfo(html) {
 
 export async function fetchNhentaiMeta(url, wcId) {
   console.log('[NH Scraper] fetchNhentaiMeta called with:', { url, wcId })
-  let html
   
+  // Extract gallery ID from URL
+  // URL format: https://nhentai.net/g/426159/ or https://nhentai.net/g/426159
+  const match = url.match(/\/g\/(\d+)/)
+  if (!match) {
+    throw new Error('Invalid nhentai URL format. Expected: https://nhentai.net/g/[id]/')
+  }
+  const galleryId = match[1]
+  console.log('[NH Scraper] Extracted gallery ID:', galleryId)
+  
+  // Use nhentai's JSON API instead of parsing HTML
+  const apiUrl = `https://nhentai.net/api/gallery/${galleryId}`
+  console.log('[NH Scraper] Fetching from API:', apiUrl)
+  
+  let jsonData
   if (wcId) {
     // Use search session when wcId is provided (from browser dialog)
     console.log('[NH Scraper] Using searchSessionFetchUrl with wcId')
-    html = await window.ipcRenderer.invoke('searchSessionFetchUrl', { url, wcId })
-    console.log('[NH Scraper] Received HTML from session, length:', html?.length)
+    const jsonText = await window.ipcRenderer.invoke('searchSessionFetchUrl', { url: apiUrl, wcId })
+    jsonData = JSON.parse(jsonText)
   } else {
     // Use get-ex-webpage when no wcId (from main window/batch operation)
-    // This avoids CORS and 403 issues
     console.log('[NH Scraper] Using get-ex-webpage (no wcId)')
-    html = await window.ipcRenderer.invoke('get-ex-webpage', {
-      url: url,
+    const jsonText = await window.ipcRenderer.invoke('get-ex-webpage', {
+      url: apiUrl,
       cookie: '' // nhentai doesn't need cookies
     })
-    console.log('[NH Scraper] Received HTML from get-ex-webpage, length:', html?.length)
     
-    if (!html) {
-      throw new Error('Empty response from get-ex-webpage')
+    if (!jsonText) {
+      throw new Error('Empty response from API')
     }
     
-    // Check if it's an error page
-    if (html.includes('404') || html.includes('Not Found')) {
-      console.error('[NH Scraper] Received 404 page')
-      throw new Error('Gallery not found (404)')
-    }
+    console.log('[NH Scraper] Received JSON from API, length:', jsonText.length)
     
-    if (html.includes('403') || html.includes('Forbidden')) {
-      console.error('[NH Scraper] Received 403 forbidden page')
-      throw new Error('Access forbidden (403)')
-    }
-    
-    // Check if page is too short (likely error)
-    if (html.length < 10000) {
-      console.warn('[NH Scraper] HTML suspiciously short, might be error page')
-      console.log('[NH Scraper] First 500 chars:', html.substring(0, 500))
+    try {
+      jsonData = JSON.parse(jsonText)
+    } catch (e) {
+      console.error('[NH Scraper] Failed to parse JSON:', e)
+      console.log('[NH Scraper] Response preview:', jsonText.substring(0, 500))
+      throw new Error('Failed to parse API response: ' + e.message)
     }
   }
   
-  console.log('[NH Scraper] Parsing HTML...')
-  const data = parseNhentaiInfo(html)
+  console.log('[NH Scraper] Parsing API data...')
+  const data = parseNhentaiApiResponse(jsonData)
   console.log('[NH Scraper] Parsed data:', {
     title: data.title?.substring(0, 50),
     category: data.category,

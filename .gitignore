@@ -31,3 +31,4 @@ devtools
 .history
 test/
 /node_mod
+/test-nhentai-parse.html
