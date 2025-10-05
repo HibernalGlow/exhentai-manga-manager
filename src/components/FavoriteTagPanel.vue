@@ -3,6 +3,7 @@
     <div
         v-if="visible"
         class="favorite-tag-panel"
+        @mouseenter="clearHideTimer"
         @mouseleave="scheduleHide"
     >
       <div class="favorite-tag-header">
@@ -117,7 +118,7 @@ export default defineComponent({
       this.hideTimer = setTimeout(() => {
         this.$emit('hide-panel')
         this.hideTimer = null
-      }, 180)
+      }, 500)
     },
     clearHideTimer() {
       if (this.hideTimer) {

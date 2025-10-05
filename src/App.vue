@@ -15,6 +15,7 @@
               :fetch-suggestions="querySearch"
               @focus="handleSearchFocus"
               @blur="handleSearchBlur"
+              @click="handleSearchFocus"
               @keyup.enter="searchBook"
               @change="handleSearchStringChange"
               @input="handleInput"
