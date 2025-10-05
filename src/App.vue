@@ -218,6 +218,7 @@
     <MoveFileDialog ref="moveDlgRef" :save-book-fn="saveBook"/>
     <BookDetailDialog
         ref="BookDetailDialogRef"
+        :search-string="searchString"
         @open-content-view="openContentView"
         @open-thumbnail-view="openThumbnailView"
         @save-collection="$refs.EditViewRef.saveCollection()"

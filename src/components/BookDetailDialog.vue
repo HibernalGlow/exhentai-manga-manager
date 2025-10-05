@@ -113,19 +113,26 @@
                 <el-popover
                   effect="dark"
                   trigger="hover"
-                  :content="resolvedTranslation[tag] ? resolvedTranslation[tag].intro : tag"
-                  :disabled="!resolvedTranslation[tag]?.intro"
+                  :content="resolvedTranslation[tag.tag || tag] ? resolvedTranslation[tag.tag || tag].intro : (tag.tag || tag)"
+                  :disabled="!resolvedTranslation[tag.tag || tag]?.intro"
                   placement="top-start"
                   :show-after="500"
                   width="300px"
-                  v-for="tag in tagArr" :key="tag"
+                  v-for="tag in getHighlightedTags(tagArr, key)" :key="tag.id || tag"
                 >
                   <template #reference>
                     <el-tag
                       type="info"
-                      class="book-tag"
-                      @click="$emit('searchFromTag', tag, key)"
-                    >{{resolvedTranslation[tag] ? resolvedTranslation[tag].name : tag }}</el-tag>
+                      :class="[
+                        'book-tag',
+                        tag.isCollected ? 'collected-tag' : '',
+                        tag.isMixedMatch ? 'mixed-match-tag' : '',
+                        tag.isSearchMatch ? (tag.isCollected ? 'collected-search-match' : 'uncollected-search-match') : ''
+                      ]"
+                      :color="tag.color"
+                      effect="dark"
+                      @click="$emit('searchFromTag', tag.tag || tag, key)"
+                    >{{resolvedTranslation[tag.tag || tag] ? resolvedTranslation[tag.tag || tag].name : (tag.tag || tag) }}</el-tag>
                   </template>
                 </el-popover>
               </el-descriptions-item>
@@ -146,7 +153,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessageBox } from 'element-plus'
 import { CaretRight20Regular, CaretLeft20Regular } from '@vicons/fluent'
@@ -158,14 +165,17 @@ import ContextMenu from '@imengyu/vue3-context-menu'
 import { storeToRefs } from 'pinia'
 import { useAppStore } from '../pinia.js'
 import  { insertLocalReadRecord } from '../utils.js'
+import { filterAndHighlightTags } from '../utils/tagFilter.js'
 
 const dialogVisibleBookDetail = ref(false)
+
+const enableMixedGenderSearch = inject('enableMixedGenderSearch', () => false)
 
 
 
 const appStore = useAppStore()
 const {
-  setting, bookDetail, resolvedTranslation,
+  setting, bookDetail, resolvedTranslation, cat2letter,
   bookList, displayBookList, collectionList, openCollectionBookList,
   statusOption, categoryOption,
   pathSep,
@@ -193,6 +203,52 @@ const emit = defineEmits([
   'searchFromTag',
   'jumpMangeDetail',
 ])
+
+const props = defineProps({
+  searchString: {
+    type: String,
+    default: ''
+  }
+})
+
+// 获取高亮标签的函数
+const getHighlightedTags = (tagArr, category) => {
+  if (!tagArr || tagArr.length === 0) return []
+  
+  // 如果setting.showCollectTag为false，直接返回原始标签数组
+  if (!setting.value.showCollectTag) {
+    return tagArr
+  }
+  
+  // 将标签数组转换为tagObject格式，便于filterAndHighlightTags处理
+  const tagObject = { [category]: tagArr }
+  
+  // 使用filterAndHighlightTags获取高亮信息
+  const highlightedTags = filterAndHighlightTags({
+    tagObject,
+    collectTags: setting.value.collectTag || [],
+    searchString: props.searchString,
+    enableMixedGender: enableMixedGenderSearch(),
+    cat2letter: cat2letter.value || {},
+    showCollectTag: true
+  })
+  
+  // 创建一个Map来存储高亮信息
+  const highlightMap = new Map()
+  highlightedTags.forEach(tag => {
+    highlightMap.set(tag.tag, tag)
+  })
+  
+  // 合并原始标签和高亮信息
+  return tagArr.map(tag => {
+    const highlightInfo = highlightMap.get(tag)
+    if (highlightInfo) {
+      return highlightInfo
+    }
+    // 如果没有高亮信息，返回原始标签字符串
+    return tag
+  })
+}
 
 
 const openBookDetail = (book) => {
@@ -521,6 +577,27 @@ defineExpose({
 .book-tag
   margin: 4px 6px
   cursor: pointer
+  // 收藏标签样式
+  &.collected-tag
+    border: 1px solid currentColor !important
+    opacity: 0.85
+    font-weight: 600
+  // 混合性别匹配标签样式
+  &.mixed-match-tag
+    border: 2px dashed currentColor !important
+    opacity: 0.9
+    box-shadow: 0 0 0 1px currentColor
+  // 搜索匹配的收藏标签
+  &.collected-search-match
+    border: 3px solid #409EFF !important
+    opacity: 0.95
+    box-shadow: 0 0 6px rgba(64, 158, 255, 0.4)
+  // 搜索匹配的非收藏标签
+  &.uncollected-search-match
+    border: 3px solid #A855F7 !important
+    opacity: 0.95
+    box-shadow: 0 0 6px rgba(168, 85, 247, 0.4)
+
 .tag-edit-buttons
   margin-top: 4px
 .book-comment-frame
