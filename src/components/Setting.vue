@@ -341,6 +341,18 @@
             </el-form>
           </el-col>
           <el-col :span="24" class="setting-line collect-tag">
+            <el-input
+                v-model="collectTagSearch"
+                placeholder="搜索收藏标签... (支持英文和中文翻译)"
+                clearable
+                style="width: 100%"
+            >
+              <template #prefix>
+                <el-icon><Search /></el-icon>
+              </template>
+            </el-input>
+          </el-col>
+          <el-col :span="24" class="setting-line collect-tag">
             <template v-for="(category, categoryIndex) in groupedCollectTags" :key="category.name">
               <div class="category-group" v-if="category.tags.length > 0">
                 <div class="category-header">
@@ -840,7 +852,7 @@
 import { ref, onMounted, h, computed, watch, watchEffect, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete } from '@element-plus/icons-vue'
+import { Delete, Search } from '@element-plus/icons-vue'
 import draggable from 'vuedraggable'
 import { MdRefresh } from '@vicons/ionicons4'
 
@@ -868,6 +880,9 @@ const emit = defineEmits([
   'loadBookList',
   'loadCollectionList',
 ])
+
+// 收藏标签搜索
+const collectTagSearch = ref('')
 
 // concurrent scan options; default is min(concurrencyOptionCeiling, 4)
 const concurrencyOptionCeiling = Math.max(1, Number(navigator.hardwareConcurrency) || 4)
@@ -1565,7 +1580,31 @@ const groupedCollectTags = computed(() => {
   const groups = {}
   if (!setting.value.collectTag) return []
 
-  setting.value.collectTag.forEach(tag => {
+  // 过滤标签
+  let filteredTags = setting.value.collectTag
+
+  if (collectTagSearch.value.trim()) {
+    const searchTerm = collectTagSearch.value.trim().toLowerCase()
+    filteredTags = setting.value.collectTag.filter(tag => {
+      // 搜索英文标签名
+      const englishMatch = tag.tag.toLowerCase().includes(searchTerm)
+      
+      // 搜索中文翻译
+      const chineseMatch = setting.value.showTranslation && 
+        resolvedTranslation.value[tag.tag]?.name?.toLowerCase().includes(searchTerm)
+      
+      // 搜索类别
+      const categoryMatch = tag.cat.toLowerCase().includes(searchTerm)
+      
+      // 搜索类别中文翻译
+      const categoryChineseMatch = setting.value.showTranslation && 
+        (tag.cat === 'group' ? '团队' : resolvedTranslation.value[tag.cat]?.name)?.toLowerCase().includes(searchTerm)
+      
+      return englishMatch || chineseMatch || categoryMatch || categoryChineseMatch
+    })
+  }
+
+  filteredTags.forEach(tag => {
     const category = setting.value.showTranslation
       ? (tag.cat === 'group' ? '团队' : resolvedTranslation.value[tag.cat]?.name || tag.cat)
       : tag.cat
