@@ -27,7 +27,7 @@
               <span class="autocomplete-value">{{item.value}}</span>
             </template>
           </el-autocomplete>
-          <FavoriteTagPanel :favorite-tags="favoriteTagsForSearch" :visible="favoriteTagPanelVisible" :enable-mixed="enableMixedGenderSearch" @append-tag="appendCollectTag" @hide-panel="handlePanelHide" @update:enable-mixed="enableMixedGenderSearch = $event" />
+          <FavoriteTagPanel :favorite-tags="favoriteTagsForSearch" :visible="favoriteTagPanelVisible" :enable-mixed="enableMixedGenderSearch" :panel-height="favoriteTagPanelHeight" @append-tag="appendCollectTag" @hide-panel="handlePanelHide" @update:enable-mixed="enableMixedGenderSearch = $event" @update:panel-height="updatePanelHeight" />
         </div>
       </el-col>
       <el-col :span="1">
@@ -303,6 +303,7 @@ export default defineComponent({
       buttonGetMetadatasLoading: false,
       favoriteTagPanelVisible: false,
       favoriteTagHideTimer: null,
+      favoriteTagPanelHeight: 240,
       enableMixedGenderSearch: false,
       // collection
       drawerVisibleCollection: false,
@@ -381,6 +382,8 @@ export default defineComponent({
     ipcRenderer.invoke('load-setting')
         .then(async (res) => {
           this.setting = res
+          // 加载收藏标签面板高度
+          this.favoriteTagPanelHeight = this.setting.favoriteTagPanelHeight || 240
           if (this.setting.loadOnStart) {
             // skip the cache and rescan all libraries
             // await this.loadBookList()
@@ -488,6 +491,11 @@ export default defineComponent({
     },
     handlePanelHide() {
       this.favoriteTagPanelVisible = false
+    },
+    updatePanelHeight(height) {
+      this.favoriteTagPanelHeight = height
+      // 保存到设置
+      this.saveSetting()
     },
 
     // base function

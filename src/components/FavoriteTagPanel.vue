@@ -34,6 +34,7 @@
       <div class="favorite-tag-hint">
         {{ $t('m.collectTagQuickPickHint') }}
       </div>
+      <div class="resize-handle" @mousedown="startResize"></div>
     </div>
   </transition>
 </template>
@@ -55,6 +56,10 @@ export default defineComponent({
     enableMixed: {
       type: Boolean,
       default: false
+    },
+    panelHeight: {
+      type: Number,
+      default: 240
     }
   },
   computed: {
@@ -65,6 +70,13 @@ export default defineComponent({
       set(val) {
         this.$emit('update:enableMixed', val)
       }
+    }
+  },
+  data() {
+    return {
+      isResizing: false,
+      startY: 0,
+      startHeight: 0
     }
   },
   methods: {
@@ -84,6 +96,29 @@ export default defineComponent({
         clearTimeout(this.hideTimer)
         this.hideTimer = null
       }
+    },
+    startResize(event) {
+      this.isResizing = true
+      this.startY = event.clientY
+      this.startHeight = this.panelHeight
+      
+      document.addEventListener('mousemove', this.handleResize)
+      document.addEventListener('mouseup', this.stopResize)
+      
+      event.preventDefault()
+    },
+    handleResize(event) {
+      if (!this.isResizing) return
+      
+      const deltaY = event.clientY - this.startY
+      const newHeight = Math.max(120, Math.min(600, this.startHeight + deltaY))
+      
+      this.$emit('update:panelHeight', newHeight)
+    },
+    stopResize() {
+      this.isResizing = false
+      document.removeEventListener('mousemove', this.handleResize)
+      document.removeEventListener('mouseup', this.stopResize)
     }
   },
   beforeUnmount() {
@@ -105,8 +140,11 @@ export default defineComponent({
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.15)
   padding: 12px 14px 10px
   text-align: left
-  max-height: 240px
+  height: v-bind('panelHeight + "px"')
+  max-height: 600px
+  min-height: 120px
   overflow-y: auto
+  resize: none
 
 .favorite-tag-header
   display: flex
@@ -163,6 +201,19 @@ export default defineComponent({
   margin-top: 10px
   font-size: 12px
   color: var(--el-text-color-secondary)
+
+.resize-handle
+  position: absolute
+  bottom: 0
+  left: 0
+  right: 0
+  height: 6px
+  cursor: ns-resize
+  background: linear-gradient(to bottom, transparent 0%, var(--el-border-color-light) 50%, transparent 100%)
+  border-radius: 0 0 8px 8px
+
+.resize-handle:hover
+  background: linear-gradient(to bottom, transparent 0%, var(--el-color-primary-light-5) 50%, transparent 100%)
 
 .fade-in-enter-from,
 .fade-in-leave-to
