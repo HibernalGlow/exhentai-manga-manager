@@ -28,7 +28,7 @@
               <span class="autocomplete-value">{{item.value}}</span>
             </template>
           </el-autocomplete>
-          <SearchAgilePanel ref="searchAgilePanelRef" :favorite-tags="favoriteTagsForSearch" :visible="favoriteTagPanelVisible" :enable-mixed="enableMixedGenderSearch" :panel-height="favoriteTagPanelHeight" @append-tag="appendCollectTag" @hide-panel="handlePanelHide" @update:enable-mixed="enableMixedGenderSearch = $event" @update:panel-height="updatePanelHeight" @apply-search-history="applySearchHistory" />
+          <SearchAgilePanel ref="searchAgilePanelRef" :favorite-tags="favoriteTagsForSearch" :visible="favoriteTagPanelVisible" :enable-mixed="enableMixedGenderSearch" :panel-height="favoriteTagPanelHeight" @append-tag="appendCollectTag" @hide-panel="handlePanelHide" @show-panel="handlePanelShow" @update:enable-mixed="enableMixedGenderSearch = $event" @update:panel-height="updatePanelHeight" @apply-search-history="applySearchHistory" />
         </div>
       </el-col>
       <el-col :span="1">
@@ -499,6 +499,11 @@ export default defineComponent({
 
     handleSearchFocus() {
       // 总是显示面板（即使没有收藏标签也可以显示搜索历史）
+      this.clearFavoriteHideTimer()
+      this.favoriteTagPanelVisible = true
+    },
+    handlePanelShow() {
+      // Tab切换时重新显示面板，防止输入框blur导致面板消失
       this.clearFavoriteHideTimer()
       this.favoriteTagPanelVisible = true
     },

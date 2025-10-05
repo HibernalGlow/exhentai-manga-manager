@@ -247,6 +247,10 @@ export default defineComponent({
         event.stopPropagation()
         event.preventDefault()
       }
+      
+      // 切换tab时重新显示面板，防止输入框blur导致面板消失
+      this.$emit('show-panel')
+      
       this.activeTab = tabKey
     },
     addClickOutsideListener() {
