@@ -28,7 +28,7 @@
               <span class="autocomplete-value">{{item.value}}</span>
             </template>
           </el-autocomplete>
-          <FavoriteTagPanel :favorite-tags="favoriteTagsForSearch" :visible="favoriteTagPanelVisible" :enable-mixed="enableMixedGenderSearch" :panel-height="favoriteTagPanelHeight" @append-tag="appendCollectTag" @hide-panel="handlePanelHide" @update:enable-mixed="enableMixedGenderSearch = $event" @update:panel-height="updatePanelHeight" />
+          <SearchAgilePanel ref="searchAgilePanelRef" :favorite-tags="favoriteTagsForSearch" :visible="favoriteTagPanelVisible" :enable-mixed="enableMixedGenderSearch" :panel-height="favoriteTagPanelHeight" @append-tag="appendCollectTag" @hide-panel="handlePanelHide" @update:enable-mixed="enableMixedGenderSearch = $event" @update:panel-height="updatePanelHeight" @apply-search-history="applySearchHistory" />
         </div>
       </el-col>
       <el-col :span="1">
@@ -262,6 +262,7 @@ import EditView from './components/EditView.vue'
 import RandomTags from './components/RandomTags.vue'
 import MoveFileDialog from './components/MoveFileDialog.vue'
 import FavoriteTagPanel from './components/FavoriteTagPanel.vue'
+import SearchAgilePanel from './components/SearchAgilePanel.vue'
 
 import { mapWritableState, mapActions } from 'pinia'
 import { useAppStore, toPlain } from './pinia.js'
@@ -279,7 +280,8 @@ export default defineComponent({
     EditView,
     RandomTags,
     MoveFileDialog,
-    FavoriteTagPanel
+    FavoriteTagPanel,
+    SearchAgilePanel
   },
   setup() {
     return {
@@ -496,10 +498,9 @@ export default defineComponent({
     ]),
 
     handleSearchFocus() {
-      if (this.favoriteTagsForSearch.length) {
-        this.clearFavoriteHideTimer()
-        this.favoriteTagPanelVisible = true
-      }
+      // 总是显示面板（即使没有收藏标签也可以显示搜索历史）
+      this.clearFavoriteHideTimer()
+      this.favoriteTagPanelVisible = true
     },
     handleSearchBlur() {
       this.scheduleFavoriteHide()
@@ -538,6 +539,18 @@ export default defineComponent({
       // 保存到设置
       this.setting.favoriteTagPanelHeight = height
       this.$refs.SettingRef.saveSetting()
+    },
+
+    // 搜索历史相关方法
+    addSearchHistory(query) {
+      // 这里可以直接调用SearchAgilePanel组件的方法
+      if (this.$refs.searchAgilePanelRef) {
+        this.$refs.searchAgilePanelRef.addSearchHistory(query)
+      }
+    },
+    applySearchHistory(query) {
+      this.searchString = query
+      this.searchBook()
     },
 
     // 计算书籍匹配收藏标签的数量（带缓存）
@@ -1270,6 +1283,10 @@ export default defineComponent({
       })
       if (!this.sortValue || ['mark', 'hidden', 'collection'].includes(this.sortValue)) this.sortValue = 'addDescend'
       this.handleSortChange(this.sortValue, this.displayBookList)
+      // 添加搜索历史记录
+      if (this.searchString && this.searchString.trim()) {
+        this.addSearchHistory(this.searchString.trim())
+      }
       if (this.currentUI() === 'edit-group-tag') {
         this.$refs.EditViewRef.selectBookList = []
         this.displayBookList.forEach(book => book.selected = false)

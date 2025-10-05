@@ -28,6 +28,7 @@
         @click="$emit('searchFromTag', tag.tag, tag.cat)"
         :class="[
           'book-collect-tag',
+          tag.isCollected ? 'collected-tag' : '',
           tag.isMixedMatch ? 'mixed-match-tag' : '',
           tag.isSearchMatch ? (tag.isCollected ? 'collected-search-match' : 'uncollected-search-match') : ''
         ]"
@@ -172,6 +173,10 @@ const categoryColors = {
       border-width: 0
       padding-left: 4px
       padding-right: 4px
+    .collected-tag
+      border: 1px solid currentColor !important
+      opacity: 0.85
+      font-weight: 600
     .mixed-match-tag
       border: 2px dashed currentColor !important
       opacity: 0.9
