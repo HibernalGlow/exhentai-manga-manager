@@ -355,7 +355,9 @@ export default defineComponent({
     favoriteTagsForSearch() {
       const collectTag = Array.isArray(this.setting?.collectTag) ? this.setting.collectTag : []
       const translations = this.resolvedTranslation || {}
-      return collectTag.map(tag => {
+
+      // 转换标签数据
+      const processedTags = collectTag.map(tag => {
         const translatedCat = this.setting.showTranslation
           ? (translations[tag.cat]?.name || tag.cat)
           : tag.cat
@@ -365,9 +367,34 @@ export default defineComponent({
         return {
           ...tag,
           value: `${tag.letter}:"${tag.tag}"$`,
-          display: `${translatedCat}:${translatedTag}`
+          display: `${translatedCat}:${translatedTag}`,
+          translatedCat,
+          translatedTag
         }
       })
+
+      // 按照类别分组和排序
+      const groupedTags = {}
+      processedTags.forEach(tag => {
+        if (!groupedTags[tag.translatedCat]) {
+          groupedTags[tag.translatedCat] = []
+        }
+        groupedTags[tag.translatedCat].push(tag)
+      })
+
+      // 对每个类别内的标签按字母顺序排序
+      Object.keys(groupedTags).forEach(cat => {
+        groupedTags[cat].sort((a, b) => a.translatedTag.localeCompare(b.translatedTag))
+      })
+
+      // 对类别按字母顺序排序，然后合并所有标签
+      const sortedCategories = Object.keys(groupedTags).sort()
+      const sortedTags = []
+      sortedCategories.forEach(cat => {
+        sortedTags.push(...groupedTags[cat])
+      })
+
+      return sortedTags
     }
   },
   mounted() {

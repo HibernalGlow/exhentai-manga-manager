@@ -14,22 +14,32 @@
         </div>
       </div>
       <div class="favorite-tag-chips">
-        <el-space wrap size="small">
-          <el-tag
-              v-for="tag in favoriteTags"
-              :key="`${tag.cat}-${tag.tag}`"
-              class="favorite-tag-chip"
-              :style="{ '--tag-color': tag.color || '#409EFF' }"
-              effect="plain"
-              size="small"
-              @click="appendTag(tag)"
-              @contextmenu.prevent="appendTag(tag, '-')"
-          >
-            <span class="favorite-tag-chip-dot" :style="{ backgroundColor: tag.color || '#409EFF' }"></span>
-            <span class="favorite-tag-chip-label">{{ tag.display }}</span>
-            <span class="favorite-tag-chip-value">{{ tag.value }}</span>
-          </el-tag>
-        </el-space>
+        <template v-for="(category, categoryIndex) in groupedTags" :key="category.name">
+          <div class="category-group" v-if="category.tags.length > 0">
+            <div class="category-header">
+              <span class="category-name">{{ category.name }}</span>
+              <span class="category-count">{{ category.tags.length }}</span>
+            </div>
+            <div class="category-tags">
+              <el-space wrap size="small">
+                <el-tag
+                    v-for="tag in category.tags"
+                    :key="`${tag.cat}-${tag.tag}`"
+                    class="favorite-tag-chip"
+                    :style="{ '--tag-color': tag.color || '#409EFF' }"
+                    effect="plain"
+                    size="small"
+                    @click="appendTag(tag)"
+                    @contextmenu.prevent="appendTag(tag, '-')"
+                >
+                  <span class="favorite-tag-chip-dot" :style="{ backgroundColor: tag.color || '#409EFF' }"></span>
+                  <span class="favorite-tag-chip-label">{{ tag.display.split(':')[1] }}</span>
+                  <span class="favorite-tag-chip-value">{{ tag.value }}</span>
+                </el-tag>
+              </el-space>
+            </div>
+          </div>
+        </template>
       </div>
       <div class="favorite-tag-hint">
         {{ $t('m.collectTagQuickPickHint') }}
@@ -70,6 +80,22 @@ export default defineComponent({
       set(val) {
         this.$emit('update:enableMixed', val)
       }
+    },
+    groupedTags() {
+      const groups = {}
+      this.favoriteTags.forEach(tag => {
+        const category = tag.display.split(':')[0] // 获取类别部分
+        if (!groups[category]) {
+          groups[category] = {
+            name: category,
+            tags: []
+          }
+        }
+        groups[category].tags.push(tag)
+      })
+
+      // 按照类别名称排序
+      return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name))
     }
   },
   data() {
@@ -193,9 +219,35 @@ export default defineComponent({
   white-space: nowrap
   text-overflow: ellipsis
 
-.favorite-tag-chip-value
+.category-group
+  margin-bottom: 12px
+
+.category-group:last-child
+  margin-bottom: 0
+
+.category-header
+  display: flex
+  align-items: center
+  justify-content: space-between
+  margin-bottom: 6px
+  padding: 4px 8px
+  background: var(--el-fill-color-light)
+  border-radius: 4px
+
+.category-name
+  font-weight: 600
+  font-size: 12px
+  color: var(--el-text-color-primary)
+
+.category-count
   font-size: 11px
   color: var(--el-text-color-secondary)
+  background: var(--el-border-color-light)
+  padding: 2px 6px
+  border-radius: 10px
+
+.category-tags
+  padding-left: 4px
 
 .favorite-tag-hint
   margin-top: 10px
