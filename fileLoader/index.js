@@ -124,7 +124,8 @@ const geneCoverFromBuffer = async (filepath, type, opts={}) => {
       coverBuffer,
       pageCount,
       bundleSize,
-      mtime
+      mtime,
+      coverFile
     } = await solveBookTypeFolderInMem(filepath))
     useBuffer = true
   } else {
@@ -134,7 +135,8 @@ const geneCoverFromBuffer = async (filepath, type, opts={}) => {
         coverBuffer,
         pageCount,
         bundleSize,
-        mtime
+        mtime,
+        coverFile
       } = await solveBookTypeArchiveInMem(filepath, opts))
       useBuffer = true
     } catch (e1) {
@@ -164,7 +166,8 @@ const geneCoverFromBuffer = async (filepath, type, opts={}) => {
   if (useBuffer) {
     hash = createHash('sha1').update(targetBuffer).digest('hex')
     coverHash = createHash('sha256').update(coverBuffer).digest('hex')
-    coverSharp = await geneCoverSharp(coverBuffer);
+    const coverExt = coverFile ? path.extname(coverFile) : ''
+    coverSharp = await geneCoverSharp(coverBuffer, coverExt);
     coverPath = makeShardedPath(COVER_PATH, coverHash + '.webp')
     // the simple version may cause pngload_buffer or vipsjpeg error
 

@@ -137,6 +137,8 @@ async function solveBookTypeFolderInMem(folderpath) {
       pageCount,
       bundleSize,
       mtime: folderStat?.mtime || null,
+      coverFile: null,
+      targetFile: null,
     };
   }
 
@@ -154,6 +156,8 @@ async function solveBookTypeFolderInMem(folderpath) {
     pageCount,
     bundleSize,
     mtime: folderStat?.mtime || null,
+    coverFile: path.basename(coverFile),
+    targetFile: path.basename(targetFile),
   };
 }
 

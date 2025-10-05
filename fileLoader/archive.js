@@ -281,7 +281,7 @@ async function getBufferFrom7z(filepath, opts = {}) {
     ? coverBuffer
     : await extractFileToBuffer7z(filepath, targetFile, opts)
 
-  return { targetBuffer, coverBuffer, pageCount }
+  return { targetBuffer, coverBuffer, pageCount, coverFile, targetFile }
 }
 
 /** =========================
@@ -293,8 +293,8 @@ async function solveBookTypeArchiveInMem(filepath, opts = {}) {
   const bundleSize = fileStat.size
   const mtime = fileStat?.mtime
 
-  const { targetBuffer, coverBuffer, pageCount } = await getBufferFrom7z(filepath, opts)
-  return { targetBuffer,  coverBuffer,  pageCount, bundleSize,  mtime, }
+  const { targetBuffer, coverBuffer, pageCount, coverFile, targetFile } = await getBufferFrom7z(filepath, opts)
+  return { targetBuffer, coverBuffer, pageCount, bundleSize, mtime, coverFile, targetFile }
 }
 
 /** =========================
@@ -316,68 +316,14 @@ function openSharp(buf) {
   try { return sharp(buf, { failOn: 'none', sequentialRead: true, limitInputPixels: false }) } catch { return sharp(buf, { failOnError: false, sequentialRead: true, limitInputPixels: false }) }
 }
 
-// Decode JXL using djxl CLI tool
-async function decodeJxlWithDjxl(jxlBuffer) {
-  return new Promise((resolve, reject) => {
-    const { spawn } = require('child_process')
-    const tempInput = path.join(require('../modules/init_folder_setting.js').TEMP_PATH, `temp_${nanoid(8)}.jxl`)
-    const tempOutput = path.join(require('../modules/init_folder_setting.js').TEMP_PATH, `temp_${nanoid(8)}.png`)
+async function geneCoverSharp(coverBuffer, fileExtension = '') {
+  // Determine format based on file extension instead of buffer detection
+  const ext = fileExtension.toLowerCase()
 
-    // Write JXL buffer to temp file
-    fs.writeFileSync(tempInput, jxlBuffer)
-
-    // Spawn djxl process
-    const djxl = spawn(djxlPath, [tempInput, tempOutput], {
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe']
-    })
-
-    let stderr = ''
-    djxl.stderr.on('data', (data) => {
-      stderr += data.toString()
-    })
-
-    djxl.on('close', (code) => {
-      try {
-        // Clean up temp input file
-        if (fs.existsSync(tempInput)) {
-          fs.unlinkSync(tempInput)
-        }
-
-        if (code === 0 && fs.existsSync(tempOutput)) {
-          // Read decoded PNG
-          const pngBuffer = fs.readFileSync(tempOutput)
-          // Clean up temp output file
-          fs.unlinkSync(tempOutput)
-          resolve(pngBuffer)
-        } else {
-          // Clean up temp output file if it exists
-          if (fs.existsSync(tempOutput)) {
-            fs.unlinkSync(tempOutput)
-          }
-          reject(new Error(`djxl failed with code ${code}: ${stderr}`))
-        }
-      } catch (err) {
-        reject(err)
-      }
-    })
-
-    djxl.on('error', (err) => {
-      // Clean up temp files
-      try {
-        if (fs.existsSync(tempInput)) fs.unlinkSync(tempInput)
-        if (fs.existsSync(tempOutput)) fs.unlinkSync(tempOutput)
-      } catch {}
-      reject(err)
-    })
-  })
-}
-
-async function geneCoverSharp(coverBuffer) {
-  // Check if it's JXL format and decode it first
-  if (isJxl(coverBuffer)) {
+  // Check if it's JXL format based on extension
+  if (ext === '.jxl') {
     try {
-      console.log('Detected JXL format, decoding with djxl CLI')
+      console.log('Detected JXL format by extension, decoding with djxl CLI')
       // Check if djxl.exe exists
       if (!fs.existsSync(djxlPath)) {
         console.log('djxl.exe not found, using placeholder for JXL')
@@ -398,8 +344,13 @@ async function geneCoverSharp(coverBuffer) {
     }
   }
 
+  // For other formats, use Sharp directly with better error handling
   const build = (buf) =>
-    openSharp(buf).rotate().resize(500, 707, {
+    sharp(buf, {
+      failOn: 'none',  // Don't fail on warnings
+      limitInputPixels: false,
+      sequentialRead: true
+    }).rotate().resize(500, 707, {
       fit: 'contain',
       background: '#303133',
       withoutEnlargement: true,
@@ -409,14 +360,22 @@ async function geneCoverSharp(coverBuffer) {
   try {
     return build(coverBuffer)
   } catch (e1) {
-    // Try JPEG EOI auto-patch (fixes "VipsJpeg: Premature end of input file")
-    if (isJpeg(coverBuffer) && !hasEOI(coverBuffer)) {
-      const patched = Buffer.concat([coverBuffer, JPEG_EOI])
-      try {
-        return build(patched)
-      } catch (e2) { /* fallthrough to placeholder */ }
+    console.log(`Sharp processing failed for ${fileExtension}:`, e1.message)
+    // Try JPEG EOI auto-patch for JPEG files (fixes "VipsJpeg: Premature end of input file")
+    if (ext === '.jpg' || ext === '.jpeg') {
+      if (isJpeg(coverBuffer) && !hasEOI(coverBuffer)) {
+        const patched = Buffer.concat([coverBuffer, JPEG_EOI])
+        try {
+          return build(patched)
+        } catch (e2) {
+          console.log('JPEG EOI patch failed:', e2.message)
+        }
+      }
     }
-    // Last resort: simple placeholder (WEBP)
+
+    console.log(`Unsupported or corrupted ${fileExtension} file, using placeholder`)
+
+    // Last resort: simple placeholder
     return sharp({ create: { width: 500, height: 707, channels: 3, background: '#303133' } })
   }
 }
