@@ -1280,7 +1280,7 @@ export default defineComponent({
                   } else {
                     return false
                   }
-                } else if (str.match(/^([a-z]):"([^"]+)"\$/)) {
+                } else if (str.match(/^([a-z]+):"([^"]+)"\$/)) {
                   const cat = RegExp.$1
                   const tag = RegExp.$2
                   const cats = enableMixed && ['f','m','x'].includes(cat) ? ['f','m','x'] : [cat]
@@ -1288,7 +1288,7 @@ export default defineComponent({
                     const letter = cat2letter?.[c] || c
                     return bookString.includes(`${letter}:${tag}`) || bookString.includes(`${c}:${tag}`)
                   })
-                } else if (str.match(/^-([a-z]):"([^"]+)"\$/)) {
+                } else if (str.match(/^-([a-z]+):"([^"]+)"\$/)) {
                   const cat = RegExp.$1
                   const tag = RegExp.$2
                   const cats = enableMixed && ['f','m','x'].includes(cat) ? ['f','m','x'] : [cat]
@@ -1307,7 +1307,7 @@ export default defineComponent({
             })
           } else {
             const str = condition.slice(1)
-            if (str.match(/^([a-z]):"([^"]+)"\$/)) {
+            if (str.match(/^([a-z]+):"([^"]+)"\$/)) {
               const cat = RegExp.$1
               const tag = RegExp.$2
               const cats = enableMixed && ['f','m','x'].includes(cat) ? ['f','m','x'] : [cat]
