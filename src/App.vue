@@ -311,6 +311,8 @@ export default defineComponent({
       // collection
       drawerVisibleCollection: false,
       openCollectionTitle: undefined,
+      // 收藏标签匹配数量缓存
+      collectTagMatchCache: new Map(),
     }
   },
   computed: {
@@ -470,6 +472,15 @@ export default defineComponent({
   watch: {
     bookList() {
       this.handleSortChange(this.sortValue, this.bookList)
+      // 书籍列表改变时重新计算收藏标签匹配缓存
+      this.recalculateCollectTagMatchCache()
+    },
+    'setting.collectTag': {
+      handler() {
+        // 收藏标签改变时重新计算缓存
+        this.recalculateCollectTagMatchCache()
+      },
+      deep: true
     },
   },
   methods: {
@@ -529,8 +540,25 @@ export default defineComponent({
       this.$refs.SettingRef.saveSetting()
     },
 
-    // 计算书籍匹配收藏标签的数量
+    // 计算书籍匹配收藏标签的数量（带缓存）
     getCollectTagMatchCount(book) {
+      if (!book || !book.id) {
+        return 0
+      }
+
+      // 检查缓存中是否已有计算结果
+      if (this.collectTagMatchCache.has(book.id)) {
+        return this.collectTagMatchCache.get(book.id)
+      }
+
+      // 如果没有缓存，计算并缓存结果
+      const matchCount = this.calculateCollectTagMatchCount(book)
+      this.collectTagMatchCache.set(book.id, matchCount)
+      return matchCount
+    },
+
+    // 实际的计算逻辑
+    calculateCollectTagMatchCount(book) {
       if (!book || !book.tags || !Array.isArray(this.setting.collectTag)) {
         return 0
       }
@@ -558,6 +586,26 @@ export default defineComponent({
       })
 
       return matchCount
+    },
+
+    // 重新计算收藏标签匹配缓存
+    recalculateCollectTagMatchCache() {
+      if (!Array.isArray(this.bookList)) {
+        return
+      }
+
+      // 清空缓存
+      this.collectTagMatchCache.clear()
+
+      // 预计算所有书籍的匹配数量
+      this.bookList.forEach(book => {
+        if (book && book.id) {
+          const matchCount = this.calculateCollectTagMatchCount(book)
+          this.collectTagMatchCache.set(book.id, matchCount)
+        }
+      })
+
+      console.log(`预计算了 ${this.collectTagMatchCache.size} 本书的收藏标签匹配数量`)
     },
 
     // base function
@@ -851,6 +899,8 @@ export default defineComponent({
         this.$refs.EditViewRef.selectBookList = []
         // this.loadCollectionList()
         this.handleSortChange(this.sortValue, this.bookList)
+        // 预计算收藏标签匹配缓存
+        this.recalculateCollectTagMatchCache()
         console.log('cached loaded')
       } else {
         throw new Error('Database changed, skip cache')
@@ -867,6 +917,8 @@ export default defineComponent({
         // this function is called after scan, force-gene-book-list, patch-local-metadata
         this.loadCollectionList()
         this.$refs.EditViewRef.selectBookList = []
+        // 预计算收藏标签匹配缓存
+        this.recalculateCollectTagMatchCache()
         this.buttonLoadBookListLoading = false
       } catch (error) {
         this.buttonLoadBookListLoading = false
