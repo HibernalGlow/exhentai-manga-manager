@@ -12,6 +12,7 @@
     "hiddenOnly": "Hidden Only",
     "noTagOnly": "No Tag Only",
     "noCategoryOnly": "No Category Only",
+    "duplicateGalleryOnly": "Duplicate Gallery",
     "fillNoCategoryMetadata": "Fill No-Category/No-Tags Metadata",
     "recentReadOnly": "Recent Read",
     "addTimeAscend": "AddTime Ascend",

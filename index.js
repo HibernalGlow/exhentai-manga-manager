@@ -1635,8 +1635,34 @@ ipcMain.handle('post-data-ex', async (event, { url, data }) => {
   }
 })
 
-ipcMain.handle('save-book', async (event, book) => {
-  return await saveBookToDatabase(book)
+ipcMain.handle('execute-sql-query', async (event, { query, replacements = [] }) => {
+  try {
+    const startTime = performance.now()
+
+    // 确定使用哪个数据库
+    let sequelize
+    if (query.includes('Metadata') || query.includes('meta.Metadata')) {
+      sequelize = Metadata.sequelize
+    } else {
+      sequelize = Manga.sequelize
+    }
+
+    // 执行查询
+    const results = await sequelize.query(query, {
+      replacements: replacements,
+      type: QueryTypes.SELECT
+    })
+
+    const endTime = performance.now()
+    const duration = endTime - startTime
+
+    console.log(`✅ SQL查询完成，耗时: ${duration.toFixed(2)}ms，结果数量: ${Array.isArray(results) ? results.length : 'N/A'}`)
+
+    return results
+  } catch (error) {
+    console.error(`❌ SQL查询失败:`, error)
+    throw error
+  }
 })
 
 // Apply exclude file rules to existing database
