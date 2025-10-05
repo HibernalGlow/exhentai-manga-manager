@@ -37,12 +37,13 @@ export async function filterBooksBySQL(filterType, bookList, filterBooksByMemory
         sqlQuery = 'SELECT * FROM Metadata WHERE status = "tagged" AND (category IS NULL OR category = "" OR category = "Misc")'
         break
       case 'duplicateGallery':
-        // 筛选重复的URL
+        // 筛选重复的exhentai和e-hentai URL
         sqlQuery = `
           SELECT * FROM Metadata
           WHERE url IN (
             SELECT url FROM Metadata
             WHERE url IS NOT NULL AND url != ""
+            AND (url LIKE '%exhentai.org%' OR url LIKE '%e-hentai.org%')
             GROUP BY url HAVING COUNT(*) > 1
           )
           ORDER BY url, hash
@@ -117,20 +118,26 @@ export async function filterBooksBySQL(filterType, bookList, filterBooksByMemory
  * @param {Array} bookList - 书籍列表
  * @returns {Array} 排序后的书籍列表
  */
-export function sortByUrlGroup(bookList) {
+export function sortByUrlGroup(bookList, ascending = true) {
   const startTime = performance.now()
-  console.log(`🔄 开始URL分组排序`)
+  console.log(`🔄 开始URL分组排序 (${ascending ? '升序' : '降序'})`)
 
-  // 将书籍按URL分组
+  // 将书籍按URL分组，只处理exhentai和e-hentai的URL
   const urlGroups = new Map()
   const noUrlBooks = []
+  const excludedUrlBooks = []
 
   bookList.forEach(book => {
     if (book.url && book.url !== '') {
-      if (!urlGroups.has(book.url)) {
-        urlGroups.set(book.url, [])
+      // 只处理exhentai和e-hentai的URL
+      if (isExhentaiUrl(book.url)) {
+        if (!urlGroups.has(book.url)) {
+          urlGroups.set(book.url, [])
+        }
+        urlGroups.get(book.url).push(book)
+      } else {
+        excludedUrlBooks.push(book)
       }
-      urlGroups.get(book.url).push(book)
     } else {
       noUrlBooks.push(book)
     }
@@ -141,31 +148,85 @@ export function sortByUrlGroup(bookList) {
     books.sort((a, b) => (a.hash || '').localeCompare(b.hash || ''))
   })
 
-  // 将所有组合并，URL按字母顺序排序
-  const sortedUrls = Array.from(urlGroups.keys()).sort()
+  // 将所有组合并，URL按数字顺序排序（提取URL中的数字进行排序）
+  const sortedUrls = Array.from(urlGroups.keys()).sort((a, b) => {
+    // 提取URL中的数字部分
+    const numA = extractNumbersFromUrl(a)
+    const numB = extractNumbersFromUrl(b)
+    
+    // 如果两个URL都包含数字，按数字排序
+    if (numA.length > 0 && numB.length > 0) {
+      // 比较所有数字序列
+      for (let i = 0; i < Math.min(numA.length, numB.length); i++) {
+        if (numA[i] !== numB[i]) {
+          return ascending ? numA[i] - numB[i] : numB[i] - numA[i]
+        }
+      }
+      // 如果前面的数字都相同，数字多的排在后面
+      const lengthDiff = numA.length - numB.length
+      return ascending ? lengthDiff : -lengthDiff
+    }
+    
+    // 如果只有一个URL包含数字，有数字的排在前面
+    if (numA.length > 0) return -1
+    if (numB.length > 0) return 1
+    
+    // 如果都没有数字，按字母顺序排序
+    return ascending ? a.localeCompare(b) : b.localeCompare(a)
+  })
   const sortedBooks = []
   
   sortedUrls.forEach(url => {
     sortedBooks.push(...urlGroups.get(url))
   })
 
+  // 将排除的URL书籍放在中间
+  sortedBooks.push(...excludedUrlBooks)
+
   // 将没有URL的书籍放在最后
   sortedBooks.push(...noUrlBooks)
 
   const duration = performance.now() - startTime
-  console.log(`✅ URL分组排序完成，耗时: ${duration.toFixed(2)}ms, 分组数: ${urlGroups.size}, 无URL: ${noUrlBooks.length}`)
+  console.log(`✅ URL分组排序完成，耗时: ${duration.toFixed(2)}ms, 分组数: ${urlGroups.size}, 排除URL: ${excludedUrlBooks.length}, 无URL: ${noUrlBooks.length}`)
 
   return sortedBooks
 }
 
 /**
- * 检查书籍是否有重复URL
+ * 检查URL是否为exhentai或e-hentai的链接
+ * @param {string} url - URL字符串
+ * @returns {boolean} 是否为exhentai或e-hentai链接
+ */
+function isExhentaiUrl(url) {
+  if (!url) return false
+  
+  // 检查是否包含exhentai.org或e-hentai.org
+  return url.includes('exhentai.org') || url.includes('e-hentai.org')
+}
+
+/**
+ * 从URL中提取数字序列
+ * @param {string} url - URL字符串
+ * @returns {number[]} 提取的数字数组
+ */
+function extractNumbersFromUrl(url) {
+  if (!url) return []
+  
+  // 匹配URL中的所有数字序列
+  const matches = url.match(/\d+/g)
+  if (!matches) return []
+  
+  return matches.map(num => parseInt(num, 10))
+}
+
+/**
+ * 检查书籍是否有重复URL（只检查exhentai和e-hentai的URL）
  * @param {Object} book - 书籍对象
  * @param {Array} bookList - 完整书籍列表
  * @returns {boolean} 是否重复
  */
 export function isDuplicateGallery(book, bookList) {
-  if (!book.url || book.url === '') return false
-  const urlCount = bookList.filter(b => b.url === book.url).length
+  if (!book.url || book.url === '' || !isExhentaiUrl(book.url)) return false
+  const urlCount = bookList.filter(b => b.url === book.url && isExhentaiUrl(b.url)).length
   return urlCount > 1
 }

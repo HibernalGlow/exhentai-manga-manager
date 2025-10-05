@@ -68,6 +68,7 @@
           <el-option-group :label="$t('m.sort')">
             <el-option :label="$t('m.shuffle')" value="shuffle"></el-option>
             <el-option :label="$t('m.urlGroupAscend')" value="urlGroupAscend"></el-option>
+            <el-option :label="$t('m.urlGroupDescend')" value="urlGroupDescend"></el-option>
             <el-option :label="$t('m.collectTagCountAscend')" value="collectTagCountAscend"></el-option>
             <el-option :label="$t('m.collectTagCountDescend')" value="collectTagCountDescend"></el-option>
             <el-option :label="$t('m.addTimeAscend')" value="addAscend"></el-option>
@@ -630,15 +631,21 @@ export default defineComponent({
       console.log(`预计算了 ${this.collectTagMatchCache.size} 本书的收藏标签匹配数量`)
     },
 
-    // 检查书籍是否有重复的画廊链接
+    // 检查书籍是否有重复的画廊链接（只检查exhentai和e-hentai的URL）
     isDuplicateGallery(book) {
       if (!book || !book.url || book.isCollection) {
         return false
       }
       
+      // 只检查exhentai和e-hentai的URL
+      if (!book.url.includes('exhentai.org') && !book.url.includes('e-hentai.org')) {
+        return false
+      }
+      
       // 统计相同url的书籍数量
       const duplicateCount = this.bookList.filter(b => 
-        b.url === book.url && !b.isCollection
+        b.url === book.url && !b.isCollection && 
+        (b.url.includes('exhentai.org') || b.url.includes('e-hentai.org'))
       ).length
       
       // 如果有多个书籍有相同的url，则认为是重复的
@@ -1065,7 +1072,11 @@ export default defineComponent({
           this.chunkList()
           break
         case 'urlGroupAscend':
-          this.displayBookList = sortByUrlGroup(bookList)
+          this.displayBookList = sortByUrlGroup(bookList, true)
+          this.chunkList()
+          break
+        case 'urlGroupDescend':
+          this.displayBookList = sortByUrlGroup(bookList, false)
           this.chunkList()
           break
         case 'addAscend':
