@@ -26,6 +26,7 @@
       <el-tag
         v-for="tag in filterCollectTag(book.tags)" :key="tag.id"
         @click="$emit('searchFromTag', tag.tag, tag.cat)"
+        @contextmenu.prevent="onTagContextMenu($event, tag)"
         :class="[
           'book-collect-tag',
           tag.isCollected ? 'collected-tag' : '',
@@ -133,6 +134,76 @@ const onMangaTitleContextMenu = (e, book) => {
       },
     ]
   })
+}
+
+// 标签右键菜单：添加/移除收藏
+const onTagContextMenu = (e, tag) => {
+  e.preventDefault()
+  
+  ContextMenu.showContextMenu({
+    x: e.x,
+    y: e.y,
+    items: [
+      {
+        label: tag.isCollected ? '取消收藏此标签' : '收藏此标签',
+        onClick: () => {
+          toggleCollectTag(tag)
+        }
+      },
+      {
+        label: t('c.copyTitleToClipboard'),
+        onClick: () => {
+          ipcRenderer.invoke('copy-text-to-clipboard', tag.tag)
+        }
+      }
+    ]
+  })
+}
+
+// 切换标签收藏状态
+const toggleCollectTag = (tag) => {
+  if (!setting.value.collectTag) {
+    setting.value.collectTag = []
+  }
+  
+  if (tag.isCollected) {
+    // 移除收藏
+    setting.value.collectTag = setting.value.collectTag.filter(
+      t => !(t.cat === tag.cat && t.tag === tag.tag)
+    )
+    appStore.printMessage('success', '已取消收藏')
+  } else {
+    // 添加收藏
+    const newTag = {
+      cat: tag.cat,
+      tag: tag.tag,
+      letter: tag.letter,
+      color: generateAutoColor(tag.cat) // 使用自动生成的颜色
+    }
+    setting.value.collectTag.push(newTag)
+    appStore.printMessage('success', '已添加到收藏')
+  }
+  
+  // 保存设置
+  ipcRenderer.invoke('save-setting', setting.value)
+}
+
+// 根据类别自动生成颜色
+const generateAutoColor = (category) => {
+  const categoryColors = {
+    'female': '#FF6B9D',      // 粉红色
+    'male': '#4A9EFF',        // 蓝色
+    'mixed': '#9D5CFF',       // 紫色
+    'artist': '#FF9F40',      // 橙色
+    'group': '#20C5DE',       // 青色
+    'parody': '#67C23A',      // 绿色
+    'character': '#F56C6C',   // 红色
+    'language': '#909399',    // 灰色
+    'cosplayer': '#E6A23C',   // 金色
+    'other': '#606266'        // 深灰色
+  }
+  
+  return categoryColors[category] || '#409EFF' // 默认蓝色
 }
 
 // background color of the tag based on category, same color scheme as exhentai

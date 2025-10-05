@@ -132,6 +132,7 @@
                       :color="tag.color"
                       effect="dark"
                       @click="$emit('searchFromTag', tag.tag || tag, key)"
+                      @contextmenu.prevent="onTagContextMenu($event, tag.tag || tag, key, tag.isCollected)"
                     >{{resolvedTranslation[tag.tag || tag] ? resolvedTranslation[tag.tag || tag].name : (tag.tag || tag) }}</el-tag>
                   </template>
                 </el-popover>
@@ -479,6 +480,78 @@ const onMangaCommentContextMenu = (e, comment) => {
       items
     })
   }
+}
+
+// 标签右键菜单：添加/移除收藏
+const onTagContextMenu = (e, tagName, category, isCollected) => {
+  e.preventDefault()
+  
+  const letter = cat2letter.value[category] || category.charAt(0)
+  
+  ContextMenu.showContextMenu({
+    x: e.x,
+    y: e.y,
+    items: [
+      {
+        label: isCollected ? '取消收藏此标签' : '收藏此标签',
+        onClick: () => {
+          toggleCollectTag(tagName, category, letter, isCollected)
+        }
+      },
+      {
+        label: t('c.copyTitleToClipboard'),
+        onClick: () => {
+          ipcRenderer.invoke('copy-text-to-clipboard', tagName)
+        }
+      }
+    ]
+  })
+}
+
+// 切换标签收藏状态
+const toggleCollectTag = (tagName, category, letter, isCollected) => {
+  if (!setting.value.collectTag) {
+    setting.value.collectTag = []
+  }
+  
+  if (isCollected) {
+    // 移除收藏
+    setting.value.collectTag = setting.value.collectTag.filter(
+      t => !(t.cat === category && t.tag === tagName)
+    )
+    printMessage('success', '已取消收藏')
+  } else {
+    // 添加收藏
+    const newTag = {
+      cat: category,
+      tag: tagName,
+      letter: letter,
+      color: generateAutoColor(category) // 使用自动生成的颜色
+    }
+    setting.value.collectTag.push(newTag)
+    printMessage('success', '已添加到收藏')
+  }
+  
+  // 保存设置
+  ipcRenderer.invoke('save-setting', setting.value)
+}
+
+// 根据类别自动生成颜色
+const generateAutoColor = (category) => {
+  const categoryColors = {
+    'female': '#FF6B9D',      // 粉红色
+    'male': '#4A9EFF',        // 蓝色
+    'mixed': '#9D5CFF',       // 紫色
+    'artist': '#FF9F40',      // 橙色
+    'group': '#20C5DE',       // 青色
+    'parody': '#67C23A',      // 绿色
+    'character': '#F56C6C',   // 红色
+    'language': '#909399',    // 灰色
+    'cosplayer': '#E6A23C',   // 金色
+    'other': '#606266'        // 深灰色
+  }
+  
+  return categoryColors[category] || '#409EFF' // 默认蓝色
 }
 
 defineExpose({

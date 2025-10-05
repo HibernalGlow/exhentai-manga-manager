@@ -66,6 +66,8 @@
           </el-option-group>
           <el-option-group :label="$t('m.sort')">
             <el-option :label="$t('m.shuffle')" value="shuffle"></el-option>
+            <el-option :label="$t('m.collectTagCountAscend')" value="collectTagCountAscend"></el-option>
+            <el-option :label="$t('m.collectTagCountDescend')" value="collectTagCountDescend"></el-option>
             <el-option :label="$t('m.addTimeAscend')" value="addAscend"></el-option>
             <el-option :label="$t('m.addTimeDescend')" value="addDescend"></el-option>
             <el-option :label="$t('m.mtimeAscend')" value="mtimeAscend"></el-option>
@@ -82,8 +84,6 @@
             <el-option :label="$t('m.titleDescend')" value="titleDescend"></el-option>
             <el-option :label="$t('m.pageAscend')" value="pageAscend"></el-option>
             <el-option :label="$t('m.pageDescend')" value="pageDescend"></el-option>
-            <el-option :label="$t('m.collectTagCountAscend')" value="collectTagCountAscend"></el-option>
-            <el-option :label="$t('m.collectTagCountDescend')" value="collectTagCountDescend"></el-option>
           </el-option-group>
         </el-select>
       </el-col>
