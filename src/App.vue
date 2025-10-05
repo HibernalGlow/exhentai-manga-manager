@@ -82,6 +82,8 @@
             <el-option :label="$t('m.titleDescend')" value="titleDescend"></el-option>
             <el-option :label="$t('m.pageAscend')" value="pageAscend"></el-option>
             <el-option :label="$t('m.pageDescend')" value="pageDescend"></el-option>
+            <el-option :label="$t('m.collectTagCountAscend')" value="collectTagCountAscend"></el-option>
+            <el-option :label="$t('m.collectTagCountDescend')" value="collectTagCountDescend"></el-option>
           </el-option-group>
         </el-select>
       </el-col>
@@ -525,6 +527,37 @@ export default defineComponent({
       // 保存到设置
       this.setting.favoriteTagPanelHeight = height
       this.$refs.SettingRef.saveSetting()
+    },
+
+    // 计算书籍匹配收藏标签的数量
+    getCollectTagMatchCount(book) {
+      if (!book || !book.tags || !Array.isArray(this.setting.collectTag)) {
+        return 0
+      }
+
+      let matchCount = 0
+      const bookTags = []
+
+      // 收集书籍的所有标签
+      Object.keys(book.tags).forEach(category => {
+        if (Array.isArray(book.tags[category])) {
+          book.tags[category].forEach(tag => {
+            bookTags.push({ cat: category, tag: tag })
+          })
+        }
+      })
+
+      // 检查每个收藏标签是否匹配
+      this.setting.collectTag.forEach(collectTag => {
+        const isMatched = bookTags.some(bookTag =>
+          bookTag.cat === collectTag.cat && bookTag.tag === collectTag.tag
+        )
+        if (isMatched) {
+          matchCount++
+        }
+      })
+
+      return matchCount
     },
 
     // base function
@@ -983,6 +1016,14 @@ export default defineComponent({
           break
         case 'pageDescend':
           this.displayBookList = bookList.toSorted(this.sortList('pageCount'))
+          this.chunkList()
+          break
+        case 'collectTagCountAscend':
+          this.displayBookList = bookList.toSorted((a, b) => this.getCollectTagMatchCount(a) - this.getCollectTagMatchCount(b))
+          this.chunkList()
+          break
+        case 'collectTagCountDescend':
+          this.displayBookList = bookList.toSorted((a, b) => this.getCollectTagMatchCount(b) - this.getCollectTagMatchCount(a))
           this.chunkList()
           break
         default:

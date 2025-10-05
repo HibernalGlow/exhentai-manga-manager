@@ -28,6 +28,8 @@
     "titleDescend": "標題降序",
     "pageAscend": "頁數升序",
     "pageDescend": "頁數降序",
+    "collectTagCountAscend": "收藏標籤數量升序",
+    "collectTagCountDescend": "收藏標籤數量降序",
     "manageCollection": "管理合集",
     "addCollection": "新增合集",
     "editCollection": "編輯合集",

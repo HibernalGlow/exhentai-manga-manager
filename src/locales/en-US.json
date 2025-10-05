@@ -28,6 +28,8 @@
     "titleDescend": "Title Descend",
     "pageAscend": "Page Ascend",
     "pageDescend": "Page Descend",
+    "collectTagCountAscend": "Collect Tag Count Ascend",
+    "collectTagCountDescend": "Collect Tag Count Descend",
     "manageCollection": "Manage Collection",
     "addCollection": "Add Collection",
     "editCollection": "Edit Collection",
