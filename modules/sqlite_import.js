@@ -322,14 +322,15 @@ async function refineMatchesWithJapaneseTitle(foundKeys, originalFilename, db) {
   if (foundKeys.length === 1) {
     // 只有一个匹配，直接查询
     const firstKey = foundKeys[0]
-    return await db.get('SELECT * FROM gallery WHERE gid = ? AND token = ?', [firstKey.gid, firstKey.token])
+    const meta = await db.get('SELECT * FROM gallery WHERE gid = ? AND token = ?', [firstKey.gid, firstKey.token])
+    return meta ? parseMetadataTags(meta) : null
   }
   
   // 多个匹配，使用 title_jpn 优化相似度
   const candidates = []
   for (let idx = 0; idx < foundKeys.length; idx++) {
     const key = foundKeys[idx]
-    const meta = await db.get('SELECT gid, token, title, title_jpn FROM gallery WHERE gid = ? AND token = ?', [key.gid, key.token])
+    const meta = await db.get('SELECT * FROM gallery WHERE gid = ? AND token = ?', [key.gid, key.token])
     if (meta) candidates.push(meta)
     
     // 每处理 50 个候选项，让出事件循环
@@ -357,7 +358,7 @@ async function refineMatchesWithJapaneseTitle(foundKeys, originalFilename, db) {
   // 按相似度降序排序
   scoredCandidates.sort((a, b) => b.similarity - a.similarity)
   
-  return scoredCandidates[0].meta
+  return scoredCandidates[0] ? parseMetadataTags(scoredCandidates[0].meta) : null
 }
 
 /**
