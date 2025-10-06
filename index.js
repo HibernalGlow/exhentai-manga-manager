@@ -848,9 +848,37 @@ ipcMain.handle('load-book-list', async (event, scan) => {
                 }
               } catch (e) {
                 if (e?.name === 'AbortError') throw e
+
+                // 加载失败时，使用占位符封面创建条目
+                console.log(`File processing failed for ${filepath}: ${e?.message || e}`)
                 sendMessageToWebContents(
-                    `Load ${filepath} failed because ${e?.message || e}, ${globalIdx + 1} of ${listLength}`
+                  `Load ${filepath} failed, using placeholder cover, ${globalIdx + 1} of ${listLength}`
                 )
+
+                // 创建带有占位符封面的条目
+                const id = nanoid()
+                const fileStat = await fs.promises.stat(filepath).catch(() => null)
+                const placeholderCoverPath = path.join(__dirname, 'public', 'placeholder-cover.svg')
+
+                const failedBook = {
+                  title: path.basename(filepath),
+                  coverPath: placeholderCoverPath, // 直接使用公共目录中的占位符
+                  hash: '', // 加载失败的文件，hash 留空
+                  filepath,
+                  type,
+                  id,
+                  pageCount: 0, // 未知页数
+                  bundleSize: fileStat?.size || 0,
+                  mtime: fileStat?.mtime?.toJSON() || new Date().toJSON(),
+                  coverHash: `placeholder_${Date.now()}`,
+                  status: 'non-tag',
+                  exist: true,
+                  date: Date.now(),
+                }
+
+                chunkBooks.push(failedBook)
+                byFilepath.set(filepath, failedBook)
+                byId.set(id, failedBook)
               }
             }
             )}
@@ -1058,9 +1086,34 @@ ipcMain.handle('force-gene-book-list', async (event, arg) => {
             }
           } catch (e) {
             if (e?.name === 'AbortError') throw e
+
+            // 重建失败时，使用占位符封面创建条目
+            console.log(`File rebuild failed for ${filepath}: ${e?.message || e}`)
             sendMessageToWebContents(
-                `Rebuild ${filepath} failed because ${e?.message || e}, ${globalIdx + 1} of ${listLength}`
+              `Rebuild ${filepath} failed, using placeholder cover, ${globalIdx + 1} of ${listLength}`
             )
+
+            // 创建带有占位符封面的条目
+            const id = nanoid()
+            const fileStat = await fs.promises.stat(filepath).catch(() => null)
+            const placeholderCoverPath = path.join(__dirname, 'public', 'placeholder-cover.svg')
+
+            const failedBook = {
+              title: path.basename(filepath),
+              coverPath: placeholderCoverPath, // 直接使用公共目录中的占位符
+              hash: '', // 重建失败的文件，hash 留空
+              filepath,
+              type,
+              id,
+              pageCount: 0,
+              bundleSize: fileStat?.size || 0,
+              mtime: fileStat?.mtime?.toJSON() || new Date().toJSON(),
+              coverHash: `placeholder_${Date.now()}`,
+              status: 'non-tag',
+              date: Date.now(),
+            }
+
+            chunkBooks.push(failedBook)
           }
         })
     })
