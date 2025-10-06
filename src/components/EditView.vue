@@ -107,6 +107,7 @@
   <el-col :span="4" v-if="editTagView" class="book-tag-edit-operation" v-loading="updateTagsLoading">
     <el-space wrap class="book-tag-edit-buttons">
       <el-button type="primary" plain @click="selectAllForGroupTag">{{$t('m.selectAll')}}</el-button>
+      <el-button type="primary" plain @click="selectCurrentPageForGroupTag">{{$t('m.selectCurrentPage')}}</el-button>
       <el-button type="primary" plain @click="unselectAllForGroupTag">{{$t('m.unselectAll')}}</el-button>
     </el-space>
     <el-divider content-position="left">{{$t('m.tag')}}</el-divider>
@@ -406,6 +407,15 @@ const handleMouseUpForSelection = (view) => {
 const selectAllForGroupTag = () => {
   displayBookList.value.forEach(book => {
     if (!book.isCollection && !book.folderHide) {
+      book.selected = true
+      selectBookList.value.push(book.id)
+    }
+  })
+}
+
+const selectCurrentPageForGroupTag = () => {
+  visibleChunkDisplayBookListForEditTagView.value.forEach(book => {
+    if (!book.isCollection && !book.folderHide && !book.selected) {
       book.selected = true
       selectBookList.value.push(book.id)
     }

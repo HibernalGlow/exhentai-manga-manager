@@ -125,6 +125,120 @@ def normalize_string(text: str) -> str:
     # 去除首尾空格
     return text.strip()
 
+def remove_bracketed_content(text: str) -> str:
+    """移除标题中的括号内容（用于更清洁的匹配）"""
+    if not text:
+        return text
+
+    # 移除各种括号及其内容：[] () 【】 （）
+    return re.sub(r'\s*(\[[^\]]*\]|\([^\)]*\)|【[^】]*】|（[^）]*）)\s*', ' ', text).strip()
+
+def convert_circled_numbers(text: str) -> str:
+    """带圆圈的数字转换为普通阿拉伯数字"""
+    if not text:
+        return text
+
+    # Unicode范围:
+    # ① - ⑳ (U+2460 - U+2473): 带圈数字 1-20
+    # ⓪ (U+24EA): 带圈数字 0
+    # ㉑ - ㉟ (U+3251 - U+325F): 带圈数字 21-35
+    # ㊱ - ㊿ (U+32B1 - U+32BF): 带圈数字 36-50
+    circled_nums = {
+        '⓪': '0',
+        '①': '1', '②': '2', '③': '3', '④': '4', '⑤': '5',
+        '⑥': '6', '⑦': '7', '⑧': '8', '⑨': '9', '⑩': '10',
+        '⑪': '11', '⑫': '12', '⑬': '13', '⑭': '14', '⑮': '15',
+        '⑯': '16', '⑰': '17', '⑱': '18', '⑲': '19', '⑳': '20',
+        '㉑': '21', '㉒': '22', '㉓': '23', '㉔': '24', '㉕': '25',
+        '㉖': '26', '㉗': '27', '㉘': '28', '㉙': '29', '㉚': '30',
+        '㉛': '31', '㉜': '32', '㉝': '33', '㉞': '34', '㉟': '35',
+        '㊱': '36', '㊲': '37', '㊳': '38', '㊴': '39', '㊵': '40',
+        '㊶': '41', '㊷': '42', '㊸': '43', '㊹': '44', '㊺': '45',
+        '㊻': '46', '㊼': '47', '㊽': '48', '㊾': '49', '㊿': '50'
+    }
+
+    for circled, arabic in circled_nums.items():
+        text = text.replace(circled, arabic)
+
+    return text
+
+def remove_pinyin_artifacts(text: str) -> str:
+    """移除错误转换的拼音字符（通常是输入法错误导致的）"""
+    if not text:
+        return text
+
+    # 策略：移除孤立的1-4个拉丁字母，它们前后被非拉丁字符包围
+    # 这些通常是输入法错误转换的拼音（支持多字拼音如 "shimadao san"）
+
+    # 移除被CJK字符（中日韩文字）包围的短拉丁词
+    text = re.sub(r'(?<=[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\u3400-\u4dbf])\s*[a-z]{1,4}\s+(?=[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\u3400-\u4dbf])', '', text, flags=re.IGNORECASE)
+
+    # 移除标点符号后的孤立拉丁字母（支持更长的拼音）
+    text = re.sub(r'(?<=[,，.。、:：;；!！?？])\s*[a-z]{1,4}\s+(?=[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff])', '', text, flags=re.IGNORECASE)
+
+    # 移除字符串末尾的孤立拉丁字母
+    text = re.sub(r'\s+[a-z]{1,4}\s*$', '', text, flags=re.IGNORECASE)
+
+    # 移除空格后的孤立单字母或短拼音词（最常见的错误）
+    text = re.sub(r'\s+[a-z]{1,4}\s+', ' ', text, flags=re.IGNORECASE)
+
+    # 清理多余空格
+    text = re.sub(r'\s+', ' ', text)
+
+    return text.strip()
+
+def remove_suffix_after_separator(text: str) -> str:
+    """移除分隔符后的内容（用于去除附加内容如おまけ本、特典等）"""
+    if not text:
+        return text
+
+    # 移除常见分隔符及其后面的内容
+    # 例如: "もよろしくおねがいします + おまけ本" -> "もよろしくおねがいします"
+
+    # + 号及其后面的内容
+    text = re.sub(r'\s*[+＋]\s*.+$', '', text, flags=re.IGNORECASE)
+
+    # & 号及其后面的内容
+    text = re.sub(r'\s*[&＆]\s*.+$', '', text, flags=re.IGNORECASE)
+
+    # 、号及其后面的内容（日文顿号）
+    text = re.sub(r'\s*、\s*.+$', '', text, flags=re.IGNORECASE)
+
+    # "附" "特典" "おまけ" "bonus" 等关键词开头的附加内容
+    text = re.sub(r'\s*[(\[（【]?\s*(附|特典|おまけ|ボーナス|bonus|extra|omake).+$', '', text, flags=re.IGNORECASE)
+
+    return text.strip()
+
+def remove_punctuation(text: str) -> str:
+    """移除所有标点符号"""
+    if not text:
+        return text
+
+    # 移除常见的中英文标点符号
+    # 包括: 句号、逗号、感叹号、问号、冒号、分号、引号、括号、破折号等
+    text = re.sub(r'[，。！？；：、\'\'""「」『』【】（）《》〈〉…—～·]', '', text)
+    text = re.sub(r'[,.\!?;:\'\"\\[\]{}()<>\-_=+\*\/\\|~`]', '', text)
+    text = re.sub(r'[＠＃＄％＾＆＊]', '', text)
+
+    return text.strip()
+
+def chinese_to_arabic(text: str) -> str:
+    """中文数字转阿拉伯数字"""
+    if not text:
+        return text
+
+    chinese_nums = {
+        '零': '0', '一': '1', '二': '2', '三': '3', '四': '4',
+        '五': '5', '六': '6', '七': '7', '八': '8', '九': '9',
+        '〇': '0', '壹': '1', '贰': '2', '叁': '3', '肆': '4',
+        '伍': '5', '陆': '6', '柒': '7', '捌': '8', '玖': '9'
+    }
+
+    for chinese, arabic in chinese_nums.items():
+        text = text.replace(chinese, arabic)
+
+    return text
+
 def levenshtein_distance(s1: str, s2: str) -> int:
     """计算编辑距离"""
     if len(s1) < len(s2):
@@ -146,12 +260,12 @@ def levenshtein_distance(s1: str, s2: str) -> int:
     return previous_row[-1]
 
 def jaccard_similarity(s1: str, s2: str) -> float:
-    """计算Jaccard相似度"""
+    """计算Jaccard相似度（基于字符集合）"""
     if not s1 or not s2:
         return 0.0
 
-    set1 = set(s1.split())
-    set2 = set(s2.split())
+    set1 = set(s1)
+    set2 = set(s2)
 
     intersection = len(set1.intersection(set2))
     union = len(set1.union(set2))
@@ -177,35 +291,55 @@ def calculate_similarity(text1: str, text2: str) -> float:
     if not text1 or not text2:
         return 0.0
 
-    s1 = normalize_string(text1).lower()
-    s2 = normalize_string(text2).lower()
+    # 应用多种预处理步骤
+    def preprocess_string(text: str) -> str:
+        processed = text
+        # 1. 移除括号内容（标题裁剪）
+        processed = remove_bracketed_content(processed)
+        # 2. 转换带圆圈的数字
+        processed = convert_circled_numbers(processed)
+        # 3. 移除拼音错误
+        processed = remove_pinyin_artifacts(processed)
+        # 4. 移除附加内容（如 + bonus, & extra等）
+        processed = remove_suffix_after_separator(processed)
+        # 5. 移除标点符号
+        processed = remove_punctuation(processed)
+        # 6. 中文数字转阿拉伯数字（便于比较）
+        processed = chinese_to_arabic(processed)
+        # 7. 归一化（全角转半角、移除多余空格）
+        processed = normalize_string(processed)
+        # 8. 转小写
+        processed = processed.lower()
+        return processed
 
+    s1 = preprocess_string(text1)
+    s2 = preprocess_string(text2)
+
+    # 如果完全相同
     if s1 == s2:
         return 1.0
 
-    # LCS相似度
+    # 计算多种相似度
     lcs_len = get_lcs_length(s1, s2)
     lcs_sim = (2.0 * lcs_len) / (len(s1) + len(s2))
 
-    # 编辑距离相似度
     lev_dist = levenshtein_distance(s1, s2)
     lev_sim = 1 - (lev_dist / max(len(s1), len(s2)))
 
-    # Jaccard相似度
     jaccard_sim = jaccard_similarity(s1, s2)
 
-    # 加权组合
+    # 组合权重：LCS 40%, Levenshtein 40%, Jaccard 20%
     combined_sim = (lcs_sim * 0.4) + (lev_sim * 0.4) + (jaccard_sim * 0.2)
 
-    # 包含关系加分
+    # 额外加分：如果 s1 包含在 s2 中或反之
     if s1 in s2 or s2 in s1:
         containment_bonus = min(len(s1), len(s2)) / max(len(s1), len(s2))
         combined_sim = min(1.0, combined_sim + containment_bonus * 0.15)
 
-    # 长度差异惩罚
+    # 长度差异惩罚：如果长度差异太大，降低相似度
     length_ratio = min(len(s1), len(s2)) / max(len(s1), len(s2))
     if length_ratio < 0.5:
-        combined_sim *= 0.8
+        combined_sim *= 0.8  # 长度差异太大时降低20%
 
     return max(0.0, min(1.0, combined_sim))
 

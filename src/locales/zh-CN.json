@@ -42,6 +42,7 @@
     "removeGroupTag": "移除选中标签",
     "addTag": "新增标签",
     "selectAll": "全选",
+    "selectCurrentPage": "选中本页",
     "unselectAll": "全不选",
     "apply": "应用",
     "other": "其他",

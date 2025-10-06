@@ -42,6 +42,7 @@
     "removeGroupTag": "Remove Selected Tags",
     "addTag": "Add Tag",
     "selectAll": "Select All",
+    "selectCurrentPage": "Select Current Page",
     "unselectAll": "Unselect All",
     "apply": "Apply",
     "other": "Other",
