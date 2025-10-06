@@ -267,13 +267,13 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
         // 候选越多 = 关键词太泛 = 需要更高的阈值避免误匹配
         let MIN_SIMILARITY_FALLBACK
         if (candidates.length <= 5) {
-          MIN_SIMILARITY_FALLBACK = 0.5 // 1-5个候选：很精准，用中等阈值
+          MIN_SIMILARITY_FALLBACK = 0.3 // 1-5个候选：很精准，用中等阈值
         } else if (candidates.length <= 20) {
-          MIN_SIMILARITY_FALLBACK = 0.6 // 6-20个候选：较精准，用较高阈值
+          MIN_SIMILARITY_FALLBACK = 0.4 // 6-20个候选：较精准，用较高阈值
         } else if (candidates.length <= 100) {
-          MIN_SIMILARITY_FALLBACK = 0.7 // 21-100个候选：一般精准，用高阈值
+          MIN_SIMILARITY_FALLBACK = 0.6 // 21-100个候选：一般精准，用高阈值
         } else {
-          MIN_SIMILARITY_FALLBACK = 0.8 // 100+个候选：不够精准，用很高阈值
+          MIN_SIMILARITY_FALLBACK = 0.7 // 100+个候选：不够精准，用很高阈值
         }
         
         console.log(`[关键词预筛选] 动态阈值: ${MIN_SIMILARITY_FALLBACK} (基于候选数: ${candidates.length})`)
