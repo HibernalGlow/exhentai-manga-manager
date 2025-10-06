@@ -182,6 +182,7 @@
     "clearAllHistory": "Clear all history records",
   "collectTag": "Collect Tag",
   "showCollectTag": "Show Collect Tag",
+  "highlightCreatorTag": "Highlight Creator Tag",
   "collectTagQuickPick": "Favorite Tag Quick Pick",
   "collectTagQuickPickHint": "Left click to add, right click to exclude, Shift+Click to add as OR condition",
   "enableMixedGenderSearch": "Enable Mixed Gender Search",

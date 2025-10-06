@@ -23,6 +23,14 @@
       :color="book.mark ? '#E6A23C' : '#666666'"
       class="book-card-mark" @click="switchMark(book)"
     ><BookmarkTwotone /></el-icon>
+    <el-tag
+      v-if="setting.highlightCreatorTag && getCreatorTag(book)"
+      class="book-creator-tag"
+      size="small"
+      :type="getCreatorTag(book).type"
+      effect="dark"
+      @click="$emit('searchFromTag', getCreatorTag(book).name, getCreatorTag(book).category)"
+    >{{ getCreatorTag(book).displayName }}</el-tag>
     <div class="collect-tag">
       <el-tag
         v-for="tag in filterCollectTag(book.tags)" :key="tag.id"
@@ -118,6 +126,35 @@ const filterCollectTag = (tagObject) => {
     cat2letter: cat2letter.value || {},
     showCollectTag: setting.value.showCollectTag
   })
+}
+
+// 获取创作者标签（按优先级：artist > group > cosplayer）
+const getCreatorTag = (book) => {
+  if (!book.tags) return null
+  
+  // 优先级：artist > group > cosplayer
+  const priorities = [
+    { category: 'artist', type: 'danger', letter: 'a' },
+    { category: 'group', type: 'warning', letter: 'g' },
+    { category: 'cosplayer', type: 'info', letter: 'cos' }
+  ]
+  
+  for (const priority of priorities) {
+    const tags = book.tags[priority.category]
+    if (tags && tags.length > 0) {
+      const tagName = tags[0]
+      const displayName = resolvedTranslation.value[tagName]?.name || tagName
+      return {
+        name: tagName,
+        displayName: displayName,
+        category: priority.category,
+        type: priority.type,
+        letter: priority.letter
+      }
+    }
+  }
+  
+  return null
 }
 
 const onMangaTitleContextMenu = (e, book) => {
@@ -338,6 +375,18 @@ const categoryColors = {
 .book-card-mark
   right: 4px
   top: 40px
+.book-creator-tag
+  position: absolute
+  right: 10px
+  bottom: 10px
+  cursor: pointer
+  font-weight: bold
+  max-width: 180px
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+  z-index: 1
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3)
 .book-cover
   border-radius: 4px
   width: 200px

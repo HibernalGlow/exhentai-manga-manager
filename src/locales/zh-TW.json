@@ -180,6 +180,7 @@
     "clearAllHistory": "清空所有歷史記錄",
     "collectTag": "標籤收藏",
     "showCollectTag": "顯示收藏標籤",
+    "highlightCreatorTag": "高亮顯示創作者標籤",
     "collectTagQuickPick": "收藏標籤快速選擇",
     "collectTagQuickPickHint": "左鍵加入，右鍵排除，按住 Shift 點擊加入為 ~ 條件",
     "enableMixedGenderSearch": "混合性別搜尋",

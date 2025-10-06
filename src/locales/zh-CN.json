@@ -184,6 +184,7 @@
     "clearAllHistory": "清空所有历史记录",
   "collectTag": "标签收藏",
   "showCollectTag": "显示收藏标签",
+  "highlightCreatorTag": "高亮显示创作者标签",
   "collectTagQuickPick": "收藏标签快捷选择",
   "collectTagQuickPickHint": "点击标签添加到搜索框，右键排除标签",
   "enableMixedGenderSearch": "混合性别搜索",
