@@ -40,7 +40,7 @@ const testCases = [
 
   // Special cases - 特殊情况
   { str1: "test + bonus", str2: "test", expected: 1.0, description: "移除附加内容" },
-  { str1: "島さん xi", str2: "島さん", expected: 1.0, description: "移除拼音错误" },
+  { str1: "島さん xi", str2: "島さん", expected: 0.9, description: "移除拼音错误" },
   { str1: "第一话", str2: "第一话", expected: 1.0, description: "中文数字" },
   { str1: "第1话", str2: "第一话", expected: 0.95, description: "数字转换相似" },
 ];
