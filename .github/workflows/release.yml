@@ -28,10 +28,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+          cache: 'yarn'
           
       - name: Install dependencies
-        run: npm ci
+        run: yarn install --frozen-lockfile
         
       - name: Create secret_key.json for build
         shell: powershell
@@ -40,10 +40,10 @@ jobs:
           Write-Host "Created secret_key.json from template"
         
       - name: Build frontend
-        run: npm run build
+        run: yarn build
         
       - name: Build Electron app (Windows)
-        run: npm run dist
+        run: yarn dist
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # 使用预编译的二进制文件，避免从源码编译
