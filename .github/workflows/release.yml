@@ -125,7 +125,8 @@ jobs:
           Write-Host "sha: ${{ github.sha }}"
           
           # 如果配置了token，尝试自动触发
-          if ($env:extrasglow) {
+          $extrasglowToken = "${{ secrets.extrasglow }}"
+          if ($extrasglowToken) {
             $body = @{
               event_type = "emm-release"
               client_payload = @{
@@ -137,7 +138,7 @@ jobs:
             } | ConvertTo-Json
             
             $headers = @{
-              "Authorization" = "Bearer ${{ secrets.extrasglow }}"
+              "Authorization" = "Bearer $extrasglowToken"
               "Accept" = "application/vnd.github.v3+json"
             }
             
