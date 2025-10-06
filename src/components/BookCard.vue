@@ -18,19 +18,22 @@
     >{{book.readCount}}</el-tag>
     <el-tag class="book-card-pagecount" size="small" type="danger" v-if="book.pageDiff" @click="$emit('handleSearchString', 'pageDiff')">{{book.pageCount}}|{{book.filecount}}P</el-tag>
     <el-tag class="book-card-pagecount" size="small" type="info" v-else>{{ book.pageCount }}P</el-tag>
+    <div v-if="setting.highlightCreatorTag" class="book-creator-tags">
+      <el-tag
+        v-for="tag in getCreatorTags(book)"
+        :key="tag.category"
+        class="book-creator-tag"
+        size="small"
+        :type="tag.type"
+        effect="dark"
+        @click="$emit('searchFromTag', tag.name, tag.category)"
+      >{{ tag.letter }}:{{ tag.displayName }}</el-tag>
+    </div>
     <el-icon
       :size="30"
       :color="book.mark ? '#E6A23C' : '#666666'"
       class="book-card-mark" @click="switchMark(book)"
     ><BookmarkTwotone /></el-icon>
-    <el-tag
-      v-if="setting.highlightCreatorTag && getCreatorTag(book)"
-      class="book-creator-tag"
-      size="small"
-      :type="getCreatorTag(book).type"
-      effect="dark"
-      @click="$emit('searchFromTag', getCreatorTag(book).name, getCreatorTag(book).category)"
-    >{{ getCreatorTag(book).displayName }}</el-tag>
     <div class="collect-tag">
       <el-tag
         v-for="tag in filterCollectTag(book.tags)" :key="tag.id"
@@ -128,33 +131,33 @@ const filterCollectTag = (tagObject) => {
   })
 }
 
-// 获取创作者标签（按优先级：artist > group > cosplayer）
-const getCreatorTag = (book) => {
-  if (!book.tags) return null
+// 获取所有创作者标签（artist、group、cosplayer）
+const getCreatorTags = (book) => {
+  if (!book.tags) return []
   
-  // 优先级：artist > group > cosplayer
-  const priorities = [
+  const creatorTags = []
+  const tagTypes = [
     { category: 'artist', type: 'danger', letter: 'a' },
     { category: 'group', type: 'warning', letter: 'g' },
-    { category: 'cosplayer', type: 'info', letter: 'cos' }
+    { category: 'cosplayer', type: 'info', letter: 'c' }
   ]
   
-  for (const priority of priorities) {
-    const tags = book.tags[priority.category]
+  for (const tagType of tagTypes) {
+    const tags = book.tags[tagType.category]
     if (tags && tags.length > 0) {
       const tagName = tags[0]
       const displayName = resolvedTranslation.value[tagName]?.name || tagName
-      return {
+      creatorTags.push({
         name: tagName,
         displayName: displayName,
-        category: priority.category,
-        type: priority.type,
-        letter: priority.letter
-      }
+        category: tagType.category,
+        type: tagType.type,
+        letter: tagType.letter
+      })
     }
   }
   
-  return null
+  return creatorTags
 }
 
 const onMangaTitleContextMenu = (e, book) => {
@@ -372,21 +375,29 @@ const categoryColors = {
   left: 10px
   top: 315px
   border-radius: 0 3px 0 3px
+.book-creator-tags
+  position: absolute
+  right: 10px
+  top: 292px
+  display: flex
+  flex-direction: column
+  align-items: flex-end
+  gap: 2px
+  z-index: 1
+  .book-creator-tag
+    cursor: pointer
+    font-weight: bold
+    font-size: 12px
+    padding: 2px 6px
+    border-radius: 3px 0 3px 0
+    max-width: 180px
+    overflow: hidden
+    text-overflow: ellipsis
+    white-space: nowrap
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3)
 .book-card-mark
   right: 4px
   top: 40px
-.book-creator-tag
-  position: absolute
-  right: 10px
-  bottom: 10px
-  cursor: pointer
-  font-weight: bold
-  max-width: 180px
-  overflow: hidden
-  text-overflow: ellipsis
-  white-space: nowrap
-  z-index: 1
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3)
 .book-cover
   border-radius: 4px
   width: 200px
