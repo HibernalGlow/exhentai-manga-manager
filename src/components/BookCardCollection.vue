@@ -2,7 +2,7 @@
   <div class="book-card">
     <el-tag effect="dark" type="warning" class="book-collection-tag">{{$t('m.collection')}}</el-tag>
     <p class="book-title" :title="book.title">{{book.title}}</p>
-    <img class="book-cover" :src="book.coverPath" @click="$emit('openCollection')"/>
+    <img class="book-cover" :src="book.coverPath" @error="onCoverError" @click="$emit('openCollection')"/>
     <el-tag class="book-card-language" size="small" :type="isChineseTranslatedManga(book) ? 'danger' : 'info'"
     >{{book.readCount}}</el-tag>
     <el-icon :size="30" :color="book.mark ? '#E6A23C' : '#666666'" class="book-card-mark"><BookmarkTwotone /></el-icon>
@@ -23,6 +23,15 @@ const emit = defineEmits(['openCollection'])
 const props = defineProps({
   book: Object
 })
+
+// 封面加载错误处理：显示占位封面
+const onCoverError = (event) => {
+  const img = event.target
+  // 使用占位封面
+  img.src = '/placeholder-cover.svg'
+  // 防止无限循环，如果占位封面也加载失败
+  img.onerror = null
+}
 
 </script>
 

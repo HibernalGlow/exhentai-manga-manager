@@ -8,6 +8,7 @@
     <img
       class="book-cover"
       :src="book.coverPath"
+      @error="onCoverError"
       @click="$emit('handleClickCover')"
       @contextmenu="$emit('onBookContextMenu', $event, book)"
     />
@@ -121,6 +122,15 @@ const filterCollectTag = (tagObject) => {
 
 const onMangaTitleContextMenu = (e, book) => {
   showMangaTitleContextMenu({ e, book, t, ipcRenderer, ContextMenu })
+}
+
+// 封面加载错误处理：显示占位封面
+const onCoverError = (event) => {
+  const img = event.target
+  // 使用占位封面
+  img.src = '/placeholder-cover.svg'
+  // 防止无限循环，如果占位封面也加载失败
+  img.onerror = null
 }
 
 // 标签右键菜单：添加/移除收藏

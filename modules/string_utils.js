@@ -24,127 +24,44 @@ function normalizeString(str) {
 }
 
 /**
- * Calculate combined similarity using multiple algorithms
- * 使用多种算法计算综合相似度
+ * Calculate similarity between two strings using LCS (Longest Common Subsequence)
+ * 计算两个字符串的相似度（基于最长公共子序列 LCS）
  * @param {string} str1 - First string
  * @param {string} str2 - Second string
- * @returns {number} Combined similarity score (0-1)
+ * @returns {number} Similarity score (0-1)
  */
 function calculateSimilarity(str1, str2) {
   if (!str1 || !str2) return 0
-
-  // 应用多种预处理步骤
-  const preprocessString = (str) => {
-    let processed = str
-    // 1. 移除括号内容（标题裁剪）
-    processed = removeBracketedContent(processed)
-    // 2. 转换带圆圈的数字
-    processed = convertCircledNumbers(processed)
-    // 3. 移除拼音错误
-    processed = removePinyinArtifacts(processed)
-    // 4. 移除附加内容（如 + bonus, & extra等）
-    processed = removeSuffixAfterSeparator(processed)
-    // 5. 移除标点符号
-    processed = removePunctuation(processed)
-    // 6. 中文数字转阿拉伯数字（便于比较）
-    processed = chineseToArabic(processed)
-    // 7. 归一化（全角转半角、移除多余空格）
-    processed = normalizeString(processed)
-    // 8. 转小写
-    processed = processed.toLowerCase()
-    return processed
-  }
-
-  const s1 = preprocessString(str1)
-  const s2 = preprocessString(str2)
-
+  
+  // 归一化并转小写
+  const s1 = normalizeString(str1).toLowerCase()
+  const s2 = normalizeString(str2).toLowerCase()
+  
   // 如果完全相同
   if (s1 === s2) return 1.0
-
-  // 计算多种相似度
+  
+  // 计算最长公共子序列长度（LCS）
   const lcsLength = getLCSLength(s1, s2)
-  const lcsSimilarity = (2.0 * lcsLength) / (s1.length + s2.length)
-
-  const levDistance = levenshteinDistance(s1, s2)
-  const levSimilarity = 1 - (levDistance / Math.max(s1.length, s2.length))
-
-  const jaccardSim = jaccardSimilarity(s1, s2)
-
-  // 组合权重：LCS 40%, Levenshtein 40%, Jaccard 20%
-  let combinedSimilarity = (lcsSimilarity * 0.4) + (levSimilarity * 0.4) + (jaccardSim * 0.2)
-
+  
+  // 相似度 = 2 * LCS / (len1 + len2)
+  const similarity = (2.0 * lcsLength) / (s1.length + s2.length)
+  
   // 额外加分：如果 s1 包含在 s2 中或反之
   if (s1.includes(s2) || s2.includes(s1)) {
     const containmentBonus = Math.min(s1.length, s2.length) / Math.max(s1.length, s2.length)
-    combinedSimilarity = Math.min(1.0, combinedSimilarity + containmentBonus * 0.15)
+    return Math.min(1.0, similarity + containmentBonus * 0.2)
   }
-
-  // 长度差异惩罚：如果长度差异太大，降低相似度
-  const lengthRatio = Math.min(s1.length, s2.length) / Math.max(s1.length, s2.length)
-  if (lengthRatio < 0.5) {
-    combinedSimilarity *= 0.8 // 长度差异太大时降低20%
-  }
-
-  return Math.max(0, Math.min(1, combinedSimilarity))
+  
+  return similarity
 }
 
 /**
- * Calculate Levenshtein distance between two strings
- * 计算两个字符串的编辑距离
+ * Calculate LCS (Longest Common Subsequence) length between two strings
+ * 最长公共子序列（LCS）长度计算
  * @param {string} str1 - First string
  * @param {string} str2 - Second string
- * @returns {number} Levenshtein distance
+ * @returns {number} LCS length
  */
-function levenshteinDistance(str1, str2) {
-  const m = str1.length
-  const n = str2.length
-  
-  if (m === 0) return n
-  if (n === 0) return m
-  
-  const matrix = []
-  for (let i = 0; i <= m; i++) {
-    matrix[i] = [i]
-  }
-  for (let j = 0; j <= n; j++) {
-    matrix[0][j] = j
-  }
-  
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      if (str1[i - 1] === str2[j - 1]) {
-        matrix[i][j] = matrix[i - 1][j - 1]
-      } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1, // substitution
-          matrix[i][j - 1] + 1,     // insertion
-          matrix[i - 1][j] + 1      // deletion
-        )
-      }
-    }
-  }
-  
-  return matrix[m][n]
-}
-
-/**
- * Calculate Jaccard similarity between two strings (based on character sets)
- * 计算两个字符串的Jaccard相似度（基于字符集合）
- * @param {string} str1 - First string
- * @param {string} str2 - Second string
- * @returns {number} Jaccard similarity (0-1)
- */
-function jaccardSimilarity(str1, str2) {
-  if (!str1 || !str2) return 0
-  
-  const set1 = new Set(str1.split(''))
-  const set2 = new Set(str2.split(''))
-  
-  const intersection = new Set([...set1].filter(x => set2.has(x)))
-  const union = new Set([...set1, ...set2])
-  
-  return intersection.size / union.size
-}
 function getLCSLength(str1, str2) {
   const m = str1.length
   const n = str2.length
@@ -243,19 +160,11 @@ function arabicToChinese(str) {
 }
 
 /**
- * Remove bracketed content from title (for cleaner matching)
- * 移除标题中的括号内容（用于更清洁的匹配）
+ * Remove all spaces from string
+ * 移除所有空格
  * @param {string} str - Input string
- * @returns {string} String with bracketed content removed
+ * @returns {string} String without spaces
  */
-function removeBracketedContent(str) {
-  if (!str) return str
-  
-  // 移除各种括号及其内容：[] () 【】 （）
-  return str.replace(/\s*(\[[^\]]*\]|\([^\)]*\)|【[^】]*】|（[^）]*）)\s*/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
 function removeAllSpaces(str) {
   if (!str) return str
   return str.replace(/\s+/g, '')
@@ -315,21 +224,18 @@ function removeSuffixAfterSeparator(str) {
 function removePinyinArtifacts(str) {
   if (!str) return str
   
-  // 策略：移除孤立的1-4个拉丁字母，它们前后被非拉丁字符包围
+  // 策略：移除孤立的1-20个拉丁字母，它们前后被非拉丁字符包围
   // 这些通常是输入法错误转换的拼音（支持多字拼音如 "shimadao san"）
   return str
     // 移除被CJK字符（中日韩文字）包围的短拉丁词
     // 例如: "xi 島" -> "島", "shimadao san エッチ" -> "エッチ"
-    .replace(/(?<=[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\u3400-\u4dbf])\s*[a-z]{1,4}\s+(?=[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\u3400-\u4dbf])/gi, '')
+    .replace(/(?<=[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\u3400-\u4dbf])\s*[a-z]{1,20}\s+(?=[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\u3400-\u4dbf])/gi, '')
     // 移除标点符号后的孤立拉丁字母（支持更长的拼音）
     // 例如: ", xi 島" -> ", 島"
-    .replace(/(?<=[,，.。、:：;；!！?？])\s*[a-z]{1,4}\s+(?=[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff])/gi, '')
-    // 移除字符串末尾的孤立拉丁字母（新增）
-    // 例如: "島さん xi" -> "島さん"
-    .replace(/\s+[a-z]{1,4}\s*$/gi, '')
+    .replace(/(?<=[,，.。、:：;；!！?？])\s*[a-z]{1,20}\s+(?=[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff])/gi, '')
     // 移除空格后的孤立单字母或短拼音词（最常见的错误）
     // 例如: " xi " -> " ", " shimadao " -> " "
-    .replace(/\s+[a-z]{1,4}\s+/gi, ' ')
+    .replace(/\s+[a-z]{1,20}\s+/gi, ' ')
     // 清理多余空格
     .replace(/\s+/g, ' ')
     .trim()
@@ -471,8 +377,6 @@ module.exports = {
   normalizeString,
   calculateSimilarity,
   getLCSLength,
-  levenshteinDistance,
-  jaccardSimilarity,
   chineseToArabic,
   arabicToChinese,
   convertCircledNumbers,
@@ -481,6 +385,5 @@ module.exports = {
   removeSuffixAfterSeparator,
   removePinyinArtifacts,
   removeTrailingOne,
-  removeBracketedContent,
   generateVariants
 }

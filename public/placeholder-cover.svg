@@ -1,0 +1,39 @@
+<svg width="200" height="300" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bookGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#e3f2fd;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#bbdefb;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- 背景 -->
+  <rect width="200" height="300" fill="url(#bookGradient)" stroke="#90caf9" stroke-width="1"/>
+
+  <!-- 书本轮廓 -->
+  <rect x="30" y="60" width="140" height="180" fill="#ffffff" stroke="#1976d2" stroke-width="2" rx="8"/>
+
+  <!-- 书脊 -->
+  <rect x="25" y="60" width="10" height="180" fill="#1565c0" rx="4"/>
+
+  <!-- 书页 -->
+  <line x1="35" y1="80" x2="165" y2="80" stroke="#e3f2fd" stroke-width="1"/>
+  <line x1="35" y1="100" x2="165" y2="100" stroke="#e3f2fd" stroke-width="1"/>
+  <line x1="35" y1="120" x2="165" y2="120" stroke="#e3f2fd" stroke-width="1"/>
+  <line x1="35" y1="140" x2="155" y2="140" stroke="#e3f2fd" stroke-width="1"/>
+  <line x1="35" y1="160" x2="165" y2="160" stroke="#e3f2fd" stroke-width="1"/>
+  <line x1="35" y1="180" x2="145" y2="180" stroke="#e3f2fd" stroke-width="1"/>
+  <line x1="35" y1="200" x2="165" y2="200" stroke="#e3f2fd" stroke-width="1"/>
+  <line x1="35" y1="220" x2="155" y2="220" stroke="#e3f2fd" stroke-width="1"/>
+
+  <!-- 警告图标 -->
+  <circle cx="100" cy="40" r="15" fill="#ff9800"/>
+  <text x="100" y="46" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" fill="white">!</text>
+
+  <!-- 文字 -->
+  <text x="100" y="270" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#666">
+    封面加载失败
+  </text>
+  <text x="100" y="285" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#999">
+    Cover Load Failed
+  </text>
+</svg>

@@ -17,7 +17,7 @@
         >
           <div class="book-collect-card selectable-card" :id="book.id" @click="handleClickCollectBadge(book)">
             <p class="book-collect-title" :title="getDisplayTitle(book)">{{getDisplayTitle(book)}}</p>
-            <img class="book-collect-cover" :src="book.coverPath"/>
+            <img class="book-collect-cover" :src="book.coverPath" @error="onCoverError"/>
           </div>
         </el-badge>
       </transition>
@@ -37,7 +37,7 @@
       >
         <template #item="{element}">
           <div class="book-collection-line">
-            <img class="book-collection-cover" :src="element.coverPath"/>
+            <img class="book-collection-cover" :src="element.coverPath" @error="onCoverError"/>
             <p
                 class="book-collection-title"
                 :title="getDisplayTitle(element)"
@@ -72,7 +72,7 @@
             <p class="book-tag-edit-title" :title="getDisplayTitle(book)">{{getDisplayTitle(book)}}</p>
             <el-popover placement="left" :width="300" trigger="hover" :show-after="1000" :hide-after="100">
               <template #reference>
-                <img class="book-tag-edit-cover" :src="book.coverPath"/>
+                <img class="book-tag-edit-cover" :src="book.coverPath" @error="onCoverError"/>
               </template>
               <el-descriptions :column="1" size="small" class="book-tag-edit-popover">
                 <el-descriptions-item :label="$t('m.pageCount')+':'">
@@ -202,6 +202,16 @@ const visibilityMap = ref({})
 const loadBookCardContent = (id) => {
   visibilityMap.value[id] = true
 }
+
+// 封面加载错误处理：显示占位封面
+const onCoverError = (event) => {
+  const img = event.target
+  // 使用占位封面
+  img.src = '/placeholder-cover.svg'
+  // 防止无限循环，如果占位封面也加载失败
+  img.onerror = null
+}
+
 const selectBookList = ref([])
 
 const selectCollection = ref(null)
