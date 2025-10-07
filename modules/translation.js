@@ -641,7 +641,7 @@ async function batchTranslateBooks(books, settings, onProgress) {
       
       // 用裁剪后的标题判断是否排除
       if (shouldExcludeFromTranslation(trimmedTitle)) {
-        console.log(`[Translation Backend] Skipped (excluded by filter): "${book.filename}" -> trimmed: "${trimmedTitle}"`)
+        // console.log(`[Translation Backend] Skipped (excluded by filter): "${book.filename}" -> trimmed: "${trimmedTitle}"`)
         results.skipped++
         continue
       }
