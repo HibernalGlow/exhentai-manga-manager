@@ -665,6 +665,13 @@ async function batchTranslateBooks(books, settings, onProgress) {
   }
 
   console.log(`[Translation Backend] Books to translate: ${booksToTranslate.length}`)
+  console.log(`[Translation Backend] Skipped: ${results.skipped} (already translated or excluded)`)
+  
+  // 如果没有需要翻译的书籍，直接返回
+  if (booksToTranslate.length === 0) {
+    console.log('[Translation Backend] No books to translate, all done!')
+    return results
+  }
 
   // URL分组并降序排序（使用现成的优化排序函数）
   const sortedBooks = sortByUrlGroup(booksToTranslate, false) // false = 降序
@@ -696,11 +703,11 @@ async function batchTranslateBooks(books, settings, onProgress) {
     console.log(`\n[Translation Backend] 📦 Processing batch ${batchIndex + 1}/${batches.length} (books ${batchStart}-${batchEnd})`)
     console.log(`[Translation Backend] Batch books:`, batch.map(b => b.filename).join(', '))
 
-    // 进度回调
+    // 进度回调 - 使用正确的总数（需要翻译的书籍数量）
     if (onProgress) {
       onProgress({
         current: batchStart,
-        total: books.length,
+        total: booksToTranslate.length,  // 修复：使用需要翻译的数量，而不是总书籍数量
         book: batch[0]
       })
     }

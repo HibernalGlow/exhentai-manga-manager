@@ -1232,9 +1232,12 @@ const batchTranslate = async () => {
     console.log(`[Translation] Found ${booksToTranslate.length} books without translation`)
     
     if (booksToTranslate.length === 0) {
-      ElMessage.info(t('m.noBookNeedsTranslation') || 'No books need translation')
+      ElMessage.info(t('m.noBookNeedsTranslation') || '所有书籍都已翻译完成！')
+      batchTranslating.value = false
       return
     }
+    
+    ElMessage.info(`准备翻译 ${booksToTranslate.length} 本书籍...`)
     
     // Extract only necessary fields to avoid cloning issues
     const simplifiedBooks = booksToTranslate.map(book => {
@@ -1268,11 +1271,36 @@ const batchTranslate = async () => {
     const progressHandler = (event, progress) => {
       console.log(`[Translation Progress] ${progress.current}/${progress.total} - ${progress.book.filename}`)
       batchProgress.value = progress
-      ElMessage.info(`${t('m.translating') || 'Translating'}: ${progress.current}/${progress.total} - ${progress.book.filename}`)
+      
+      // 根据状态显示不同的消息
+      if (progress.status === 'success' && progress.translation) {
+        ElMessage.success({
+          message: `✅ [${progress.current}/${progress.total}] ${progress.translation.chinese_title}`,
+          duration: 2000,
+          showClose: true
+        })
+        console.log(`[Translation] ✅ ${progress.book.filename} -> ${progress.translation.chinese_title}`)
+        
+        // 实时更新书籍列表（触发重新加载）
+        emit('loadBookList')
+      } else if (progress.status === 'failed') {
+        ElMessage.warning({
+          message: `⚠️ [${progress.current}/${progress.total}] ${progress.book.filename} - 翻译失败`,
+          duration: 2000,
+          showClose: true
+        })
+      } else {
+        // 普通进度更新
+        ElMessage.info({
+          message: `🔄 [${progress.current}/${progress.total}] ${progress.book.filename}`,
+          duration: 1000,
+          showClose: true
+        })
+      }
     }
     ipcRenderer.on('batch-translate-progress', progressHandler)
     
-    ElMessage.info((t('m.batchTranslateStarted') || 'Batch translation started') + `: ${booksToTranslate.length} books`)
+    ElMessage.info(`开始翻译 ${booksToTranslate.length} 本书籍...`)
     
     console.log('[Translation] Invoking batch-translate-books IPC...')
     const result = await ipcRenderer.invoke('batch-translate-books', {
@@ -1291,12 +1319,23 @@ const batchTranslate = async () => {
       console.error('[Translation] Errors during batch translation:', result.errors)
     }
     
-    ElMessage.success(
-      (t('m.batchTranslateComplete') || 'Batch translation complete') + 
-      `\n${t('m.success') || 'Success'}: ${result.success}` +
-      `\n${t('m.failed') || 'Failed'}: ${result.failed}` +
-      `\n${t('m.skipped') || 'Skipped'}: ${result.skipped}`
-    )
+    // 显示详细的翻译结果
+    const totalBooks = bookList.value.length
+    const translatedBooks = booksToTranslate.length
+    const message = `翻译完成！\n` +
+      `📊 统计信息：\n` +
+      `• 总书籍数：${totalBooks}\n` +
+      `• 本次处理：${translatedBooks}\n` +
+      `• ✅ 成功：${result.success}\n` +
+      `• ❌ 失败：${result.failed}\n` +
+      `• ⏭️ 跳过：${result.skipped}`
+    
+    ElMessage({
+      message: message,
+      type: 'success',
+      duration: 5000,
+      showClose: true
+    })
     
     // Reload book list to show new translations
     console.log('[Translation] Reloading book list...')
