@@ -62,6 +62,8 @@
     "getMetadata": "Get Metadata Manually",
     "resetMetadata": "Reset Metadata",
     "deleteFile": "Delete File",
+    "deleteCover": "Delete Cover",
+    "coverDeleted": "Cover Deleted",
     "delete": "Delete",
     "rescan": "Rescan",
     "openMangaFileLocation": "Open Location",

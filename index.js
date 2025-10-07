@@ -2015,6 +2015,29 @@ ipcMain.handle('delete-image', async (event, filename, filepath, type) => {
   return await deleteImageFromBook(filename, filepath, type)
 })
 
+ipcMain.handle('delete-cover', async (event, bookId) => {
+  try {
+    const book = await Manga.findByPk(bookId)
+    if (!book) {
+      throw new Error('Book not found')
+    }
+
+    // 删除物理封面文件
+    if (book.coverPath && fs.existsSync(book.coverPath)) {
+      fs.unlinkSync(book.coverPath)
+    }
+
+    // 更新数据库，清空封面路径
+    await Manga.update({ coverPath: null }, { where: { id: bookId } })
+
+    sendMessageToWebContents(`Cover deleted for book: ${book.title || book.filepath}`)
+    return true
+  } catch (e) {
+    sendMessageToWebContents(`Delete cover failed because ${e}`)
+    throw e
+  }
+})
+
 // setting
 ipcMain.handle('select-folder', async (event, title) => {
   const result = await dialog.showOpenDialog(mainWindow, {

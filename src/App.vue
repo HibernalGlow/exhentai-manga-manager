@@ -1494,6 +1494,19 @@ export default defineComponent({
               this.getMetadataFromClipboardLink(book)
             }
           },
+          {
+            label: this.$t('m.deleteCover'),
+            onClick: async () => {
+              try {
+                await ipcRenderer.invoke('delete-cover', book.id)
+                // 更新本地书籍数据，触发响应式更新
+                book.coverPath = null
+                this.printMessage('success', this.$t('m.coverDeleted'))
+              } catch (e) {
+                this.printMessage('error', `Delete cover failed: ${e.message}`)
+              }
+            }
+          },
         ]
       })
     },

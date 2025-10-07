@@ -60,6 +60,8 @@
     "getMetadata": "手動獲取元數據",
     "resetMetadata": "重置元數據",
     "deleteFile": "刪除檔案",
+    "deleteCover": "刪除封面",
+    "coverDeleted": "封面已刪除",
     "delete": "刪除",
     "rescan": "重掃",
     "openMangaFileLocation": "開啟檔案位置",
