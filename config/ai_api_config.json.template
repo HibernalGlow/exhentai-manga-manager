@@ -1,0 +1,8 @@
+{
+  "provider": "qwen",
+  "apiKey": "请填写你的API密钥",
+  "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  "model": "qwen-max",
+  "temperature": 0.3,
+  "maxTokens": 2000
+}

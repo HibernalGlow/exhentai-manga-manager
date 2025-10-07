@@ -983,6 +983,19 @@
             </div>
           </el-col>
 
+          <!-- 编辑 API 配置文件 -->
+          <el-col :span="24">
+            <div class="setting-line">
+              <el-button
+                  type="info"
+                  @click="openApiConfigFile"
+                  style="width: 100%"
+              >
+                {{ $t('m.editApiConfig') || '编辑 API 配置文件' }}
+              </el-button>
+            </div>
+          </el-col>
+
           <!-- 批量翻译 -->
           <el-col :span="24">
             <div class="setting-line">
@@ -1107,6 +1120,20 @@ const collectTagSearch = ref('')
 const testingApi = ref(false)
 const batchTranslating = ref(false)
 const batchProgress = ref({ current: 0, total: 0 })
+
+// Open API config file for editing
+const openApiConfigFile = async () => {
+  try {
+    const result = await ipcRenderer.invoke('open-api-config-file')
+    if (result.success) {
+      ElMessage.success(t('m.apiConfigOpened') || 'API配置文件已打开，编辑后请重启应用')
+    } else {
+      ElMessage.error((t('m.apiConfigOpenFailed') || '打开配置文件失败') + ': ' + result.error)
+    }
+  } catch (e) {
+    ElMessage.error((t('m.apiConfigOpenFailed') || '打开配置文件失败') + ': ' + e.message)
+  }
+}
 
 // Test API connection
 const testApiConnection = async () => {

@@ -18,8 +18,8 @@ const { STORE_PATH } = require('./init_folder_setting.js')
 const TRANSLATIONS_FILE = path.join(STORE_PATH, 'translations.json')
 
 
-// API配置文件路径
-const API_CONFIG_FILE = path.join(__dirname, '..', 'config', 'ai_api_config.json')
+// API配置文件路径（保存到用户数据目录）
+const API_CONFIG_FILE = path.join(STORE_PATH, 'ai_api_config.json')
 let API_CONFIG = null
 
 function loadApiConfig() {
@@ -27,21 +27,48 @@ function loadApiConfig() {
     if (fs.existsSync(API_CONFIG_FILE)) {
       const data = fs.readFileSync(API_CONFIG_FILE, 'utf8')
       API_CONFIG = JSON.parse(data)
+      console.log('[API Config] Loaded from:', API_CONFIG_FILE)
       return API_CONFIG
     }
   } catch (e) {
     console.error('Failed to load API config:', e)
   }
+  
   // 默认配置（提示用户填写）
   API_CONFIG = {
     provider: 'qwen',
-    apiKey: '',
+    apiKey: '请填写你的API密钥',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     model: 'qwen-max',
     temperature: 0.3,
     maxTokens: 2000
   }
+  
+  // 自动创建默认配置文件
+  try {
+    fs.writeFileSync(API_CONFIG_FILE, JSON.stringify(API_CONFIG, null, 2), 'utf8')
+    console.log('[API Config] Created default config at:', API_CONFIG_FILE)
+  } catch (e) {
+    console.error('[API Config] Failed to create default config:', e)
+  }
+  
   return API_CONFIG
+}
+
+/**
+ * Save API configuration to file
+ * 保存API配置到文件
+ */
+function saveApiConfig(config) {
+  try {
+    API_CONFIG = config
+    fs.writeFileSync(API_CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8')
+    console.log('[API Config] Saved to:', API_CONFIG_FILE)
+    return true
+  } catch (e) {
+    console.error('[API Config] Failed to save:', e)
+    throw e
+  }
 }
 
 // 启动时加载一次
@@ -517,24 +544,24 @@ async function batchTranslateBooks(books, settings, onProgress) {
       
       console.log(`[Translation Backend] ✅ Batch API returned ${batchTranslations.length} results`)
 
-      // 保存翻译结果
+      // 保存翻译结果（只保存成功的翻译）
       for (let i = 0; i < batchTranslations.length; i++) {
         const translation = batchTranslations[i]
         const book = batch[i]
 
         if (translation.fallback) {
-          console.log(`[Translation Backend] ⚠️  Fallback: ${book.filename} -> ${translation.chinese_title}`)
+          console.log(`[Translation Backend] ⚠️  Failed (not saved): ${book.filename}`)
           results.failed++
           results.errors.push({
             book: book.filename,
-            error: 'Batch API failed, used fallback translation'
+            error: 'Translation failed, not saved'
           })
+          // 不保存失败的翻译
         } else {
           console.log(`[Translation Backend] ✅ ${i + 1}/${batch.length}: ${book.filename} -> ${translation.chinese_title}`)
           results.success++
+          saveBookTranslation(book.hash, translation)
         }
-
-        saveBookTranslation(book.hash, translation)
       }
 
       // 批次间延迟（避免限流）
@@ -559,12 +586,15 @@ async function batchTranslateBooks(books, settings, onProgress) {
           )
           
           if (translation.fallback) {
+            console.log(`[Translation Backend] ⚠️  Failed (not saved): ${book.filename}`)
             results.failed++
+            // 不保存失败的翻译
           } else {
+            console.log(`[Translation Backend] ✅ ${book.filename} -> ${translation.chinese_title}`)
             results.success++
+            saveBookTranslation(book.hash, translation)
           }
           
-          saveBookTranslation(book.hash, translation)
           await new Promise(resolve => setTimeout(resolve, 1000))
           
         } catch (singleError) {
@@ -590,6 +620,21 @@ async function batchTranslateBooks(books, settings, onProgress) {
  * 初始化翻译相关的IPC处理器
  */
 function initTranslationIPC(ipcMain, getSettings) {
+  // 获取API配置
+  ipcMain.handle('get-api-config', async () => {
+    return loadApiConfig()
+  })
+
+  // 保存API配置
+  ipcMain.handle('save-api-config', async (event, config) => {
+    try {
+      saveApiConfig(config)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error.message }
+    }
+  })
+
   // 获取书籍翻译
   ipcMain.handle('get-book-translation', async (event, bookHash) => {
     return getBookTranslation(bookHash)
@@ -657,6 +702,8 @@ module.exports = {
   translateBatchTitles,
   cleanTitle,
   updateApiConfig,
+  loadApiConfig,
+  saveApiConfig,
   testApiConnection,
   batchTranslateBooks,
   initTranslationIPC

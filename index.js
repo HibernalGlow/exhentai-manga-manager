@@ -2041,6 +2041,36 @@ ipcMain.handle('delete-cover', async (event, bookId) => {
 // 初始化翻译IPC处理器
 initTranslationIPC(ipcMain, async () => setting)
 
+// 打开API配置文件
+ipcMain.handle('open-api-config-file', async () => {
+  try {
+    const { STORE_PATH } = require('./modules/init_folder_setting.js')
+    const apiConfigPath = path.join(STORE_PATH, 'ai_api_config.json')
+    
+    // 确保文件存在
+    if (!fs.existsSync(apiConfigPath)) {
+      // 创建默认配置
+      const defaultConfig = {
+        provider: 'qwen',
+        apiKey: '请填写你的API密钥',
+        baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        model: 'qwen-max',
+        temperature: 0.3,
+        maxTokens: 2000
+      }
+      fs.writeFileSync(apiConfigPath, JSON.stringify(defaultConfig, null, 2), 'utf8')
+    }
+    
+    // 使用系统默认编辑器打开文件
+    await shell.openPath(apiConfigPath)
+    
+    return { success: true, path: apiConfigPath }
+  } catch (error) {
+    console.error('[API Config] Failed to open config file:', error)
+    return { success: false, error: error.message }
+  }
+})
+
 // 重新生成封面
 ipcMain.handle('regenerate-cover', async (event, bookId) => {
   try {
