@@ -1157,8 +1157,8 @@ const switchActiveProvider = async (index) => {
     apiConfig.value.activeIndex = index
     activeProviderIndex.value = index
     
-    // Save to JSON file
-    await ipcRenderer.invoke('save-api-config', apiConfig.value)
+    // Save to JSON file - convert reactive object to plain object
+    await ipcRenderer.invoke('save-api-config', JSON.parse(JSON.stringify(apiConfig.value)))
     
     ElMessage.success(t('m.apiProviderSwitched') || '已切换API提供商')
   } catch (e) {

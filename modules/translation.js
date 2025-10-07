@@ -6,7 +6,7 @@
 const path = require('path')
 const fs = require('fs')
 const { isPureNumberOrChinese } = require('./string_utils.js')
-const fetch = require('node-fetch')
+const OpenAI = require('openai')
 const { GoogleGenAI } = require('@google/genai')
 
 // 导入现成的URL分组排序函数
@@ -45,6 +45,12 @@ function loadApiConfig() {
         const activeIndex = configFile.activeIndex || 0
         const activeProvider = configFile.providers[activeIndex]
         
+        console.log('[API Config] Config file structure:', {
+          activeIndex: configFile.activeIndex,
+          providersCount: configFile.providers.length,
+          activeProviderName: activeProvider?.name
+        })
+        
         if (activeProvider) {
           API_CONFIG = {
             provider: activeProvider.provider,
@@ -52,9 +58,15 @@ function loadApiConfig() {
             baseUrl: activeProvider.baseUrl,
             model: activeProvider.model,
             temperature: activeProvider.temperature || 0.3,
-            maxTokens: activeProvider.maxTokens || 2000
+            maxTokens: activeProvider.maxTokens || 2000,
+            timeout: activeProvider.timeout || 30
           }
           console.log('[API Config] Using active provider:', activeProvider.name || activeProvider.provider)
+          console.log('[API Config] API_CONFIG set to:', {
+            provider: API_CONFIG.provider,
+            baseUrl: API_CONFIG.baseUrl,
+            model: API_CONFIG.model
+          })
           return configFile // 返回完整配置对象(用于IPC)
         }
       } else {
@@ -106,7 +118,8 @@ function saveApiConfig(config) {
           baseUrl: activeProvider.baseUrl,
           model: activeProvider.model,
           temperature: activeProvider.temperature || 0.3,
-          maxTokens: activeProvider.maxTokens || 2000
+          maxTokens: activeProvider.maxTokens || 2000,
+          timeout: activeProvider.timeout || 300
         }
         console.log('[API Config] Updated API_CONFIG from active provider:', activeProvider.provider)
       }
@@ -130,8 +143,9 @@ loadApiConfig()
 /**
  * Update API configuration from settings
  * 从设置更新API配置
+ * @param {boolean} useSettingsOverride - 是否使用 settings 覆盖 JSON 配置(仅用于向后兼容)
  */
-function updateApiConfig(settings) {
+function updateApiConfig(settings, useSettingsOverride = false) {
   // 先从 config 文件加载
   loadApiConfig()
   
@@ -142,8 +156,10 @@ function updateApiConfig(settings) {
     apiKey: API_CONFIG.apiKey ? `${API_CONFIG.apiKey.substring(0, 10)}...` : 'MISSING'
   })
   
-  // 用户设置优先覆盖
-  if (settings) {
+  // 只有在明确要求时才使用旧的 settings 覆盖(向后兼容)
+  // 新的配置流程应该只使用 ai_api_config.json
+  if (useSettingsOverride && settings) {
+    console.log('[API Config] WARNING: Using legacy settings override (not recommended)')
     if (settings.aiApiProvider) API_CONFIG.provider = settings.aiApiProvider
     if (settings.aiApiKey) API_CONFIG.apiKey = settings.aiApiKey
     if (settings.aiApiBaseUrl) API_CONFIG.baseUrl = settings.aiApiBaseUrl
@@ -151,30 +167,13 @@ function updateApiConfig(settings) {
     if (settings.aiTemperature !== undefined) API_CONFIG.temperature = settings.aiTemperature
     if (settings.aiMaxTokens) API_CONFIG.maxTokens = settings.aiMaxTokens
     if (settings.aiTimeout !== undefined) API_CONFIG.timeout = settings.aiTimeout
-    // Set base URL based on provider
-    if (!settings.aiApiBaseUrl) {
-      switch (settings.aiApiProvider) {
-        case 'openrouter':
-          API_CONFIG.baseUrl = 'https://openrouter.ai/api/v1'
-          break
-        case 'openai':
-          API_CONFIG.baseUrl = 'https://api.openai.com/v1'
-          break
-        case 'claude':
-          API_CONFIG.baseUrl = 'https://api.anthropic.com/v1'
-          break
-        case 'qwen':
-          API_CONFIG.baseUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-          break
-        case 'ernie':
-          API_CONFIG.baseUrl = 'https://aip.baidubce.com/rpc/2.0'
-          break
-        case 'gemini':
-          API_CONFIG.baseUrl = 'https://generativelanguage.googleapis.com/v1beta/openai'
-          break
-      }
-    }
   }
+  
+  console.log('[API Config] Final API_CONFIG:', {
+    provider: API_CONFIG.provider,
+    model: API_CONFIG.model,
+    baseUrl: API_CONFIG.baseUrl
+  })
 }
 
 /**
@@ -293,66 +292,52 @@ ${booksInfo}
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`[Translation] API call attempt ${attempt}/${maxRetries}`)
+      console.log(`[Translation] Using provider: ${API_CONFIG.provider}`)
+      console.log(`[Translation] Base URL: ${API_CONFIG.baseUrl}`)
+      console.log(`[Translation] Model: ${API_CONFIG.model}`)
       
       let responseText = ''
       
       if (API_CONFIG.provider === 'gemini') {
         // 使用Google GenAI SDK
         console.log('[Translation] Using Google GenAI SDK...')
-        console.log('[Translation] API Key:', API_CONFIG.apiKey ? `${API_CONFIG.apiKey.substring(0, 10)}...` : 'MISSING')
-        console.log('[Translation] Model:', API_CONFIG.model)
-        
         const genAI = new GoogleGenAI({ apiKey: API_CONFIG.apiKey })
         const response = await genAI.models.generateContent({
           model: API_CONFIG.model,
           contents: prompt
         })
         
-        console.log('[Translation] Response received:', typeof response)
-        console.log('[Translation] Response keys:', Object.keys(response))
-        
-        // 检查 response.text 是否存在
         if (response && response.text) {
           responseText = response.text.trim()
           console.log(`[Translation] Gemini API call succeeded on attempt ${attempt}`)
         } else {
           console.error('[Translation] Response.text is undefined')
-          console.error('[Translation] Full response:', JSON.stringify(response, null, 2))
           throw new Error('Response.text is undefined')
         }
       } else {
-        // 使用OpenAI兼容API
-        const response = await fetch(`${API_CONFIG.baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${API_CONFIG.apiKey}`,
-            'HTTP-Referer': 'https://github.com/NekoImageGallery/exhentai-manga-manager',
-            'X-Title': 'ExHentai Manga Manager'
-          },
-          body: JSON.stringify({
-            model: API_CONFIG.model,
-            messages: [
-              {
-                role: 'user',
-                content: prompt
-              }
-            ],
-            temperature: API_CONFIG.temperature,
-            max_tokens: Math.max(API_CONFIG.maxTokens, books.length * 50) // 动态调整token数
-          }),
-          timeout: (API_CONFIG.timeout || 30) * 1000 // 使用配置的超时时间，默认30秒
+        // 使用 OpenAI SDK (兼容所有 OpenAI-compatible APIs)
+        console.log('[Translation] Using OpenAI SDK...')
+        const openai = new OpenAI({
+          apiKey: API_CONFIG.apiKey,
+          baseURL: API_CONFIG.baseUrl,
+          timeout: (API_CONFIG.timeout || 30) * 1000,
+          maxRetries: 0 // 我们自己处理重试
         })
-
-        if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(`API request failed: ${errorData.error?.message || response.statusText}`)
-        }
-
-        const data = await response.json()
-        responseText = data.choices[0].message.content.trim()
         
-        console.log(`[Translation] API call succeeded on attempt ${attempt}`)
+        const completion = await openai.chat.completions.create({
+          model: API_CONFIG.model,
+          messages: [
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: API_CONFIG.temperature || 0.3,
+          max_tokens: Math.max(API_CONFIG.maxTokens || 2000, books.length * 50)
+        })
+        
+        responseText = completion.choices[0].message.content.trim()
+        console.log(`[Translation] OpenAI SDK call succeeded on attempt ${attempt}`)
       }
 
       // 解析返回的翻译结果
@@ -391,7 +376,7 @@ ${booksInfo}
       }
 
       // 如果成功，返回翻译结果
-      console.log(`[Translation] API call succeeded on attempt ${attempt}`)
+      console.log(`[Translation] Translation completed successfully`)
       return translations
 
     } catch (error) {
@@ -477,35 +462,26 @@ async function translateTitleToChinese(englishTitle, japaneseTitle, filename) {
       })
       chineseTitle = response.text.trim()
     } else {
-      // 调用 AI API (支持多种供应商)
-      const response = await fetch(`${API_CONFIG.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${API_CONFIG.apiKey}`,
-          'HTTP-Referer': 'https://github.com/NekoImageGallery/exhentai-manga-manager',
-          'X-Title': 'ExHentai Manga Manager'
-        },
-        body: JSON.stringify({
-          model: API_CONFIG.model,
-          messages: [
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: API_CONFIG.temperature,
-          max_tokens: API_CONFIG.maxTokens
-        })
+      // 使用 OpenAI SDK
+      const openai = new OpenAI({
+        apiKey: API_CONFIG.apiKey,
+        baseURL: API_CONFIG.baseUrl,
+        timeout: (API_CONFIG.timeout || 30) * 1000
       })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(`API request failed: ${errorData.error?.message || response.statusText}`)
-      }
-
-      const data = await response.json()
-      chineseTitle = data.choices[0].message.content.trim()
+      
+      const completion = await openai.chat.completions.create({
+        model: API_CONFIG.model,
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: API_CONFIG.temperature || 0.3,
+        max_tokens: API_CONFIG.maxTokens || 2000
+      })
+      
+      chineseTitle = completion.choices[0].message.content.trim()
     }
 
     // 移除可能的引号包裹
@@ -543,6 +519,10 @@ async function translateTitleToChinese(englishTitle, japaneseTitle, filename) {
  */
 async function testApiConnection() {
   try {
+    console.log('[API Test] Testing with provider:', API_CONFIG.provider)
+    console.log('[API Test] Base URL:', API_CONFIG.baseUrl)
+    console.log('[API Test] Model:', API_CONFIG.model)
+    
     let responseContent = ''
     
     if (API_CONFIG.provider === 'gemini') {
@@ -554,46 +534,39 @@ async function testApiConnection() {
       })
       responseContent = response.text.trim()
     } else {
-      // 使用OpenAI兼容API
-      const response = await fetch(`${API_CONFIG.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${API_CONFIG.apiKey}`,
-          'HTTP-Referer': 'https://github.com/NekoImageGallery/exhentai-manga-manager',
-          'X-Title': 'ExHentai Manga Manager'
-        },
-        body: JSON.stringify({
-          model: API_CONFIG.model,
-          messages: [
-            {
-              role: 'user',
-              content: 'Hello'
-            }
-          ],
-          temperature: 0.3,
-          max_tokens: 10
-        })
+      // 使用 OpenAI SDK
+      const openai = new OpenAI({
+        apiKey: API_CONFIG.apiKey,
+        baseURL: API_CONFIG.baseUrl,
+        timeout: (API_CONFIG.timeout || 30) * 1000
       })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.error?.message || response.statusText)
-      }
-
-      const data = await response.json()
-      responseContent = data.choices[0].message.content
+      
+      const completion = await openai.chat.completions.create({
+        model: API_CONFIG.model,
+        messages: [
+          {
+            role: 'user',
+            content: 'Hello'
+          }
+        ],
+        temperature: 0.3,
+        max_tokens: 10
+      })
+      
+      responseContent = completion.choices[0].message.content.trim()
     }
     
+    console.log('[API Test] Test successful, response:', responseContent)
     return {
       success: true,
       message: 'API连接测试成功',
       response: responseContent
     }
   } catch (error) {
+    console.error('[API Test] Test failed:', error.message)
     return {
       success: false,
-      message: `API连接测试失败: ${error.message}`
+      message: error.message
     }
   }
 }
@@ -837,9 +810,9 @@ function initTranslationIPC(ipcMain, getSettings) {
 
   // 测试API连接
   ipcMain.handle('test-translation-api', async (event) => {
-    // 从设置更新API配置
-    const settings = await getSettings()
-    updateApiConfig(settings)
+    // 直接从 JSON 配置文件加载,不使用 settings 覆盖
+    loadApiConfig()
+    console.log('[Translation IPC] Testing API with config from JSON file')
     
     return await testApiConnection()
   })
@@ -849,9 +822,9 @@ function initTranslationIPC(ipcMain, getSettings) {
     try {
       console.log(`[Translation IPC] Received batch translate request for ${books.length} books`)
       
-      // 更新API配置
-      updateApiConfig(settings)
-      console.log(`[Translation IPC] API config updated:`, {
+      // 直接从 JSON 配置文件加载,不使用 settings 覆盖
+      loadApiConfig()
+      console.log(`[Translation IPC] API config loaded from JSON:`, {
         provider: API_CONFIG.provider,
         model: API_CONFIG.model,
         baseUrl: API_CONFIG.baseUrl
