@@ -33,3 +33,4 @@ test/
 /node_mod
 /test-nhentai-parse.html
 /__pycache__
+/config/ai_api_config.json

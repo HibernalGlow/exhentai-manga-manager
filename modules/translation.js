@@ -11,49 +11,76 @@ const fetch = require('node-fetch')
 // 导入现成的URL分组排序函数
 const { sortByUrlGroup } = require('../src/utils/sqlFilter.js')
 
-// 翻译存储文件路径
-const TRANSLATIONS_FILE = path.join(__dirname, '..', 'translations.json')
+// 导入存储路径（与数据库等文件放在一起）
+const { STORE_PATH } = require('./init_folder_setting.js')
 
-// API配置（从设置中加载）
-let API_CONFIG = {
-  provider: 'qwen',
-  apiKey: 'sk-35536bd065b849468e87577b8dc98e57',
-  baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-  model: 'qwen-max',
-  temperature: 0.3,
-  maxTokens: 2000
+// 翻译存储文件路径
+const TRANSLATIONS_FILE = path.join(STORE_PATH, 'translations.json')
+
+
+// API配置文件路径
+const API_CONFIG_FILE = path.join(__dirname, '..', 'config', 'ai_api_config.json')
+let API_CONFIG = null
+
+function loadApiConfig() {
+  try {
+    if (fs.existsSync(API_CONFIG_FILE)) {
+      const data = fs.readFileSync(API_CONFIG_FILE, 'utf8')
+      API_CONFIG = JSON.parse(data)
+      return API_CONFIG
+    }
+  } catch (e) {
+    console.error('Failed to load API config:', e)
+  }
+  // 默认配置（提示用户填写）
+  API_CONFIG = {
+    provider: 'qwen',
+    apiKey: '',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    model: 'qwen-max',
+    temperature: 0.3,
+    maxTokens: 2000
+  }
+  return API_CONFIG
 }
+
+// 启动时加载一次
+loadApiConfig()
 
 /**
  * Update API configuration from settings
  * 从设置更新API配置
  */
 function updateApiConfig(settings) {
-  if (settings.aiApiProvider) API_CONFIG.provider = settings.aiApiProvider
-  if (settings.aiApiKey) API_CONFIG.apiKey = settings.aiApiKey
-  if (settings.aiApiBaseUrl) API_CONFIG.baseUrl = settings.aiApiBaseUrl
-  if (settings.aiModel) API_CONFIG.model = settings.aiModel
-  if (settings.aiTemperature !== undefined) API_CONFIG.temperature = settings.aiTemperature
-  if (settings.aiMaxTokens) API_CONFIG.maxTokens = settings.aiMaxTokens
-  
-  // Set base URL based on provider
-  if (!settings.aiApiBaseUrl) {
-    switch (settings.aiApiProvider) {
-      case 'openrouter':
-        API_CONFIG.baseUrl = 'https://openrouter.ai/api/v1'
-        break
-      case 'openai':
-        API_CONFIG.baseUrl = 'https://api.openai.com/v1'
-        break
-      case 'claude':
-        API_CONFIG.baseUrl = 'https://api.anthropic.com/v1'
-        break
-      case 'qwen':
-        API_CONFIG.baseUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-        break
-      case 'ernie':
-        API_CONFIG.baseUrl = 'https://aip.baidubce.com/rpc/2.0'
-        break
+  // 先从 config 文件加载
+  loadApiConfig()
+  // 用户设置优先覆盖
+  if (settings) {
+    if (settings.aiApiProvider) API_CONFIG.provider = settings.aiApiProvider
+    if (settings.aiApiKey) API_CONFIG.apiKey = settings.aiApiKey
+    if (settings.aiApiBaseUrl) API_CONFIG.baseUrl = settings.aiApiBaseUrl
+    if (settings.aiModel) API_CONFIG.model = settings.aiModel
+    if (settings.aiTemperature !== undefined) API_CONFIG.temperature = settings.aiTemperature
+    if (settings.aiMaxTokens) API_CONFIG.maxTokens = settings.aiMaxTokens
+    // Set base URL based on provider
+    if (!settings.aiApiBaseUrl) {
+      switch (settings.aiApiProvider) {
+        case 'openrouter':
+          API_CONFIG.baseUrl = 'https://openrouter.ai/api/v1'
+          break
+        case 'openai':
+          API_CONFIG.baseUrl = 'https://api.openai.com/v1'
+          break
+        case 'claude':
+          API_CONFIG.baseUrl = 'https://api.anthropic.com/v1'
+          break
+        case 'qwen':
+          API_CONFIG.baseUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+          break
+        case 'ernie':
+          API_CONFIG.baseUrl = 'https://aip.baidubce.com/rpc/2.0'
+          break
+      }
     }
   }
 }
