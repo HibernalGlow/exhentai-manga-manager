@@ -470,7 +470,7 @@ async function batchTranslateBooks(books, settings, onProgress) {
     excludePureNumberChinese: settings.excludePureNumberChinese,
     provider: settings.aiApiProvider,
     model: settings.aiModel,
-    batchSize: 'auto (10-20 books per request)',
+    batchSize: settings.batchTranslationSize || 10,
     sorting: 'URL grouped (descending)'
   })
   
@@ -508,10 +508,9 @@ async function batchTranslateBooks(books, settings, onProgress) {
   const sortedBooks = sortByUrlGroup(booksToTranslate, false) // false = 降序
   console.log(`[Translation Backend] Books reordered by URL groups (descending) using optimized sort function`)
 
-  // 计算批次大小（根据模型限制动态调整）
-  // DeepSeek-V3.1 支持 128K tokens，估算每本书约 200-300 tokens
-  // 保守估计：每批 10 本书（约 3000 tokens input + 500 tokens output）
-  const BATCH_SIZE = 10
+  // 计算批次大小（从设置中读取，默认 10）
+  const BATCH_SIZE = settings.batchTranslationSize || 10
+  console.log(`[Translation Backend] Batch size: ${BATCH_SIZE} books per request`)
   const batches = []
   
   for (let i = 0; i < sortedBooks.length; i += BATCH_SIZE) {

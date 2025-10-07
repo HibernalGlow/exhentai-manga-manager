@@ -967,6 +967,24 @@
             </div>
           </el-col>
 
+          <!-- Batch Translation Size -->
+          <el-col :span="24">
+            <div class="setting-line">
+              <el-input-number
+                  v-model="setting.batchTranslationSize"
+                  :min="1"
+                  :max="50"
+                  :step="1"
+                  @change="saveSetting"
+                  style="width: 100%"
+              >
+                <template #prepend>
+                  <span class="setting-label">{{ $t('m.batchTranslationSize') || '批量翻译数量' }}</span>
+                </template>
+              </el-input-number>
+            </div>
+          </el-col>
+
           <el-divider />
 
           <!-- 测试 API 连接 -->
@@ -1022,6 +1040,7 @@
                 <p>{{ $t('m.translationHelpText1') }}</p>
                 <p>{{ $t('m.translationHelpText2') }}</p>
                 <p>{{ $t('m.translationHelpText3') }}</p>
+                <p><strong>{{ $t('m.batchTranslationSizeHelp') || '批量翻译数量：' }}</strong>{{ $t('m.batchTranslationSizeHelpText') || '每次API调用翻译的书籍数量。较大的值可以提高速度但可能超出API限制，建议值：5-20' }}</p>
               </template>
             </el-alert>
           </el-col>
@@ -1201,7 +1220,8 @@ const batchTranslate = async () => {
       aiApiBaseUrl: setting.value.aiApiBaseUrl,
       aiModel: setting.value.aiModel,
       aiTemperature: setting.value.aiTemperature,
-      aiMaxTokens: setting.value.aiMaxTokens
+      aiMaxTokens: setting.value.aiMaxTokens,
+      batchTranslationSize: setting.value.batchTranslationSize || 10
     }
     
     console.log('[Translation] Simplified settings:', simplifiedSettings)
@@ -1281,6 +1301,7 @@ onMounted(() => {
     if (res.aiModel === undefined) setting.value.aiModel = 'deepseek/deepseek-chat-v3.1:free'
     if (res.aiTemperature === undefined) setting.value.aiTemperature = 0.3
     if (res.aiMaxTokens === undefined) setting.value.aiMaxTokens = 100
+    if (res.batchTranslationSize === undefined) setting.value.batchTranslationSize = 10
     setting.value.concurrentScan = normalizeConcurrency(res.concurrentScan, defaultConcurrentScan)
     setting.value.concurrentWrite = normalizeConcurrency(res.concurrentWrite, defaultConcurrentWrite)
     // libray folders
