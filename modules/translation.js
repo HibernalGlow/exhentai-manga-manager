@@ -6,9 +6,57 @@
 const path = require('path')
 const fs = require('fs')
 const { isPureNumberOrChinese } = require('./string_utils.js')
+const fetch = require('node-fetch')
+
+// 导入现成的URL分组排序函数
+const { sortByUrlGroup } = require('../src/utils/sqlFilter.js')
 
 // 翻译存储文件路径
 const TRANSLATIONS_FILE = path.join(__dirname, '..', 'translations.json')
+
+// API配置（从设置中加载）
+let API_CONFIG = {
+  provider: 'qwen',
+  apiKey: 'sk-35536bd065b849468e87577b8dc98e57',
+  baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  model: 'qwen-max',
+  temperature: 0.3,
+  maxTokens: 2000
+}
+
+/**
+ * Update API configuration from settings
+ * 从设置更新API配置
+ */
+function updateApiConfig(settings) {
+  if (settings.aiApiProvider) API_CONFIG.provider = settings.aiApiProvider
+  if (settings.aiApiKey) API_CONFIG.apiKey = settings.aiApiKey
+  if (settings.aiApiBaseUrl) API_CONFIG.baseUrl = settings.aiApiBaseUrl
+  if (settings.aiModel) API_CONFIG.model = settings.aiModel
+  if (settings.aiTemperature !== undefined) API_CONFIG.temperature = settings.aiTemperature
+  if (settings.aiMaxTokens) API_CONFIG.maxTokens = settings.aiMaxTokens
+  
+  // Set base URL based on provider
+  if (!settings.aiApiBaseUrl) {
+    switch (settings.aiApiProvider) {
+      case 'openrouter':
+        API_CONFIG.baseUrl = 'https://openrouter.ai/api/v1'
+        break
+      case 'openai':
+        API_CONFIG.baseUrl = 'https://api.openai.com/v1'
+        break
+      case 'claude':
+        API_CONFIG.baseUrl = 'https://api.anthropic.com/v1'
+        break
+      case 'qwen':
+        API_CONFIG.baseUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+        break
+      case 'ernie':
+        API_CONFIG.baseUrl = 'https://aip.baidubce.com/rpc/2.0'
+        break
+    }
+  }
+}
 
 /**
  * Load translations from JSON file
@@ -70,8 +118,164 @@ function shouldExcludeFromTranslation(filename) {
 }
 
 /**
- * Translate book title to Chinese using AI
- * 使用AI将书籍标题翻译为中文
+ * Batch translate multiple book titles in one API call
+ * 在一次API调用中批量翻译多个书籍标题
+ */
+async function translateBatchTitles(books) {
+  if (!books || books.length === 0) {
+    return []
+  }
+
+  // 构建批量翻译提示词
+  const booksInfo = books.map((book, index) => {
+    return `${index + 1}. 
+   英文标题: ${book.title || '无'}
+   日文标题: ${book.title_jpn || '无'}
+   文件名: ${book.filename || '无'}`
+  }).join('\n\n')
+
+  const prompt = `请将以下${books.length}个漫画标题翻译成简洁的中文作品名。
+
+${booksInfo}
+
+要求：
+1. 每个标题单独翻译，保持编号 给你的可能是罗马音日文中文英文混杂的作品名
+2. 只返回作品名，不包含展会信息、翻译者、汉化组等 但是不能过少 不能只翻译前面第一段的内容 翻译完整的作品名
+3. 保持简洁自然的中文表达
+4. 去除所有方括号、圆括号内的附加信息
+5. 严格按照 "编号. 中文译名" 的格式返回
+
+返回格式示例：
+1. 某作品名
+2. 另一作品名
+3. 第三个作品名
+
+请直接返回翻译结果，每行一个，不要任何额外解释：`
+
+  // 添加重试机制（最多3次）
+  const maxRetries = 3
+  let lastError = null
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[Translation] API call attempt ${attempt}/${maxRetries}`)
+      
+      const response = await fetch(`${API_CONFIG.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${API_CONFIG.apiKey}`,
+          'HTTP-Referer': 'https://github.com/NekoImageGallery/exhentai-manga-manager',
+          'X-Title': 'ExHentai Manga Manager'
+        },
+        body: JSON.stringify({
+          model: API_CONFIG.model,
+          messages: [
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: API_CONFIG.temperature,
+          max_tokens: Math.max(API_CONFIG.maxTokens, books.length * 50) // 动态调整token数
+        }),
+        timeout: 30000 // 30秒超时
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(`API request failed: ${errorData.error?.message || response.statusText}`)
+      }
+
+      const data = await response.json()
+      const responseText = data.choices[0].message.content.trim()
+
+      // 解析返回的翻译结果
+      const lines = responseText.split('\n').filter(line => line.trim())
+      const translations = []
+
+      for (let i = 0; i < books.length; i++) {
+        const book = books[i]
+        let chineseTitle = ''
+
+        // 尝试匹配编号格式的翻译
+        const pattern = new RegExp(`^${i + 1}\\.\\s*(.+)$`)
+        const matchedLine = lines.find(line => pattern.test(line.trim()))
+
+        if (matchedLine) {
+          chineseTitle = matchedLine.replace(pattern, '$1').trim()
+        } else if (lines[i]) {
+          // 如果没有编号，按行号对应
+          chineseTitle = lines[i].replace(/^\d+\.\s*/, '').trim()
+        } else {
+          // 如果解析失败，使用fallback
+          chineseTitle = book.title_jpn || book.title || book.filename
+        }
+
+        // 清理引号
+        chineseTitle = chineseTitle.replace(/^["'《]|["'》]$/g, '')
+
+        translations.push({
+          hash: book.hash,
+          chinese_title: chineseTitle,
+          original_english: book.title,
+          original_japanese: book.title_jpn,
+          filename: book.filename,
+          fallback: false
+        })
+      }
+
+      // 如果成功，返回翻译结果
+      console.log(`[Translation] API call succeeded on attempt ${attempt}`)
+      return translations
+
+    } catch (error) {
+      lastError = error
+      console.error(`[Translation] API call attempt ${attempt}/${maxRetries} failed:`, error.message)
+      
+      // 如果是网络连接错误且还有重试机会，等待后重试
+      if (error.code === 'ECONNRESET' && attempt < maxRetries) {
+        const waitTime = attempt * 2000 // 递增等待时间：2s, 4s
+        console.log(`[Translation] Retrying in ${waitTime / 1000}s...`)
+        await new Promise(resolve => setTimeout(resolve, waitTime))
+        continue
+      }
+      
+      // 其他错误或已达最大重试次数，跳出循环
+      break
+    }
+  }
+
+  // 所有重试都失败，返回fallback结果
+  console.error(`[Translation] All ${maxRetries} attempts failed, using fallback`)
+  return books.map(book => ({
+    hash: book.hash,
+    chinese_title: cleanTitle(book.title_jpn || book.title || book.filename),
+    original_english: book.title,
+    original_japanese: book.title_jpn,
+    filename: book.filename,
+    fallback: true
+  }))
+}
+
+/**
+ * Clean title by removing brackets and extra info
+ * 清理标题，移除方括号和额外信息
+ */
+function cleanTitle(title) {
+  if (!title) return '未命名作品'
+  
+  return title
+    .replace(/\[[^\]]*\]/g, '') // 移除方括号内容
+    .replace(/【[^】]*】/g, '') // 移除双括号内容
+    .replace(/（[^）]*）/g, '') // 移除小括号内容
+    .replace(/\([^\)]*\)/g, '') // 移除英文括号内容
+    .trim() || '未命名作品'
+}
+
+/**
+ * Translate book title to Chinese using AI (single mode, for backward compatibility)
+ * 使用AI将书籍标题翻译为中文（单条模式，保持向后兼容）
  */
 async function translateTitleToChinese(englishTitle, japaneseTitle, filename) {
   // 检查是否应该排除翻译
@@ -96,94 +300,291 @@ async function translateTitleToChinese(englishTitle, japaneseTitle, filename) {
 
 请直接返回中文译名，不要任何解释：`
 
-  // 这里可以集成各种 AI API，比如：
-  // - OpenAI GPT
-  // - Claude
-  // - 通义千问
-  // - 文心一言
-  // - 等等
-
-  // 示例：使用 OpenAI API（需要配置 API key）
-  /*
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-    },
-    body: JSON.stringify({
-      model: 'gpt-3.5-turbo',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 100,
-      temperature: 0.3
+  try {
+    // 调用 AI API (支持多种供应商)
+    const response = await fetch(`${API_CONFIG.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${API_CONFIG.apiKey}`,
+        'HTTP-Referer': 'https://github.com/NekoImageGallery/exhentai-manga-manager',
+        'X-Title': 'ExHentai Manga Manager'
+      },
+      body: JSON.stringify({
+        model: API_CONFIG.model,
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: API_CONFIG.temperature,
+        max_tokens: API_CONFIG.maxTokens
+      })
     })
-  })
 
-  const data = await response.json()
-  const chineseTitle = data.choices[0].message.content.trim()
-  */
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(`API request failed: ${errorData.error?.message || response.statusText}`)
+    }
 
-  // 示例：使用通义千问 API
-  /*
-  const response = await fetch('https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.DASHSCOPE_API_KEY}`,
-      'X-DashScope-SSE': 'disable'
-    },
-    body: JSON.stringify({
-      model: 'qwen-turbo',
-      input: { messages: [{ role: 'user', content: prompt }] },
-      parameters: { max_tokens: 100, temperature: 0.3 }
+    const data = await response.json()
+    const chineseTitle = data.choices[0].message.content.trim()
+
+    // 移除可能的引号包裹
+    const cleanTitle = chineseTitle.replace(/^["'《]|["'》]$/g, '')
+
+    return {
+      chinese_title: cleanTitle,
+      original_english: englishTitle,
+      original_japanese: japaneseTitle,
+      filename: filename
+    }
+  } catch (error) {
+    console.error('AI translation error:', error)
+    
+    // 检查是否是限流错误
+    if (error.message && error.message.includes('Rate limit exceeded')) {
+      console.error('[Translation] ⚠️  Rate limit hit! Free model limit: 20 requests per minute.')
+      console.error('[Translation] 💡 Suggestion: Wait a moment or consider using a paid API key.')
+    }
+    
+    // 如果AI调用失败，使用简单的规则-based翻译作为后备方案
+    let chineseTitle = ''
+    
+    if (japaneseTitle) {
+      let cleanTitle = japaneseTitle
+        .replace(/\[[^\]]*\]/g, '') // 移除方括号内容
+        .replace(/【[^】]*】/g, '') // 移除双括号内容
+        .replace(/（[^）]*）/g, '') // 移除小括号内容
+        .replace(/\([^\)]*\)/g, '') // 移除英文括号内容
+        .trim()
+      chineseTitle = cleanTitle
+    } else if (englishTitle) {
+      let cleanTitle = englishTitle
+        .replace(/\[[^\]]*\]/g, '')
+        .replace(/【[^】]*】/g, '')
+        .replace(/（[^）]*）/g, '')
+        .replace(/\([^\)]*\)/g, '')
+        .trim()
+      chineseTitle = cleanTitle
+    } else {
+      chineseTitle = '未命名作品'
+    }
+
+    return {
+      chinese_title: chineseTitle,
+      original_english: englishTitle,
+      original_japanese: japaneseTitle,
+      filename: filename,
+      fallback: true // 标记使用了后备方案
+    }
+  }
+}
+
+/**
+ * Test API connection with current configuration
+ * 测试当前配置的API连接
+ */
+async function testApiConnection() {
+  try {
+    const response = await fetch(`${API_CONFIG.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${API_CONFIG.apiKey}`,
+        'HTTP-Referer': 'https://github.com/NekoImageGallery/exhentai-manga-manager',
+        'X-Title': 'ExHentai Manga Manager'
+      },
+      body: JSON.stringify({
+        model: API_CONFIG.model,
+        messages: [
+          {
+            role: 'user',
+            content: 'Hello'
+          }
+        ],
+        temperature: 0.3,
+        max_tokens: 10
+      })
     })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.error?.message || response.statusText)
+    }
+
+    const data = await response.json()
+    return {
+      success: true,
+      message: 'API连接测试成功',
+      response: data.choices[0].message.content
+    }
+  } catch (error) {
+    return {
+      success: false,
+      message: `API连接测试失败: ${error.message}`
+    }
+  }
+}
+
+/**
+ * Batch translate books without Chinese translations
+ * 批量翻译没有中文翻译的书籍
+ */
+async function batchTranslateBooks(books, settings, onProgress) {
+  console.log(`[Translation Backend] Starting batch translation for ${books.length} books`)
+  console.log(`[Translation Backend] Settings:`, {
+    excludePureNumberChinese: settings.excludePureNumberChinese,
+    provider: settings.aiApiProvider,
+    model: settings.aiModel,
+    batchSize: 'auto (10-20 books per request)',
+    sorting: 'URL grouped (descending)'
   })
-
-  const data = await response.json()
-  const chineseTitle = data.output.text.trim()
-  */
-
-  // 临时模拟实现 - 实际部署时需要替换为真实的 AI API 调用
-  let chineseTitle = ''
-
-  // 简单的规则-based 翻译（仅用于演示）
-  if (japaneseTitle) {
-    // 移除常见的展会信息
-    let cleanTitle = japaneseTitle
-      .replace(/\[[^\]]*\]/g, '') // 移除方括号内容
-      .replace(/【[^】]*】/g, '') // 移除双括号内容
-      .replace(/（[^）]*）/g, '') // 移除小括号内容
-      .replace(/\([^\)]*\)/g, '') // 移除英文括号内容
-      .trim()
-
-    // 这里应该调用真实的 AI API
-    chineseTitle = `《${cleanTitle}》` // 临时模拟
-  } else if (englishTitle) {
-    let cleanTitle = englishTitle
-      .replace(/\[[^\]]*\]/g, '')
-      .replace(/【[^】]*】/g, '')
-      .replace(/（[^）]*）/g, '')
-      .replace(/\([^\)]*\)/g, '')
-      .trim()
-
-    chineseTitle = `《${cleanTitle}》` // 临时模拟
-  } else {
-    chineseTitle = '未命名作品'
+  
+  const translations = loadTranslations()
+  const results = {
+    success: 0,
+    failed: 0,
+    skipped: 0,
+    errors: []
   }
 
-  return {
-    chinese_title: chineseTitle,
-    original_english: englishTitle,
-    original_japanese: japaneseTitle,
-    filename: filename
+  // 过滤需要翻译的书籍
+  const booksToTranslate = []
+  for (const book of books) {
+    // 跳过已有翻译的
+    if (translations[book.hash]) {
+      console.log(`[Translation Backend] Skipped (already translated): ${book.filename}`)
+      results.skipped++
+      continue
+    }
+
+    // 检查是否需要排除
+    if (settings.excludePureNumberChinese && shouldExcludeFromTranslation(book.filename)) {
+      console.log(`[Translation Backend] Skipped (excluded by filter): ${book.filename}`)
+      results.skipped++
+      continue
+    }
+
+    booksToTranslate.push(book)
   }
+
+  console.log(`[Translation Backend] Books to translate: ${booksToTranslate.length}`)
+
+  // URL分组并降序排序（使用现成的优化排序函数）
+  const sortedBooks = sortByUrlGroup(booksToTranslate, false) // false = 降序
+  console.log(`[Translation Backend] Books reordered by URL groups (descending) using optimized sort function`)
+
+  // 计算批次大小（根据模型限制动态调整）
+  // DeepSeek-V3.1 支持 128K tokens，估算每本书约 200-300 tokens
+  // 保守估计：每批 10 本书（约 3000 tokens input + 500 tokens output）
+  const BATCH_SIZE = 10
+  const batches = []
+  
+  for (let i = 0; i < sortedBooks.length; i += BATCH_SIZE) {
+    batches.push(sortedBooks.slice(i, i + BATCH_SIZE))
+  }
+
+  console.log(`[Translation Backend] Split into ${batches.length} batches (${BATCH_SIZE} books per batch)`)
+
+  // 逐批次翻译
+  for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+    const batch = batches[batchIndex]
+    const batchStart = batchIndex * BATCH_SIZE + 1
+    const batchEnd = Math.min(batchStart + batch.length - 1, sortedBooks.length)
+
+    console.log(`\n[Translation Backend] 📦 Processing batch ${batchIndex + 1}/${batches.length} (books ${batchStart}-${batchEnd})`)
+    console.log(`[Translation Backend] Batch books:`, batch.map(b => b.filename).join(', '))
+
+    // 进度回调
+    if (onProgress) {
+      onProgress({
+        current: batchStart,
+        total: books.length,
+        book: batch[0]
+      })
+    }
+
+    try {
+      console.log(`[Translation Backend] 🚀 Calling batch translation API...`)
+      const batchTranslations = await translateBatchTitles(batch)
+      
+      console.log(`[Translation Backend] ✅ Batch API returned ${batchTranslations.length} results`)
+
+      // 保存翻译结果
+      for (let i = 0; i < batchTranslations.length; i++) {
+        const translation = batchTranslations[i]
+        const book = batch[i]
+
+        if (translation.fallback) {
+          console.log(`[Translation Backend] ⚠️  Fallback: ${book.filename} -> ${translation.chinese_title}`)
+          results.failed++
+          results.errors.push({
+            book: book.filename,
+            error: 'Batch API failed, used fallback translation'
+          })
+        } else {
+          console.log(`[Translation Backend] ✅ ${i + 1}/${batch.length}: ${book.filename} -> ${translation.chinese_title}`)
+          results.success++
+        }
+
+        saveBookTranslation(book.hash, translation)
+      }
+
+      // 批次间延迟（避免限流）
+      if (batchIndex < batches.length - 1) {
+        const waitTime = 3000 // 3秒
+        console.log(`[Translation Backend] ⏳ Waiting ${waitTime / 1000}s before next batch...`)
+        await new Promise(resolve => setTimeout(resolve, waitTime))
+      }
+
+    } catch (error) {
+      console.error(`[Translation Backend] ❌ Batch ${batchIndex + 1} failed:`, error.message)
+      
+      // 批次失败时，尝试单条翻译（fallback）
+      console.log(`[Translation Backend] 🔄 Falling back to single-item translation for this batch...`)
+      
+      for (const book of batch) {
+        try {
+          const translation = await translateTitleToChinese(
+            book.title,
+            book.title_jpn,
+            book.filename
+          )
+          
+          if (translation.fallback) {
+            results.failed++
+          } else {
+            results.success++
+          }
+          
+          saveBookTranslation(book.hash, translation)
+          await new Promise(resolve => setTimeout(resolve, 1000))
+          
+        } catch (singleError) {
+          console.error(`[Translation Backend] ❌ Single translation failed: ${book.filename}`)
+          results.failed++
+          results.errors.push({
+            book: book.filename,
+            error: singleError.message
+          })
+        }
+      }
+    }
+  }
+
+  console.log(`\n[Translation Backend] 🎉 Batch translation completed:`, results)
+  console.log(`[Translation Backend] Speed: ${booksToTranslate.length} books in ${batches.length} API calls (avg ${(booksToTranslate.length / batches.length).toFixed(1)} books/call)`)
+  
+  return results
 }
 
 /**
  * Initialize translation IPC handlers
  * 初始化翻译相关的IPC处理器
  */
-function initTranslationIPC(ipcMain) {
+function initTranslationIPC(ipcMain, getSettings) {
   // 获取书籍翻译
   ipcMain.handle('get-book-translation', async (event, bookHash) => {
     return getBookTranslation(bookHash)
@@ -197,7 +598,47 @@ function initTranslationIPC(ipcMain) {
 
   // AI 翻译标题
   ipcMain.handle('translate-title-ai', async (event, { englishTitle, japaneseTitle, filename }) => {
+    // 从设置更新API配置
+    const settings = await getSettings()
+    updateApiConfig(settings)
+    
     return await translateTitleToChinese(englishTitle, japaneseTitle, filename)
+  })
+
+  // 测试API连接
+  ipcMain.handle('test-translation-api', async (event) => {
+    // 从设置更新API配置
+    const settings = await getSettings()
+    updateApiConfig(settings)
+    
+    return await testApiConnection()
+  })
+
+  // 批量翻译书籍
+  ipcMain.handle('batch-translate-books', async (event, { books, settings }) => {
+    try {
+      console.log(`[Translation IPC] Received batch translate request for ${books.length} books`)
+      
+      // 更新API配置
+      updateApiConfig(settings)
+      console.log(`[Translation IPC] API config updated:`, {
+        provider: API_CONFIG.provider,
+        model: API_CONFIG.model,
+        baseUrl: API_CONFIG.baseUrl
+      })
+      
+      // 批量翻译，发送进度更新
+      const result = await batchTranslateBooks(books, settings, (progress) => {
+        console.log(`[Translation IPC] Progress: ${progress.current}/${progress.total}`)
+        event.sender.send('batch-translate-progress', progress)
+      })
+      
+      console.log(`[Translation IPC] Batch translate completed:`, result)
+      return result
+    } catch (error) {
+      console.error(`[Translation IPC] Batch translate error:`, error)
+      throw error
+    }
   })
 }
 
@@ -208,5 +649,10 @@ module.exports = {
   saveBookTranslation,
   shouldExcludeFromTranslation,
   translateTitleToChinese,
+  translateBatchTitles,
+  cleanTitle,
+  updateApiConfig,
+  testApiConnection,
+  batchTranslateBooks,
   initTranslationIPC
 }

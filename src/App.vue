@@ -1437,7 +1437,7 @@ export default defineComponent({
 
     async translateBookToChinese(book) {
       try {
-        this.printMessage('info', '正在生成中文翻译...')
+        this.printMessage('info', '正在使用AI生成中文翻译...')
 
         const translation = await ipcRenderer.invoke('translate-title-ai', {
           englishTitle: book.title,
@@ -1450,12 +1450,21 @@ export default defineComponent({
           translation: translation
         })
 
-        this.printMessage('success', `中文翻译已生成: ${translation.chinese_title}`)
+        // 根据是否使用了后备方案显示不同的消息
+        if (translation.fallback) {
+          this.printMessage('warning', `中文翻译已生成（后备方案）: ${translation.chinese_title}`)
+        } else {
+          this.printMessage('success', `AI翻译完成: ${translation.chinese_title}`)
+        }
 
         // 通知所有 BookCard 更新翻译
         ipcRenderer.send('translation-updated', book.hash || book.id)
       } catch (e) {
-        this.printMessage('error', `翻译失败: ${e.message}`)
+        if (e.message.includes('only numbers or Chinese')) {
+          this.printMessage('warning', '跳过翻译：文件名仅包含数字或中文字符')
+        } else {
+          this.printMessage('error', `翻译失败: ${e.message}`)
+        }
       }
     },
 

@@ -2039,7 +2039,7 @@ ipcMain.handle('delete-cover', async (event, bookId) => {
 })
 
 // 初始化翻译IPC处理器
-initTranslationIPC(ipcMain)
+initTranslationIPC(ipcMain, async () => setting)
 
 // 重新生成封面
 ipcMain.handle('regenerate-cover', async (event, bookId) => {
@@ -2067,9 +2067,6 @@ ipcMain.handle('regenerate-cover', async (event, bookId) => {
     throw e
   }
 })
-
-// 初始化翻译IPC处理器
-initTranslationIPC(ipcMain)
 
 // setting
 ipcMain.handle('select-folder', async (event, title) => {

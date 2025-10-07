@@ -816,6 +816,204 @@
           </el-col>
         </el-row>
       </el-tab-pane>
+      <el-tab-pane :label="$t('m.translation')" name="translation">
+        <el-row :gutter="8">
+          <!-- 显示开关 -->
+          <el-col :span="24">
+            <div class="setting-line">
+              <el-form-item :label="$t('m.translationSettings')">
+                <el-switch
+                    v-model="setting.showChineseTranslation"
+                    :active-text="$t('m.showChineseTranslation')"
+                    @change="saveSetting"
+                />
+              </el-form-item>
+            </div>
+          </el-col>
+
+          <!-- 自动补缺 -->
+          <el-col :span="24">
+            <div class="setting-line">
+              <el-form-item>
+                <el-switch
+                    v-model="setting.autoTranslateMissing"
+                    :active-text="$t('m.autoTranslateMissing')"
+                    @change="saveSetting"
+                />
+              </el-form-item>
+            </div>
+          </el-col>
+
+          <!-- 排除纯数字和中文文件 -->
+          <el-col :span="24">
+            <div class="setting-line">
+              <el-form-item>
+                <el-switch
+                    v-model="setting.excludePureNumberChinese"
+                    :active-text="$t('m.excludePureNumberChinese')"
+                    @change="saveSetting"
+                />
+              </el-form-item>
+            </div>
+          </el-col>
+
+          <el-divider />
+
+          <!-- API 配置标题 -->
+          <el-col :span="24">
+            <h3>{{ $t('m.aiApiConfig') }}</h3>
+          </el-col>
+
+          <!-- API Provider 选择 -->
+          <el-col :span="24">
+            <div class="setting-line">
+              <el-select
+                  v-model="setting.aiApiProvider"
+                  :placeholder="$t('m.selectApiProvider')"
+                  @change="saveSetting"
+                  style="width: 100%"
+              >
+                <template #prepend>
+                  <span class="setting-label">{{ $t('m.apiProvider') }}</span>
+                </template>
+                <el-option label="OpenRouter" value="openrouter" />
+                <el-option label="OpenAI" value="openai" />
+                <el-option label="Claude" value="claude" />
+                <el-option label="通义千问" value="qwen" />
+                <el-option label="文心一言" value="ernie" />
+                <el-option label="自定义" value="custom" />
+              </el-select>
+            </div>
+          </el-col>
+
+          <!-- API Key -->
+          <el-col :span="24">
+            <div class="setting-line">
+              <el-input
+                  v-model="setting.aiApiKey"
+                  :placeholder="$t('m.enterApiKey')"
+                  type="password"
+                  show-password
+                  @change="saveSetting"
+              >
+                <template #prepend>
+                  <span class="setting-label">{{ $t('m.apiKey') }}</span>
+                </template>
+              </el-input>
+            </div>
+          </el-col>
+
+          <!-- API Base URL (仅自定义时显示) -->
+          <el-col :span="24" v-if="setting.aiApiProvider === 'custom'">
+            <div class="setting-line">
+              <el-input
+                  v-model="setting.aiApiBaseUrl"
+                  :placeholder="$t('m.enterApiBaseUrl')"
+                  @change="saveSetting"
+              >
+                <template #prepend>
+                  <span class="setting-label">{{ $t('m.apiBaseUrl') }}</span>
+                </template>
+              </el-input>
+            </div>
+          </el-col>
+
+          <!-- Model Name -->
+          <el-col :span="24">
+            <div class="setting-line">
+              <el-input
+                  v-model="setting.aiModel"
+                  :placeholder="$t('m.enterModelName')"
+                  @change="saveSetting"
+              >
+                <template #prepend>
+                  <span class="setting-label">{{ $t('m.modelName') }}</span>
+                </template>
+              </el-input>
+            </div>
+          </el-col>
+
+          <!-- Temperature -->
+          <el-col :span="24">
+            <div class="setting-line">
+              <el-form-item :label="$t('m.temperature') + ': ' + (setting.aiTemperature || 0.3)">
+                <el-slider
+                    v-model="setting.aiTemperature"
+                    :min="0"
+                    :max="1"
+                    :step="0.1"
+                    @change="saveSetting"
+                    style="margin-top: 10px"
+                />
+              </el-form-item>
+            </div>
+          </el-col>
+
+          <!-- Max Tokens -->
+          <el-col :span="24">
+            <div class="setting-line">
+              <el-input-number
+                  v-model="setting.aiMaxTokens"
+                  :min="10"
+                  :max="500"
+                  :step="10"
+                  @change="saveSetting"
+                  style="width: 100%"
+              >
+                <template #prepend>
+                  <span class="setting-label">{{ $t('m.maxTokens') }}</span>
+                </template>
+              </el-input-number>
+            </div>
+          </el-col>
+
+          <el-divider />
+
+          <!-- 测试 API 连接 -->
+          <el-col :span="24">
+            <div class="setting-line">
+              <el-button
+                  type="primary"
+                  @click="testApiConnection"
+                  :loading="testingApi"
+                  style="width: 100%"
+              >
+                {{ $t('m.testApiConnection') }}
+              </el-button>
+            </div>
+          </el-col>
+
+          <!-- 批量翻译 -->
+          <el-col :span="24">
+            <div class="setting-line">
+              <el-button
+                  type="success"
+                  @click="batchTranslate"
+                  :loading="batchTranslating"
+                  style="width: 100%"
+              >
+                {{ $t('m.batchTranslateAll') }}
+              </el-button>
+            </div>
+          </el-col>
+
+          <!-- 帮助信息 -->
+          <el-col :span="24">
+            <el-alert
+                :title="$t('m.translationHelp')"
+                type="info"
+                :closable="false"
+                show-icon
+            >
+              <template #default>
+                <p>{{ $t('m.translationHelpText1') }}</p>
+                <p>{{ $t('m.translationHelpText2') }}</p>
+                <p>{{ $t('m.translationHelpText3') }}</p>
+              </template>
+            </el-alert>
+          </el-col>
+        </el-row>
+      </el-tab-pane>
       <el-tab-pane :label="$t('m.accelerator')" name="accelerator">
         <el-descriptions
             :column="2" size="small" style="margin-top: 16px;"
@@ -905,6 +1103,128 @@ const emit = defineEmits([
 // 收藏标签搜索
 const collectTagSearch = ref('')
 
+// Translation API testing state
+const testingApi = ref(false)
+const batchTranslating = ref(false)
+const batchProgress = ref({ current: 0, total: 0 })
+
+// Test API connection
+const testApiConnection = async () => {
+  try {
+    testingApi.value = true
+    const result = await ipcRenderer.invoke('test-translation-api')
+    if (result.success) {
+      ElMessage.success(t('m.apiTestSuccess') || 'API test successful')
+    } else {
+      ElMessage.error((t('m.apiTestFailed') || 'API test failed') + ': ' + result.message)
+    }
+  } catch (e) {
+    ElMessage.error((t('m.apiTestFailed') || 'API test failed') + ': ' + e.message)
+  } finally {
+    testingApi.value = false
+  }
+}
+
+// Batch translate all books without translation
+const batchTranslate = async () => {
+  try {
+    batchTranslating.value = true
+    batchProgress.value = { current: 0, total: 0 }
+    
+    console.log('[Translation] Starting batch translation...')
+    
+    // Get all books that need translation
+    const booksToTranslate = bookList.value.filter(book => {
+      // Check if already has translation
+      const hasTranslation = resolvedTranslation.value[book.hash]
+      return !hasTranslation
+    })
+    
+    console.log(`[Translation] Found ${booksToTranslate.length} books without translation`)
+    
+    if (booksToTranslate.length === 0) {
+      ElMessage.info(t('m.noBookNeedsTranslation') || 'No books need translation')
+      return
+    }
+    
+    // Extract only necessary fields to avoid cloning issues
+    const simplifiedBooks = booksToTranslate.map(book => {
+      // Extract filename from filepath for display and filtering
+      const filepath = book.filepath || ''
+      const filename = filepath.split(/[\\/]/).pop() || filepath
+      
+      return {
+        hash: book.hash,
+        title: book.title,
+        title_jpn: book.title_jpn,
+        filepath: filepath,
+        filename: filename,
+        url: book.url || ''  // 添加URL字段以支持URL分组排序
+      }
+    })
+    
+    console.log('[Translation] Simplified book data:', simplifiedBooks.length, 'books')
+    console.log('[Translation] Sample book:', simplifiedBooks[0])
+    
+    // Extract only necessary settings to avoid cloning issues
+    const simplifiedSettings = {
+      excludePureNumberChinese: setting.value.excludePureNumberChinese,
+      aiApiProvider: setting.value.aiApiProvider,
+      aiApiKey: setting.value.aiApiKey,
+      aiApiBaseUrl: setting.value.aiApiBaseUrl,
+      aiModel: setting.value.aiModel,
+      aiTemperature: setting.value.aiTemperature,
+      aiMaxTokens: setting.value.aiMaxTokens
+    }
+    
+    console.log('[Translation] Simplified settings:', simplifiedSettings)
+    
+    // Listen for progress updates
+    const progressHandler = (event, progress) => {
+      console.log(`[Translation Progress] ${progress.current}/${progress.total} - ${progress.book.filename}`)
+      batchProgress.value = progress
+      ElMessage.info(`${t('m.translating') || 'Translating'}: ${progress.current}/${progress.total} - ${progress.book.filename}`)
+    }
+    ipcRenderer.on('batch-translate-progress', progressHandler)
+    
+    ElMessage.info((t('m.batchTranslateStarted') || 'Batch translation started') + `: ${booksToTranslate.length} books`)
+    
+    console.log('[Translation] Invoking batch-translate-books IPC...')
+    const result = await ipcRenderer.invoke('batch-translate-books', {
+      books: simplifiedBooks,
+      settings: simplifiedSettings
+    })
+    console.log('[Translation] IPC result:', result)
+    
+    // Remove progress listener
+    ipcRenderer.removeListener('batch-translate-progress', progressHandler)
+    
+    console.log('[Translation] Batch translation completed:', result)
+    
+    // Show errors in console if any
+    if (result.errors && result.errors.length > 0) {
+      console.error('[Translation] Errors during batch translation:', result.errors)
+    }
+    
+    ElMessage.success(
+      (t('m.batchTranslateComplete') || 'Batch translation complete') + 
+      `\n${t('m.success') || 'Success'}: ${result.success}` +
+      `\n${t('m.failed') || 'Failed'}: ${result.failed}` +
+      `\n${t('m.skipped') || 'Skipped'}: ${result.skipped}`
+    )
+    
+    // Reload book list to show new translations
+    console.log('[Translation] Reloading book list...')
+    emit('loadBookList')
+  } catch (e) {
+    console.error('[Translation] Batch translation error:', e)
+    ElMessage.error((t('m.batchTranslateFailed') || 'Batch translation failed') + ': ' + e.message)
+  } finally {
+    batchTranslating.value = false
+    batchProgress.value = { current: 0, total: 0 }
+  }
+}
+
 // concurrent scan options; default is min(concurrencyOptionCeiling, 4)
 const concurrencyOptionCeiling = Math.max(1, Number(navigator.hardwareConcurrency) || 4)
 const defaultConcurrentScan = Math.min(concurrencyOptionCeiling, 4)
@@ -924,6 +1244,16 @@ onMounted(() => {
         undefined) setting.value.trimTitleRegExp = '^\\d+[-]?\\s*|\\s*(\\[[^\\]]*\\]|\\([^\\)]*\\)|【[^】]*】|（[^）]*）)\\s*'
     if (res.defaultScraper === undefined) setting.value.defaultScraper = 'exhentai'
     if (res.defaultInsertEmptyPage === undefined) setting.value.defaultInsertEmptyPage = true
+    
+    // Translation defaults
+    if (res.showChineseTranslation === undefined) setting.value.showChineseTranslation = false
+    if (res.autoTranslateMissing === undefined) setting.value.autoTranslateMissing = false
+    if (res.excludePureNumberChinese === undefined) setting.value.excludePureNumberChinese = true
+    if (res.aiApiProvider === undefined) setting.value.aiApiProvider = 'openrouter'
+    if (res.aiApiKey === undefined) setting.value.aiApiKey = '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'
+    if (res.aiModel === undefined) setting.value.aiModel = 'deepseek/deepseek-chat-v3.1:free'
+    if (res.aiTemperature === undefined) setting.value.aiTemperature = 0.3
+    if (res.aiMaxTokens === undefined) setting.value.aiMaxTokens = 100
     setting.value.concurrentScan = normalizeConcurrency(res.concurrentScan, defaultConcurrentScan)
     setting.value.concurrentWrite = normalizeConcurrency(res.concurrentWrite, defaultConcurrentWrite)
     // libray folders
