@@ -10,7 +10,7 @@ const OpenAI = require('openai')
 const { GoogleGenAI } = require('@google/genai')
 
 // 导入现成的URL分组排序函数
-const { sortByUrlGroup } = require('../src/utils/sqlFilter.js')
+const { sortByUrlGroup } = require('./sqlFilter.js')
 
 // 导入存储路径（与数据库等文件放在一起）
 const { STORE_PATH } = require('./init_folder_setting.js')

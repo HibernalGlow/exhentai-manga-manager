@@ -253,7 +253,7 @@ import { MdShuffle, MdRefresh, MdCodeDownload, MdExit } from '@vicons/ionicons4'
 import { TreeViewAlt, CicsSystemGroup, TagGroup } from '@vicons/carbon'
 
 import { getWidth, fetchRecentReads } from './utils.js'
-import { filterBooksBySQL, sortByUrlGroup, isDuplicateGallery } from './utils/sqlFilter.js'
+import { filterBooksBySQL, sortByUrlGroup, isDuplicateGallery } from '../modules/sqlFilter.js'
 
 import Setting from './components/Setting.vue'
 import TagGraph from './components/TagGraph.vue'

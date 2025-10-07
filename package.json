@@ -39,12 +39,6 @@
       "index.js",
       "preload.js"
     ],
-    "extraFiles": [
-      {
-        "from": "portable",
-        "to": "."
-      }
-    ],
     "extraResources": [
       {
         "from": "resources/extraResources",
