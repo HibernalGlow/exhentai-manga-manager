@@ -1645,9 +1645,9 @@ ipcMain.handle('get-ex-webpage', async (event, { url, cookie }) => {
       if (!result) throw new Error('Empty response, maybe the cookie is expired')
       return result
     })
-    .catch(e => {
-      sendMessageToWebContents(`Get ex page failed because ${e}`)
-    })
+    // .catch(e => {
+    //   sendMessageToWebContents(`Get ex page failed because ${e}`)
+    // })
   } else {
     return await fetch(url, {
       headers: {
@@ -1659,9 +1659,9 @@ ipcMain.handle('get-ex-webpage', async (event, { url, cookie }) => {
       if (!result) throw new Error('Empty response, maybe the cookie is expired')
       return result
     })
-    .catch(e => {
-      sendMessageToWebContents(`Get ex page failed because ${e}`)
-    })
+    // .catch(e => {
+    //   sendMessageToWebContents(`Get ex page failed because ${e}`)
+    // })
   }
 })
 

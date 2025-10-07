@@ -358,12 +358,14 @@ const categoryColors = {
       opacity: 0.95
       box-shadow: 0 0 4px rgba(103, 194, 58, 0.5)
 .book-title
-  height: 36px
-  overflow-y: hidden
+  min-height: 36px
+  overflow-y: visible
   margin: 8px 6px
   font-size: 14px
   cursor: pointer
   line-height: 18px
+  word-wrap: break-word
+  white-space: normal
 .book-card-mark, .book-card-language, .book-card-pagecount
   position: absolute
   cursor: pointer
