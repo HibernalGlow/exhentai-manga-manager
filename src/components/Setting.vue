@@ -861,110 +861,55 @@
 
           <!-- API 配置标题 -->
           <el-col :span="24">
-            <h3>{{ $t('m.aiApiConfig') }}</h3>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <h3>{{ $t('m.aiApiConfig') }}</h3>
+              <el-button size="small" @click="loadApiConfig">
+                <el-icon><MdRefresh /></el-icon>
+                {{ $t('m.refreshConfig') || '刷新配置' }}
+              </el-button>
+            </div>
           </el-col>
 
-          <!-- API Provider 选择 -->
-          <el-col :span="24">
+          <!-- Provider 列表 -->
+          <el-col :span="24" v-if="apiConfig && apiConfig.providers">
             <div class="setting-line">
-              <el-select
-                  v-model="setting.aiApiProvider"
-                  :placeholder="$t('m.selectApiProvider')"
-                  @change="saveSetting"
-                  style="width: 100%"
+              <el-radio-group 
+                v-model="activeProviderIndex" 
+                @change="switchActiveProvider"
+                style="width: 100%"
               >
-                <template #prepend>
-                  <span class="setting-label">{{ $t('m.apiProvider') }}</span>
-                </template>
-                <el-option label="OpenRouter" value="openrouter" />
-                <el-option label="OpenAI" value="openai" />
-                <el-option label="Claude" value="claude" />
-                <el-option label="通义千问" value="qwen" />
-                <el-option label="文心一言" value="ernie" />
-                <el-option label="自定义" value="custom" />
-              </el-select>
+                <el-radio 
+                  v-for="(provider, index) in apiConfig.providers" 
+                  :key="index" 
+                  :label="index"
+                  :disabled="!provider.enabled"
+                  style="width: 100%; margin: 8px 0; display: flex; align-items: center;"
+                >
+                  <div style="flex: 1; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                      <strong>{{ provider.name }}</strong>
+                      <el-tag size="small" style="margin-left: 8px" v-if="index === activeProviderIndex">当前使用</el-tag>
+                      <el-tag size="small" type="info" style="margin-left: 8px" v-if="!provider.enabled">已禁用</el-tag>
+                    </div>
+                    <div style="font-size: 12px; color: var(--el-text-color-secondary);">
+                      {{ provider.model }}
+                    </div>
+                  </div>
+                </el-radio>
+              </el-radio-group>
             </div>
           </el-col>
 
-          <!-- API Key -->
-          <el-col :span="24">
-            <div class="setting-line">
-              <el-input
-                  v-model="setting.aiApiKey"
-                  :placeholder="$t('m.enterApiKey')"
-                  type="password"
-                  show-password
-                  @change="saveSetting"
-              >
-                <template #prepend>
-                  <span class="setting-label">{{ $t('m.apiKey') }}</span>
-                </template>
-              </el-input>
-            </div>
-          </el-col>
-
-          <!-- API Base URL (仅自定义时显示) -->
-          <el-col :span="24" v-if="setting.aiApiProvider === 'custom'">
-            <div class="setting-line">
-              <el-input
-                  v-model="setting.aiApiBaseUrl"
-                  :placeholder="$t('m.enterApiBaseUrl')"
-                  @change="saveSetting"
-              >
-                <template #prepend>
-                  <span class="setting-label">{{ $t('m.apiBaseUrl') }}</span>
-                </template>
-              </el-input>
-            </div>
-          </el-col>
-
-          <!-- Model Name -->
-          <el-col :span="24">
-            <div class="setting-line">
-              <el-input
-                  v-model="setting.aiModel"
-                  :placeholder="$t('m.enterModelName')"
-                  @change="saveSetting"
-              >
-                <template #prepend>
-                  <span class="setting-label">{{ $t('m.modelName') }}</span>
-                </template>
-              </el-input>
-            </div>
-          </el-col>
-
-          <!-- Temperature -->
-          <el-col :span="24">
-            <div class="setting-line">
-              <el-form-item :label="$t('m.temperature') + ': ' + (setting.aiTemperature || 0.3)">
-                <el-slider
-                    v-model="setting.aiTemperature"
-                    :min="0"
-                    :max="1"
-                    :step="0.1"
-                    @change="saveSetting"
-                    style="margin-top: 10px"
-                />
-              </el-form-item>
-            </div>
-          </el-col>
-
-          <!-- Max Tokens -->
-          <el-col :span="24">
-            <div class="setting-line">
-              <el-input-number
-                  v-model="setting.aiMaxTokens"
-                  :min="10"
-                  :max="500"
-                  :step="10"
-                  @change="saveSetting"
-                  style="width: 100%"
-              >
-                <template #prepend>
-                  <span class="setting-label">{{ $t('m.maxTokens') }}</span>
-                </template>
-              </el-input-number>
-            </div>
+          <!-- 当前活动 Provider 详情 -->
+          <el-col :span="24" v-if="activeProvider">
+            <el-descriptions :column="1" border size="small" style="margin-top: 10px;">
+              <el-descriptions-item label="提供商">{{ activeProvider.name }}</el-descriptions-item>
+              <el-descriptions-item label="类型">{{ activeProvider.provider }}</el-descriptions-item>
+              <el-descriptions-item label="模型">{{ activeProvider.model }}</el-descriptions-item>
+              <el-descriptions-item label="Base URL">{{ activeProvider.baseUrl }}</el-descriptions-item>
+              <el-descriptions-item label="Temperature">{{ activeProvider.temperature }}</el-descriptions-item>
+              <el-descriptions-item label="Max Tokens">{{ activeProvider.maxTokens }}</el-descriptions-item>
+            </el-descriptions>
           </el-col>
 
           <!-- Batch Translation Size -->
@@ -1015,17 +960,46 @@
           </el-col>
 
           <!-- 批量翻译 -->
-          <el-col :span="24">
+          <el-col :span="12">
             <div class="setting-line">
               <el-button
                   type="success"
                   @click="batchTranslate"
                   :loading="batchTranslating"
+                  :disabled="batchTranslating"
                   style="width: 100%"
               >
                 {{ $t('m.batchTranslateAll') }}
               </el-button>
             </div>
+          </el-col>
+          
+          <!-- 停止翻译 -->
+          <el-col :span="12">
+            <div class="setting-line">
+              <el-button
+                  type="danger"
+                  @click="stopBatchTranslation"
+                  :disabled="!batchTranslating"
+                  style="width: 100%"
+              >
+                {{ $t('m.stopBatchTranslate') || '停止翻译' }}
+              </el-button>
+            </div>
+          </el-col>
+          
+          <!-- 翻译进度 -->
+          <el-col :span="24" v-if="batchTranslating">
+            <el-progress 
+              :percentage="batchProgress.total > 0 ? Math.round((batchProgress.current / batchProgress.total) * 100) : 0" 
+              :text-inside="true"
+              :stroke-width="20"
+              status="success"
+            >
+              <template #default="{ percentage }">
+                {{ batchProgress.current }} / {{ batchProgress.total }} ({{ percentage }}%)
+              </template>
+            </el-progress>
           </el-col>
 
           <!-- 帮助信息 -->
@@ -1139,6 +1113,57 @@ const collectTagSearch = ref('')
 const testingApi = ref(false)
 const batchTranslating = ref(false)
 const batchProgress = ref({ current: 0, total: 0 })
+
+// API Config from JSON
+const apiConfig = ref(null)
+const activeProviderIndex = ref(0)
+
+// Load API config from JSON
+const loadApiConfig = async () => {
+  try {
+    const config = await ipcRenderer.invoke('get-api-config')
+    if (config) {
+      apiConfig.value = config
+      activeProviderIndex.value = config.activeIndex || 0
+    }
+  } catch (e) {
+    console.error('Failed to load API config:', e)
+  }
+}
+
+// Switch active provider
+const switchActiveProvider = async (index) => {
+  try {
+    if (!apiConfig.value) return
+    
+    apiConfig.value.activeIndex = index
+    activeProviderIndex.value = index
+    
+    // Save to JSON file
+    await ipcRenderer.invoke('save-api-config', apiConfig.value)
+    
+    ElMessage.success(t('m.apiProviderSwitched') || '已切换API提供商')
+  } catch (e) {
+    ElMessage.error('切换失败: ' + e.message)
+  }
+}
+
+// Get current active provider
+const activeProvider = computed(() => {
+  if (!apiConfig.value || !apiConfig.value.providers) return null
+  return apiConfig.value.providers[activeProviderIndex.value]
+})
+
+// Stop batch translation
+const stopBatchTranslation = async () => {
+  try {
+    batchTranslating.value = false
+    await ipcRenderer.invoke('stop-batch-translation')
+    ElMessage.warning(t('m.batchTranslateStopped') || '批量翻译已停止')
+  } catch (e) {
+    console.error('Stop translation error:', e)
+  }
+}
 
 // Open API config file for editing
 const openApiConfigFile = async () => {
@@ -1284,6 +1309,9 @@ const normalizeConcurrency = (v, fallback) => {
 }
 
 onMounted(() => {
+  // Load API config from JSON
+  loadApiConfig()
+  
   ipcRenderer.invoke('load-setting').then(async (res) => {
     setting.value = res
     // set default value

@@ -37,9 +37,31 @@ function loadApiConfig() {
   try {
     if (fs.existsSync(API_CONFIG_FILE)) {
       const data = fs.readFileSync(API_CONFIG_FILE, 'utf8')
-      API_CONFIG = JSON.parse(data)
+      const configFile = JSON.parse(data)
       console.log('[API Config] Loaded from:', API_CONFIG_FILE)
-      return API_CONFIG
+      
+      // 如果是新格式(带 providers 数组),提取当前激活的 provider
+      if (configFile.providers && Array.isArray(configFile.providers)) {
+        const activeIndex = configFile.activeIndex || 0
+        const activeProvider = configFile.providers[activeIndex]
+        
+        if (activeProvider) {
+          API_CONFIG = {
+            provider: activeProvider.provider,
+            apiKey: activeProvider.apiKey,
+            baseUrl: activeProvider.baseUrl,
+            model: activeProvider.model,
+            temperature: activeProvider.temperature || 0.3,
+            maxTokens: activeProvider.maxTokens || 2000
+          }
+          console.log('[API Config] Using active provider:', activeProvider.name || activeProvider.provider)
+          return configFile // 返回完整配置对象(用于IPC)
+        }
+      } else {
+        // 旧格式,直接使用
+        API_CONFIG = configFile
+        return configFile
+      }
     }
   } catch (e) {
     console.error('Failed to load API config:', e)
@@ -72,7 +94,27 @@ function loadApiConfig() {
  */
 function saveApiConfig(config) {
   try {
-    API_CONFIG = config
+    // 如果是新格式,也需要更新 API_CONFIG
+    if (config.providers && Array.isArray(config.providers)) {
+      const activeIndex = config.activeIndex || 0
+      const activeProvider = config.providers[activeIndex]
+      
+      if (activeProvider) {
+        API_CONFIG = {
+          provider: activeProvider.provider,
+          apiKey: activeProvider.apiKey,
+          baseUrl: activeProvider.baseUrl,
+          model: activeProvider.model,
+          temperature: activeProvider.temperature || 0.3,
+          maxTokens: activeProvider.maxTokens || 2000
+        }
+        console.log('[API Config] Updated API_CONFIG from active provider:', activeProvider.provider)
+      }
+    } else {
+      // 旧格式
+      API_CONFIG = config
+    }
+    
     fs.writeFileSync(API_CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8')
     console.log('[API Config] Saved to:', API_CONFIG_FILE)
     return true
@@ -92,6 +134,14 @@ loadApiConfig()
 function updateApiConfig(settings) {
   // 先从 config 文件加载
   loadApiConfig()
+  
+  console.log('[API Config] After loadApiConfig, API_CONFIG:', {
+    provider: API_CONFIG.provider,
+    model: API_CONFIG.model,
+    baseUrl: API_CONFIG.baseUrl,
+    apiKey: API_CONFIG.apiKey ? `${API_CONFIG.apiKey.substring(0, 10)}...` : 'MISSING'
+  })
+  
   // 用户设置优先覆盖
   if (settings) {
     if (settings.aiApiProvider) API_CONFIG.provider = settings.aiApiProvider
@@ -190,6 +240,20 @@ function shouldExcludeFromTranslation(filename) {
  * Batch translate multiple book titles in one API call
  * 在一次API调用中批量翻译多个书籍标题
  */
+
+// 全局停止标志
+let shouldStopTranslation = false
+
+// 重置停止标志
+function resetStopFlag() {
+  shouldStopTranslation = false
+}
+
+// 设置停止标志
+function stopTranslation() {
+  shouldStopTranslation = true
+}
+
 async function translateBatchTitles(books) {
   if (!books || books.length === 0) {
     return []
@@ -233,14 +297,28 @@ ${booksInfo}
       
       if (API_CONFIG.provider === 'gemini') {
         // 使用Google GenAI SDK
+        console.log('[Translation] Using Google GenAI SDK...')
+        console.log('[Translation] API Key:', API_CONFIG.apiKey ? `${API_CONFIG.apiKey.substring(0, 10)}...` : 'MISSING')
+        console.log('[Translation] Model:', API_CONFIG.model)
+        
         const genAI = new GoogleGenAI({ apiKey: API_CONFIG.apiKey })
         const response = await genAI.models.generateContent({
           model: API_CONFIG.model,
           contents: prompt
         })
-        responseText = response.text.trim()
         
-        console.log(`[Translation] Gemini API call succeeded on attempt ${attempt}`)
+        console.log('[Translation] Response received:', typeof response)
+        console.log('[Translation] Response keys:', Object.keys(response))
+        
+        // 检查 response.text 是否存在
+        if (response && response.text) {
+          responseText = response.text.trim()
+          console.log(`[Translation] Gemini API call succeeded on attempt ${attempt}`)
+        } else {
+          console.error('[Translation] Response.text is undefined')
+          console.error('[Translation] Full response:', JSON.stringify(response, null, 2))
+          throw new Error('Response.text is undefined')
+        }
       } else {
         // 使用OpenAI兼容API
         const response = await fetch(`${API_CONFIG.baseUrl}/chat/completions`, {
@@ -533,6 +611,9 @@ async function batchTranslateBooks(books, settings, onProgress) {
     sorting: 'URL grouped (descending)'
   })
   
+  // 重置停止标志
+  resetStopFlag()
+  
   // 首次运行时自动迁移JSON数据（如果存在）
   if (fs.existsSync(TRANSLATIONS_FILE)) {
     console.log('[Translation Backend] Detected old JSON file, migrating to database...')
@@ -559,6 +640,12 @@ async function batchTranslateBooks(books, settings, onProgress) {
   // 过滤需要翻译的书籍
   const booksToTranslate = []
   for (const book of books) {
+    // 检查是否应该停止
+    if (shouldStopTranslation) {
+      console.log('[Translation Backend] Translation stopped by user')
+      break
+    }
+    
     // 跳过已有翻译的
     if (translations[book.hash]) {
       console.log(`[Translation Backend] Skipped (already translated): ${book.filename}`)
@@ -608,6 +695,12 @@ async function batchTranslateBooks(books, settings, onProgress) {
 
   // 逐批次翻译
   for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+    // 检查是否应该停止
+    if (shouldStopTranslation) {
+      console.log('[Translation Backend] Translation stopped by user')
+      break
+    }
+    
     const batch = batches[batchIndex]
     const batchStart = batchIndex * BATCH_SIZE + 1
     const batchEnd = Math.min(batchStart + batch.length - 1, sortedBooks.length)
@@ -775,6 +868,13 @@ function initTranslationIPC(ipcMain, getSettings) {
       console.error(`[Translation IPC] Batch translate error:`, error)
       throw error
     }
+  })
+  
+  // 停止批量翻译
+  ipcMain.handle('stop-batch-translation', async () => {
+    console.log('[Translation IPC] Received stop translation request')
+    stopTranslation()
+    return { success: true }
   })
 }
 

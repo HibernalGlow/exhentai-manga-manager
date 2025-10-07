@@ -94,7 +94,15 @@ function initTranslationDatabase() {
  */
 async function ensureDatabase() {
   const { sequelize, Translation } = initTranslationDatabase()
-  await sequelize.sync()
+  try {
+    // 使用 alter: false 避免重复创建索引
+    await sequelize.sync({ alter: false })
+  } catch (e) {
+    // 忽略索引已存在的错误
+    if (!e.message.includes('already exists')) {
+      console.error('[Translation DB] Sync error:', e)
+    }
+  }
   return { sequelize, Translation }
 }
 
