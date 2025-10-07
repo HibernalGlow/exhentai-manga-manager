@@ -918,7 +918,7 @@
               <el-input-number
                   v-model="setting.batchTranslationSize"
                   :min="1"
-                  :max="1000"
+                  :max="100"
                   :step="1"
                   @change="saveSetting"
                   style="width: 100%"
@@ -1255,17 +1255,10 @@ const batchTranslate = async () => {
     console.log('[Translation] Simplified book data:', simplifiedBooks.length, 'books')
     console.log('[Translation] Sample book:', simplifiedBooks[0])
     
-    // Extract only necessary settings to avoid cloning issues
+    // Extract only necessary settings (non-AI related) to avoid using old AI configs
     const simplifiedSettings = {
       excludePureNumberChinese: setting.value.excludePureNumberChinese,
       trimTitleRegExp: setting.value.trimTitleRegExp,  // 添加标题裁剪正则表达式
-      aiApiProvider: setting.value.aiApiProvider,
-      aiApiKey: setting.value.aiApiKey,
-      aiApiBaseUrl: setting.value.aiApiBaseUrl,
-      aiModel: setting.value.aiModel,
-      aiTemperature: setting.value.aiTemperature,
-      aiMaxTokens: setting.value.aiMaxTokens,
-      aiTimeout: setting.value.aiTimeout || 30,  // 添加超时时间配置,默认30秒
       batchTranslationSize: setting.value.batchTranslationSize || 10
     }
     
@@ -1275,32 +1268,7 @@ const batchTranslate = async () => {
     const progressHandler = (event, progress) => {
       console.log(`[Translation Progress] ${progress.current}/${progress.total} - ${progress.book.filename}`)
       batchProgress.value = progress
-      
-      // 根据状态显示不同的消息
-      if (progress.status === 'success' && progress.translation) {
-        ElMessage.success({
-          message: `✅ ${progress.translation.chinese_title}`,
-          duration: 2000,
-          showClose: true
-        })
-        console.log(`[Translation] ✅ ${progress.book.filename} -> ${progress.translation.chinese_title}`)
-        
-        // 实时更新书籍列表（触发重新加载）
-        emit('loadBookList')
-      } else if (progress.status === 'failed') {
-        ElMessage.warning({
-          message: `⚠️ ${progress.book.filename} - 翻译失败`,
-          duration: 2000,
-          showClose: true
-        })
-      } else {
-        // 普通进度更新
-        ElMessage.info({
-          message: `🔄 ${progress.current}/${progress.total} - ${progress.book.filename}`,
-          duration: 1000,
-          showClose: true
-        })
-      }
+      ElMessage.info(`${t('m.translating') || 'Translating'}: ${progress.current}/${progress.total} - ${progress.book.filename}`)
     }
     ipcRenderer.on('batch-translate-progress', progressHandler)
     

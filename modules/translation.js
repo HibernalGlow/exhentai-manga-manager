@@ -143,9 +143,8 @@ loadApiConfig()
 /**
  * Update API configuration from settings
  * 从设置更新API配置
- * @param {boolean} useSettingsOverride - 是否使用 settings 覆盖 JSON 配置(仅用于向后兼容)
  */
-function updateApiConfig(settings, useSettingsOverride = false) {
+function updateApiConfig(settings) {
   // 先从 config 文件加载
   loadApiConfig()
   
@@ -156,10 +155,8 @@ function updateApiConfig(settings, useSettingsOverride = false) {
     apiKey: API_CONFIG.apiKey ? `${API_CONFIG.apiKey.substring(0, 10)}...` : 'MISSING'
   })
   
-  // 只有在明确要求时才使用旧的 settings 覆盖(向后兼容)
-  // 新的配置流程应该只使用 ai_api_config.json
-  if (useSettingsOverride && settings) {
-    console.log('[API Config] WARNING: Using legacy settings override (not recommended)')
+  // 用户设置优先覆盖
+  if (settings) {
     if (settings.aiApiProvider) API_CONFIG.provider = settings.aiApiProvider
     if (settings.aiApiKey) API_CONFIG.apiKey = settings.aiApiKey
     if (settings.aiApiBaseUrl) API_CONFIG.baseUrl = settings.aiApiBaseUrl
@@ -167,13 +164,30 @@ function updateApiConfig(settings, useSettingsOverride = false) {
     if (settings.aiTemperature !== undefined) API_CONFIG.temperature = settings.aiTemperature
     if (settings.aiMaxTokens) API_CONFIG.maxTokens = settings.aiMaxTokens
     if (settings.aiTimeout !== undefined) API_CONFIG.timeout = settings.aiTimeout
+    // Set base URL based on provider
+    if (!settings.aiApiBaseUrl) {
+      switch (settings.aiApiProvider) {
+        case 'openrouter':
+          API_CONFIG.baseUrl = 'https://openrouter.ai/api/v1'
+          break
+        case 'openai':
+          API_CONFIG.baseUrl = 'https://api.openai.com/v1'
+          break
+        case 'claude':
+          API_CONFIG.baseUrl = 'https://api.anthropic.com/v1'
+          break
+        case 'qwen':
+          API_CONFIG.baseUrl = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+          break
+        case 'ernie':
+          API_CONFIG.baseUrl = 'https://aip.baidubce.com/rpc/2.0'
+          break
+        case 'gemini':
+          API_CONFIG.baseUrl = 'https://generativelanguage.googleapis.com'
+          break
+      }
+    }
   }
-  
-  console.log('[API Config] Final API_CONFIG:', {
-    provider: API_CONFIG.provider,
-    model: API_CONFIG.model,
-    baseUrl: API_CONFIG.baseUrl
-  })
 }
 
 /**
@@ -254,7 +268,7 @@ function stopTranslation() {
   shouldStopTranslation = true
 }
 
-async function translateBatchTitles(books, onStreamUpdate = null) {
+async function translateBatchTitles(books) {
   if (!books || books.length === 0) {
     return []
   }
@@ -315,8 +329,8 @@ ${booksInfo}
           throw new Error('Response.text is undefined')
         }
       } else {
-        // 使用 OpenAI SDK (兼容所有 OpenAI-compatible APIs) - 启用流式输出
-        console.log('[Translation] Using OpenAI SDK with streaming...')
+        // 使用 OpenAI SDK (兼容所有 OpenAI-compatible APIs)
+        console.log('[Translation] Using OpenAI SDK...')
         const openai = new OpenAI({
           apiKey: API_CONFIG.apiKey,
           baseURL: API_CONFIG.baseUrl,
@@ -324,7 +338,7 @@ ${booksInfo}
           maxRetries: 0 // 我们自己处理重试
         })
         
-        const stream = await openai.chat.completions.create({
+        const completion = await openai.chat.completions.create({
           model: API_CONFIG.model,
           messages: [
             {
@@ -333,68 +347,11 @@ ${booksInfo}
             }
           ],
           temperature: API_CONFIG.temperature || 0.3,
-          max_tokens: Math.max(API_CONFIG.maxTokens || 2000, books.length * 50),
-          stream: true  // 启用流式输出
+          max_tokens: Math.max(API_CONFIG.maxTokens || 2000, books.length * 50)
         })
         
-        responseText = ''
-        let currentLine = ''
-        const parsedTranslations = []
-        
-        console.log('[Translation] 📡 Streaming response...')
-        for await (const chunk of stream) {
-          const content = chunk.choices[0]?.delta?.content || ''
-          if (content) {
-            responseText += content
-            currentLine += content
-            
-            // 实时输出到控制台（不换行）
-            process.stdout.write(content)
-            
-            // 检查是否有完整的行（包含换行符或编号）
-            const lines = currentLine.split('\n')
-            if (lines.length > 1) {
-              // 处理完整的行
-              for (let i = 0; i < lines.length - 1; i++) {
-                const line = lines[i].trim()
-                if (line) {
-                  // 尝试解析翻译结果
-                  const match = line.match(/^(\d+)\.\s*(.+)$/)
-                  if (match) {
-                    const index = parseInt(match[1]) - 1
-                    const translation = match[2].trim().replace(/^["'《]|["'》]$/g, '')
-                    
-                    if (index < books.length) {
-                      parsedTranslations[index] = {
-                        hash: books[index].hash,
-                        chinese_title: translation,
-                        original_english: books[index].title,
-                        original_japanese: books[index].title_jpn,
-                        filename: books[index].filename,
-                        fallback: false,
-                        _alreadySaved: true  // 标记为已通过流式回调保存
-                      }
-                      
-                      // 实时回调通知前端
-                      if (onStreamUpdate) {
-                        onStreamUpdate({
-                          index: index,
-                          book: books[index],
-                          translation: parsedTranslations[index]
-                        })
-                      }
-                      
-                      console.log(`\n[Translation] ✅ Stream parsed #${index + 1}: ${books[index].filename} -> ${translation}`)
-                    }
-                  }
-                }
-              }
-              currentLine = lines[lines.length - 1]
-            }
-          }
-        }
-        
-        console.log('\n[Translation] OpenAI SDK streaming completed')
+        responseText = completion.choices[0].message.content.trim()
+        console.log(`[Translation] OpenAI SDK call succeeded on attempt ${attempt}`)
       }
 
       // 解析返回的翻译结果
@@ -403,13 +360,6 @@ ${booksInfo}
 
       for (let i = 0; i < books.length; i++) {
         const book = books[i]
-        
-        // 优先使用流式解析的结果
-        if (parsedTranslations && parsedTranslations[i]) {
-          translations.push(parsedTranslations[i])
-          continue
-        }
-        
         let chineseTitle = ''
 
         // 尝试匹配编号格式的翻译
@@ -643,10 +593,10 @@ async function batchTranslateBooks(books, settings, onProgress) {
   console.log(`[Translation Backend] Starting batch translation for ${books.length} books`)
   console.log(`[Translation Backend] Settings:`, {
     excludePureNumberChinese: settings.excludePureNumberChinese,
-    provider: settings.aiApiProvider,
-    model: settings.aiModel,
+    trimTitleRegExp: settings.trimTitleRegExp,
     batchSize: settings.batchTranslationSize || 10,
-    sorting: 'URL grouped (descending)'
+    sorting: 'URL grouped (descending)',
+    apiConfig: 'Loaded from ai_api_config.json'
   })
   
   // 重置停止标志
@@ -705,7 +655,7 @@ async function batchTranslateBooks(books, settings, onProgress) {
       
       // 用裁剪后的标题判断是否排除
       if (shouldExcludeFromTranslation(trimmedTitle)) {
-        // console.log(`[Translation Backend] Skipped (excluded by filter): "${book.filename}" -> trimmed: "${trimmedTitle}"`)
+        console.log(`[Translation Backend] Skipped (excluded by filter): "${book.filename}" -> trimmed: "${trimmedTitle}"`)
         results.skipped++
         continue
       }
@@ -756,35 +706,12 @@ async function batchTranslateBooks(books, settings, onProgress) {
     }
 
     try {
-      console.log(`[Translation Backend] 🚀 Calling batch translation API with streaming...`)
+      console.log(`[Translation Backend] 🚀 Calling batch translation API...`)
+      const batchTranslations = await translateBatchTitles(batch)
       
-      // 流式翻译，实时保存和通知
-      const batchTranslations = await translateBatchTitles(batch, async (streamData) => {
-        const { index, book, translation } = streamData
-        
-        // 实时保存翻译结果
-        if (!translation.fallback) {
-          await saveBookTranslation(book.hash, translation)
-          results.success++
-          
-          console.log(`[Translation Backend] 💾 Saved #${index + 1}: ${book.filename} -> ${translation.chinese_title}`)
-          
-          // 实时发送进度到前端
-          if (onProgress) {
-            onProgress({
-              current: batchStart + index,
-              total: books.length,
-              book: book,
-              translation: translation,
-              status: 'success'
-            })
-          }
-        }
-      })
-      
-      console.log(`[Translation Backend] ✅ Batch streaming completed, returned ${batchTranslations.length} results`)
+      console.log(`[Translation Backend] ✅ Batch API returned ${batchTranslations.length} results`)
 
-      // 处理未通过流式实时保存的结果（fallback等）
+      // 保存翻译结果（只保存成功的翻译）
       for (let i = 0; i < batchTranslations.length; i++) {
         const translation = batchTranslations[i]
         const book = batch[i]
@@ -796,32 +723,11 @@ async function batchTranslateBooks(books, settings, onProgress) {
             book: book.filename,
             error: 'Translation failed, not saved'
           })
-          
-          // 发送失败状态到前端
-          if (onProgress) {
-            onProgress({
-              current: batchStart + i,
-              total: books.length,
-              book: book,
-              translation: translation,
-              status: 'failed'
-            })
-          }
-        } else if (!translation._alreadySaved) {
-          // 如果流式过程中没有保存（某些异常情况），这里补保存
-          console.log(`[Translation Backend] 💾 Fallback save #${i + 1}: ${book.filename} -> ${translation.chinese_title}`)
+          // 不保存失败的翻译
+        } else {
+          console.log(`[Translation Backend] ✅ ${i + 1}/${batch.length}: ${book.filename} -> ${translation.chinese_title}`)
           results.success++
           await saveBookTranslation(book.hash, translation)
-          
-          if (onProgress) {
-            onProgress({
-              current: batchStart + i,
-              total: books.length,
-              book: book,
-              translation: translation,
-              status: 'success'
-            })
-          }
         }
       }
 
@@ -909,16 +815,16 @@ function initTranslationIPC(ipcMain, getSettings) {
 
   // AI 翻译标题
   ipcMain.handle('translate-title-ai', async (event, { englishTitle, japaneseTitle, filename }) => {
-    // 从设置更新API配置
-    const settings = await getSettings()
-    updateApiConfig(settings)
+    // 直接从 JSON 配置文件加载，不使用 settings 覆盖
+    loadApiConfig()
+    console.log('[Translation IPC] Single title translation using config from JSON file')
     
     return await translateTitleToChinese(englishTitle, japaneseTitle, filename)
   })
 
   // 测试API连接
   ipcMain.handle('test-translation-api', async (event) => {
-    // 直接从 JSON 配置文件加载,不使用 settings 覆盖
+    // 直接从 JSON 配置文件加载，不使用 settings 覆盖
     loadApiConfig()
     console.log('[Translation IPC] Testing API with config from JSON file')
     
@@ -930,7 +836,7 @@ function initTranslationIPC(ipcMain, getSettings) {
     try {
       console.log(`[Translation IPC] Received batch translate request for ${books.length} books`)
       
-      // 直接从 JSON 配置文件加载,不使用 settings 覆盖
+      // 直接从 JSON 配置文件加载，不使用 settings 覆盖
       loadApiConfig()
       console.log(`[Translation IPC] API config loaded from JSON:`, {
         provider: API_CONFIG.provider,

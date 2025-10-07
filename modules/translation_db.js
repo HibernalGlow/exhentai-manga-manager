@@ -27,7 +27,21 @@ function initTranslationDatabase() {
   sequelize = new Sequelize({
     dialect: 'sqlite',
     storage: TRANSLATION_DB_PATH,
-    logging: false // 生产环境关闭日志，需要调试时可以改为 console.log
+    logging: false, // 生产环境关闭日志，需要调试时可以改为 console.log
+    pool: {
+      max: 5,
+      min: 0,
+      acquire: 30000,
+      idle: 10000
+    },
+    retry: {
+      max: 3
+    },
+    dialectOptions: {
+      // SQLite specific options
+      busyTimeout: 30000, // 30 seconds timeout for locked database
+      journalMode: 'WAL'  // Write-Ahead Logging for better concurrency
+    }
   })
 
   // 定义翻译表结构

@@ -442,18 +442,19 @@ async function ensureAttachedTx(sequelize, t, alias, filePath) {
   }
 }
 
-const loadBookListFromDatabase = async () => {
+const loadBookListFromDatabase = async (retryCount = 0) => {
+  const maxRetries = 3
   const tTotal0 = performance.now()
 
-  // If DB is empty, seed from legacy source first (same behavior as before)
-  const count = await Manga.count()
-  if (count === 0) {
-    const legacy = await loadLegecyBookListFromFile()
-    if (legacy?.length) await saveBookListToDatabase(legacy)
-  }
+  try {
+    // If DB is empty, seed from legacy source first (same behavior as before)
+    const count = await Manga.count()
+    if (count === 0) {
+      const legacy = await loadLegecyBookListFromFile()
+      if (legacy?.length) await saveBookListToDatabase(legacy)
+    }
 
-
-  const bookList = await Manga.sequelize.transaction(async (t) => {
+    const bookList = await Manga.sequelize.transaction(async (t) => {
     // Attach the metadata DB (if not already)
     await ensureAttachedTx(Manga.sequelize, t, 'meta', metadataSqliteFile)
     // upsert metadata table from the mangas table
@@ -540,6 +541,21 @@ const loadBookListFromDatabase = async () => {
   // flag missing books
   await markMissingBooksStatus(bookList)
   return bookList;
+
+  } catch (error) {
+    console.error(`[Database] Load attempt ${retryCount + 1}/${maxRetries} failed:`, error.message)
+
+    // Check if it's a database lock error and we haven't exceeded max retries
+    if ((error.name === 'SequelizeTimeoutError' || error.message.includes('SQLITE_BUSY')) && retryCount < maxRetries - 1) {
+      const waitTime = Math.pow(2, retryCount) * 1000 // Exponential backoff: 1s, 2s, 4s
+      console.log(`[Database] Database locked, retrying in ${waitTime / 1000}s...`)
+      await new Promise(resolve => setTimeout(resolve, waitTime))
+      return loadBookListFromDatabase(retryCount + 1)
+    }
+
+    // If we've exhausted retries or it's a different error, throw it
+    throw error
+  }
 };
 
 async function markMissingBooksStatus(bookList) {
