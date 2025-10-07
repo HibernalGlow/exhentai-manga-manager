@@ -14,7 +14,17 @@ const { sortByUrlGroup } = require('../src/utils/sqlFilter.js')
 // 导入存储路径（与数据库等文件放在一起）
 const { STORE_PATH } = require('./init_folder_setting.js')
 
-// 翻译存储文件路径
+// 导入翻译数据库模块
+const {
+  getTranslation,
+  saveTranslation,
+  hasTranslation,
+  getTranslationsBatch,
+  migrateFromJSON,
+  TRANSLATION_DB_PATH
+} = require('./translation_db.js')
+
+// 旧的JSON文件路径（用于迁移）
 const TRANSLATIONS_FILE = path.join(STORE_PATH, 'translations.json')
 
 
@@ -113,54 +123,55 @@ function updateApiConfig(settings) {
 }
 
 /**
- * Load translations from JSON file
- * 从JSON文件加载翻译
+ * Load translations from database (for batch operations)
+ * 从数据库加载翻译（用于批量操作）
+ * @deprecated Use getTranslation() or hasTranslation() for individual queries
  */
-function loadTranslations() {
+async function loadTranslations(bookHashes) {
   try {
-    if (fs.existsSync(TRANSLATIONS_FILE)) {
-      const data = fs.readFileSync(TRANSLATIONS_FILE, 'utf8')
-      return JSON.parse(data)
+    if (bookHashes && bookHashes.length > 0) {
+      // 批量查询
+      return await getTranslationsBatch(bookHashes)
     }
+    // 不推荐：加载所有翻译（仅用于兼容性）
+    console.warn('[Translation] Loading all translations is deprecated')
+    const { getAllTranslations } = require('./translation_db.js')
+    const allTranslations = await getAllTranslations()
+    const result = {}
+    allTranslations.forEach(t => {
+      result[t.hash] = t
+    })
+    return result
   } catch (e) {
     console.error('Failed to load translations:', e)
+    return {}
   }
-  return {}
 }
 
 /**
- * Save translations to JSON file
- * 保存翻译到JSON文件
+ * Save translations to database
+ * 保存翻译到数据库
+ * @deprecated This function is no longer needed, use saveBookTranslation() instead
  */
 function saveTranslations(translations) {
-  try {
-    fs.writeFileSync(TRANSLATIONS_FILE, JSON.stringify(translations, null, 2), 'utf8')
-  } catch (e) {
-    console.error('Failed to save translations:', e)
-    throw e
-  }
+  console.warn('[Translation] saveTranslations() is deprecated, use saveBookTranslation() instead')
+  // 不再实现，保留函数签名以防代码引用
 }
 
 /**
  * Get translation for a book
  * 获取书籍的翻译
  */
-function getBookTranslation(bookHash) {
-  const translations = loadTranslations()
-  return translations[bookHash] || null
+async function getBookTranslation(bookHash) {
+  return await getTranslation(bookHash)
 }
 
 /**
  * Save translation for a book
  * 保存书籍的翻译
  */
-function saveBookTranslation(bookHash, translation) {
-  const translations = loadTranslations()
-  translations[bookHash] = {
-    ...translation,
-    last_updated: new Date().toISOString()
-  }
-  saveTranslations(translations)
+async function saveBookTranslation(bookHash, translation) {
+  await saveTranslation(bookHash, translation)
 }
 
 /**
@@ -193,7 +204,7 @@ async function translateBatchTitles(books) {
 ${booksInfo}
 
 要求：
-1. 每个标题单独翻译，保持编号 给你的可能是罗马音日文中文英文混杂的作品名
+1. 每个标题单独翻译，保持编号 给你的可能是罗马音日文中文英文混杂的作品名 翻译的时候不要只翻译为中文就好了 应该贴合原作二次元的人名用语
 2. 只返回作品名，不包含展会信息、翻译者、汉化组等 但是不能过少 不能只翻译前面第一段的内容 翻译完整的作品名
 3. 保持简洁自然的中文表达
 4. 去除所有方括号、圆括号内的附加信息
@@ -474,7 +485,22 @@ async function batchTranslateBooks(books, settings, onProgress) {
     sorting: 'URL grouped (descending)'
   })
   
-  const translations = loadTranslations()
+  // 首次运行时自动迁移JSON数据（如果存在）
+  if (fs.existsSync(TRANSLATIONS_FILE)) {
+    console.log('[Translation Backend] Detected old JSON file, migrating to database...')
+    try {
+      const migrationResult = await migrateFromJSON(TRANSLATIONS_FILE)
+      console.log(`[Translation Backend] Migration complete: ${migrationResult.success} success, ${migrationResult.failed} failed`)
+    } catch (e) {
+      console.error('[Translation Backend] Migration failed:', e)
+      console.log('[Translation Backend] Continuing with database...')
+    }
+  }
+  
+  // 批量查询已有翻译
+  const bookHashes = books.map(b => b.hash)
+  const translations = await getTranslationsBatch(bookHashes)
+  
   const results = {
     success: 0,
     failed: 0,
@@ -492,11 +518,24 @@ async function batchTranslateBooks(books, settings, onProgress) {
       continue
     }
 
-    // 检查是否需要排除
-    if (settings.excludePureNumberChinese && shouldExcludeFromTranslation(book.filename)) {
-      console.log(`[Translation Backend] Skipped (excluded by filter): ${book.filename}`)
-      results.skipped++
-      continue
+    // 检查是否需要排除（使用裁剪后的标题）
+    if (settings.excludePureNumberChinese) {
+      // 先裁剪标题（与 index.js 中的匹配逻辑一致）
+      let trimmedTitle = book.filename
+      if (settings.trimTitleRegExp) {
+        try {
+          trimmedTitle = trimmedTitle.replace(new RegExp(settings.trimTitleRegExp, 'g'), '').trim()
+        } catch (e) {
+          console.log(`[Translation Backend] trimTitleRegExp error for "${book.filename}":`, e.message)
+        }
+      }
+      
+      // 用裁剪后的标题判断是否排除
+      if (shouldExcludeFromTranslation(trimmedTitle)) {
+        console.log(`[Translation Backend] Skipped (excluded by filter): "${book.filename}" -> trimmed: "${trimmedTitle}"`)
+        results.skipped++
+        continue
+      }
     }
 
     booksToTranslate.push(book)
@@ -559,13 +598,13 @@ async function batchTranslateBooks(books, settings, onProgress) {
         } else {
           console.log(`[Translation Backend] ✅ ${i + 1}/${batch.length}: ${book.filename} -> ${translation.chinese_title}`)
           results.success++
-          saveBookTranslation(book.hash, translation)
+          await saveBookTranslation(book.hash, translation)
         }
       }
 
       // 批次间延迟（避免限流）
       if (batchIndex < batches.length - 1) {
-        const waitTime = 3000 // 3秒
+        const waitTime = 500 // 3秒
         console.log(`[Translation Backend] ⏳ Waiting ${waitTime / 1000}s before next batch...`)
         await new Promise(resolve => setTimeout(resolve, waitTime))
       }
@@ -591,7 +630,7 @@ async function batchTranslateBooks(books, settings, onProgress) {
           } else {
             console.log(`[Translation Backend] ✅ ${book.filename} -> ${translation.chinese_title}`)
             results.success++
-            saveBookTranslation(book.hash, translation)
+            await saveBookTranslation(book.hash, translation)
           }
           
           await new Promise(resolve => setTimeout(resolve, 1000))
@@ -636,12 +675,12 @@ function initTranslationIPC(ipcMain, getSettings) {
 
   // 获取书籍翻译
   ipcMain.handle('get-book-translation', async (event, bookHash) => {
-    return getBookTranslation(bookHash)
+    return await getBookTranslation(bookHash)
   })
 
   // 保存书籍翻译
   ipcMain.handle('save-book-translation', async (event, { bookHash, translation }) => {
-    saveBookTranslation(bookHash, translation)
+    await saveBookTranslation(bookHash, translation)
     return true
   })
 

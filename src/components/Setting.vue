@@ -1215,6 +1215,7 @@ const batchTranslate = async () => {
     // Extract only necessary settings to avoid cloning issues
     const simplifiedSettings = {
       excludePureNumberChinese: setting.value.excludePureNumberChinese,
+      trimTitleRegExp: setting.value.trimTitleRegExp,  // 添加标题裁剪正则表达式
       aiApiProvider: setting.value.aiApiProvider,
       aiApiKey: setting.value.aiApiKey,
       aiApiBaseUrl: setting.value.aiApiBaseUrl,
