@@ -143,6 +143,8 @@
     "testApiConnection": "Test API Connection",
     "apiTestSuccess": "API connection test successful",
     "apiTestFailed": "API connection test failed",
+    "batchTranslationSize": "Batch Size",
+    "apiTimeout": "API Timeout (seconds)",
     "batchTranslateAll": "Batch Translate All Books",
     "translationHelp": "Translation Help",
     "translationHelpText1": "1. Enable 'Show Chinese Translation' to display AI-generated Chinese titles below the original titles on book cards.",

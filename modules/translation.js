@@ -150,6 +150,7 @@ function updateApiConfig(settings) {
     if (settings.aiModel) API_CONFIG.model = settings.aiModel
     if (settings.aiTemperature !== undefined) API_CONFIG.temperature = settings.aiTemperature
     if (settings.aiMaxTokens) API_CONFIG.maxTokens = settings.aiMaxTokens
+    if (settings.aiTimeout !== undefined) API_CONFIG.timeout = settings.aiTimeout
     // Set base URL based on provider
     if (!settings.aiApiBaseUrl) {
       switch (settings.aiApiProvider) {
@@ -340,7 +341,7 @@ ${booksInfo}
             temperature: API_CONFIG.temperature,
             max_tokens: Math.max(API_CONFIG.maxTokens, books.length * 50) // 动态调整token数
           }),
-          timeout: 30000 // 30秒超时
+          timeout: (API_CONFIG.timeout || 30) * 1000 // 使用配置的超时时间，默认30秒
         })
 
         if (!response.ok) {

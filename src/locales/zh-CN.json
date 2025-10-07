@@ -143,6 +143,8 @@
     "testApiConnection": "测试 API 连接",
     "apiTestSuccess": "API 连接测试成功",
     "apiTestFailed": "API 连接测试失败",
+    "batchTranslationSize": "每批翻译数量",
+    "apiTimeout": "API超时(秒)",
     "batchTranslateAll": "批量翻译所有书籍",
     "translationHelp": "翻译功能说明",
     "translationHelpText1": "1. 开启显示中文翻译后 书籍卡片会在标题下方显示AI生成的中文译名。",

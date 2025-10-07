@@ -913,18 +913,36 @@
           </el-col>
 
           <!-- Batch Translation Size -->
-          <el-col :span="24">
+          <el-col :span="12">
             <div class="setting-line">
               <el-input-number
                   v-model="setting.batchTranslationSize"
                   :min="1"
-                  :max="50"
+                  :max="100"
                   :step="1"
                   @change="saveSetting"
                   style="width: 100%"
               >
                 <template #prepend>
-                  <span class="setting-label">{{ $t('m.batchTranslationSize') || '批量翻译数量' }}</span>
+                  <span class="setting-label">{{ $t('m.batchTranslationSize') || '每批翻译数量' }}</span>
+                </template>
+              </el-input-number>
+            </div>
+          </el-col>
+
+          <!-- API Timeout -->
+          <el-col :span="12">
+            <div class="setting-line">
+              <el-input-number
+                  v-model="setting.aiTimeout"
+                  :min="10"
+                  :max="300"
+                  :step="5"
+                  @change="saveSetting"
+                  style="width: 100%"
+              >
+                <template #prepend>
+                  <span class="setting-label">{{ $t('m.apiTimeout') || 'API超时(秒)' }}</span>
                 </template>
               </el-input-number>
             </div>
@@ -1247,6 +1265,7 @@ const batchTranslate = async () => {
       aiModel: setting.value.aiModel,
       aiTemperature: setting.value.aiTemperature,
       aiMaxTokens: setting.value.aiMaxTokens,
+      aiTimeout: setting.value.aiTimeout || 30,  // 添加超时时间配置,默认30秒
       batchTranslationSize: setting.value.batchTranslationSize || 10
     }
     
@@ -1330,6 +1349,7 @@ onMounted(() => {
     if (res.aiModel === undefined) setting.value.aiModel = 'deepseek/deepseek-chat-v3.1:free'
     if (res.aiTemperature === undefined) setting.value.aiTemperature = 0.3
     if (res.aiMaxTokens === undefined) setting.value.aiMaxTokens = 100
+    if (res.aiTimeout === undefined) setting.value.aiTimeout = 30  // 默认30秒超时
     if (res.batchTranslationSize === undefined) setting.value.batchTranslationSize = 10
     setting.value.concurrentScan = normalizeConcurrency(res.concurrentScan, defaultConcurrentScan)
     setting.value.concurrentWrite = normalizeConcurrency(res.concurrentWrite, defaultConcurrentWrite)
