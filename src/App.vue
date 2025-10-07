@@ -1434,6 +1434,46 @@ export default defineComponent({
         this.$refs.SearchDialogRef.getBookInfo(book)
       }
     },
+
+    async translateBookToChinese(book) {
+      try {
+        this.printMessage('info', '正在生成中文翻译...')
+
+        const translation = await ipcRenderer.invoke('translate-title-ai', {
+          englishTitle: book.title,
+          japaneseTitle: book.title_jpn,
+          filename: path.basename(book.filepath)
+        })
+
+        await ipcRenderer.invoke('save-book-translation', {
+          bookHash: book.hash || book.id,
+          translation: translation
+        })
+
+        this.printMessage('success', `中文翻译已生成: ${translation.chinese_title}`)
+
+        // 通知所有 BookCard 更新翻译
+        ipcRenderer.send('translation-updated', book.hash || book.id)
+      } catch (e) {
+        this.printMessage('error', `翻译失败: ${e.message}`)
+      }
+    },
+
+    async regenerateBookCover(book) {
+      try {
+        this.printMessage('info', '正在重新生成封面...')
+        
+        // 调用现有的封面生成逻辑
+        await ipcRenderer.invoke('regenerate-cover', book.id)
+        
+        // 重新加载书籍列表以更新封面
+        await this.loadBookList()
+        
+        this.printMessage('success', '封面已重新生成')
+      } catch (e) {
+        this.printMessage('error', `重新生成封面失败: ${e.message}`)
+      }
+    },
     onBookContextMenu(e, book) {
       e.preventDefault()
       this.$contextmenu({
@@ -1492,6 +1532,18 @@ export default defineComponent({
             label: this.$t('m.getMetadataFromClipboardLink'),
             onClick: () => {
               this.getMetadataFromClipboardLink(book)
+            }
+          },
+          {
+            label: this.$t('m.translateToChinese'),
+            onClick: () => {
+              this.translateBookToChinese(book)
+            }
+          },
+          {
+            label: this.$t('m.regenerateCover'),
+            onClick: () => {
+              this.regenerateBookCover(book)
             }
           },
           {

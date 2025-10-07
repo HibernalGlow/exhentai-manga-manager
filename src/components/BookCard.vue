@@ -5,6 +5,9 @@
       @contextmenu="onMangaTitleContextMenu($event, book)"
       :title="getDisplayTitle(book)"
     >{{getDisplayTitle(book)}}</p>
+    <p v-if="bookTranslation && setting.showChineseTranslation" class="book-chinese-title">
+      {{ bookTranslation.chinese_title }}
+    </p>
     <img
       class="book-cover"
       :src="book.coverPath"
@@ -75,7 +78,7 @@
 </template>
 
 <script setup>
-import { ref, watchEffect, inject } from 'vue'
+import { ref, watchEffect, inject, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 // import { ElMessageBox } from 'element-plus'
 import { BookmarkTwotone } from '@vicons/material'
@@ -115,9 +118,32 @@ const props = defineProps({
 })
 
 const bookRating = ref(props.book.rating)
+const bookTranslation = ref(null)
 
 watchEffect(() => {
   bookRating.value = props.book.rating
+})
+
+// 加载书籍翻译
+const loadBookTranslation = async () => {
+  try {
+    const translation = await ipcRenderer.invoke('get-book-translation', props.book.hash || props.book.id)
+    bookTranslation.value = translation
+  } catch (e) {
+    console.error('Failed to load translation:', e)
+  }
+}
+
+// 监听翻译更新事件
+ipcRenderer.on('translation-updated', (event, bookHash) => {
+  if ((props.book.hash || props.book.id) === bookHash) {
+    loadBookTranslation()
+  }
+})
+
+// 组件挂载时加载翻译
+onMounted(() => {
+  loadBookTranslation()
 })
 
 const filterCollectTag = (tagObject) => {
@@ -366,6 +392,15 @@ const categoryColors = {
   line-height: 18px
   word-wrap: break-word
   white-space: normal
+.book-chinese-title
+  margin: 4px 6px 8px 6px
+  font-size: 13px
+  color: #e6a23c
+  font-weight: 500
+  line-height: 16px
+  word-wrap: break-word
+  white-space: normal
+  opacity: 0.9
 .book-card-mark, .book-card-language, .book-card-pagecount
   position: absolute
   cursor: pointer

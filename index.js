@@ -61,7 +61,7 @@ const {
 const { findSameFile, makeShardedPath } = require('./fileLoader/folder.js')
 const { ElectronBlocker } = require('@ghostery/adblocker-electron')
 const { QueryTypes } = require("sequelize");
-// Custom modules for import functionality
+const { initTranslationIPC } = require('./modules/translation.js')
 const { 
   normalizeString, 
   calculateSimilarity,
@@ -2037,6 +2037,39 @@ ipcMain.handle('delete-cover', async (event, bookId) => {
     throw e
   }
 })
+
+// 初始化翻译IPC处理器
+initTranslationIPC(ipcMain)
+
+// 重新生成封面
+ipcMain.handle('regenerate-cover', async (event, bookId) => {
+  try {
+    const book = await Manga.findByPk(bookId)
+    if (!book) {
+      throw new Error('Book not found')
+    }
+
+    // 删除旧封面文件
+    if (book.coverPath && fs.existsSync(book.coverPath)) {
+      fs.unlinkSync(book.coverPath)
+    }
+
+    // 重新生成封面
+    const { coverPath } = await geneCoverFromBuffer(book.filepath, book.type, {})
+    
+    // 更新数据库
+    await Manga.update({ coverPath }, { where: { id: bookId } })
+
+    sendMessageToWebContents(`Cover regenerated for book: ${book.title || book.filepath}`)
+    return true
+  } catch (e) {
+    sendMessageToWebContents(`Regenerate cover failed because ${e}`)
+    throw e
+  }
+})
+
+// 初始化翻译IPC处理器
+initTranslationIPC(ipcMain)
 
 // setting
 ipcMain.handle('select-folder', async (event, title) => {

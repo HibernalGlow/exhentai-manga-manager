@@ -373,6 +373,30 @@ function generateVariants(str) {
   return Array.from(variants)
 }
 
+/**
+ * Check if filename is pure numbers or pure Chinese characters
+ * 检测文件名是否为纯数字或纯中文字符
+ * @param {string} filename - Filename to check
+ * @returns {boolean} True if pure numbers or pure Chinese
+ */
+function isPureNumberOrChinese(filename) {
+  if (!filename || typeof filename !== 'string') return false
+  
+  // Remove file extension for checking
+  const nameWithoutExt = filename.replace(/\.[^/.]+$/, '')
+  
+  // Check if contains any Latin letters (A-Z, a-z)
+  if (/[A-Za-z]/.test(nameWithoutExt)) {
+    return false
+  }
+  
+  // Check if contains any non-Chinese, non-digit, non-separator characters
+  // Allow: Chinese characters, digits, spaces, hyphens, dots, parentheses, brackets
+  const allowedChars = /^[\u4E00-\u9FFF\u3400-\u4DBF\u20000-\u2A6DF\u2A700-\u2B73F\u2B740-\u2B81F\u2B820-\u2CEAF\u2CEB0-\u2EBEF\d\s\-\.\(\)\[\]]+$/
+  
+  return allowedChars.test(nameWithoutExt) && nameWithoutExt.trim().length > 0
+}
+
 module.exports = {
   normalizeString,
   calculateSimilarity,
@@ -385,5 +409,6 @@ module.exports = {
   removeSuffixAfterSeparator,
   removePinyinArtifacts,
   removeTrailingOne,
-  generateVariants
+  generateVariants,
+  isPureNumberOrChinese
 }

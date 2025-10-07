@@ -398,6 +398,13 @@
                 @change="saveSetting"
             />
           </el-col>
+          <el-col :span="24" class="setting-switch">
+            <el-switch
+                v-model="setting.showChineseTranslation"
+                :active-text="$t('m.showChineseTranslation')"
+                @change="saveSetting"
+            />
+          </el-col>
         </el-row>
       </el-tab-pane>
       <el-tab-pane :label="$t('m.advanced')" name="advanced">
