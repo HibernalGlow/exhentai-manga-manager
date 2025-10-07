@@ -7,6 +7,7 @@ const path = require('path')
 const fs = require('fs')
 const { isPureNumberOrChinese } = require('./string_utils.js')
 const fetch = require('node-fetch')
+const { GoogleGenAI } = require('@google/genai')
 
 // 导入现成的URL分组排序函数
 const { sortByUrlGroup } = require('../src/utils/sqlFilter.js')
@@ -117,6 +118,9 @@ function updateApiConfig(settings) {
         case 'ernie':
           API_CONFIG.baseUrl = 'https://aip.baidubce.com/rpc/2.0'
           break
+        case 'gemini':
+          API_CONFIG.baseUrl = 'https://generativelanguage.googleapis.com/v1beta/openai'
+          break
       }
     }
   }
@@ -225,35 +229,52 @@ ${booksInfo}
     try {
       console.log(`[Translation] API call attempt ${attempt}/${maxRetries}`)
       
-      const response = await fetch(`${API_CONFIG.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${API_CONFIG.apiKey}`,
-          'HTTP-Referer': 'https://github.com/NekoImageGallery/exhentai-manga-manager',
-          'X-Title': 'ExHentai Manga Manager'
-        },
-        body: JSON.stringify({
+      let responseText = ''
+      
+      if (API_CONFIG.provider === 'gemini') {
+        // 使用Google GenAI SDK
+        const genAI = new GoogleGenAI({ apiKey: API_CONFIG.apiKey })
+        const response = await genAI.models.generateContent({
           model: API_CONFIG.model,
-          messages: [
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: API_CONFIG.temperature,
-          max_tokens: Math.max(API_CONFIG.maxTokens, books.length * 50) // 动态调整token数
-        }),
-        timeout: 30000 // 30秒超时
-      })
+          contents: prompt
+        })
+        responseText = response.text.trim()
+        
+        console.log(`[Translation] Gemini API call succeeded on attempt ${attempt}`)
+      } else {
+        // 使用OpenAI兼容API
+        const response = await fetch(`${API_CONFIG.baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${API_CONFIG.apiKey}`,
+            'HTTP-Referer': 'https://github.com/NekoImageGallery/exhentai-manga-manager',
+            'X-Title': 'ExHentai Manga Manager'
+          },
+          body: JSON.stringify({
+            model: API_CONFIG.model,
+            messages: [
+              {
+                role: 'user',
+                content: prompt
+              }
+            ],
+            temperature: API_CONFIG.temperature,
+            max_tokens: Math.max(API_CONFIG.maxTokens, books.length * 50) // 动态调整token数
+          }),
+          timeout: 30000 // 30秒超时
+        })
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(`API request failed: ${errorData.error?.message || response.statusText}`)
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(`API request failed: ${errorData.error?.message || response.statusText}`)
+        }
+
+        const data = await response.json()
+        responseText = data.choices[0].message.content.trim()
+        
+        console.log(`[Translation] API call succeeded on attempt ${attempt}`)
       }
-
-      const data = await response.json()
-      const responseText = data.choices[0].message.content.trim()
 
       // 解析返回的翻译结果
       const lines = responseText.split('\n').filter(line => line.trim())
@@ -366,35 +387,47 @@ async function translateTitleToChinese(englishTitle, japaneseTitle, filename) {
 请直接返回中文译名，不要任何解释：`
 
   try {
-    // 调用 AI API (支持多种供应商)
-    const response = await fetch(`${API_CONFIG.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${API_CONFIG.apiKey}`,
-        'HTTP-Referer': 'https://github.com/NekoImageGallery/exhentai-manga-manager',
-        'X-Title': 'ExHentai Manga Manager'
-      },
-      body: JSON.stringify({
+    let chineseTitle = ''
+    
+    if (API_CONFIG.provider === 'gemini') {
+      // 使用Google GenAI SDK
+      const genAI = new GoogleGenAI({ apiKey: API_CONFIG.apiKey })
+      const response = await genAI.models.generateContent({
         model: API_CONFIG.model,
-        messages: [
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        temperature: API_CONFIG.temperature,
-        max_tokens: API_CONFIG.maxTokens
+        contents: prompt
       })
-    })
+      chineseTitle = response.text.trim()
+    } else {
+      // 调用 AI API (支持多种供应商)
+      const response = await fetch(`${API_CONFIG.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${API_CONFIG.apiKey}`,
+          'HTTP-Referer': 'https://github.com/NekoImageGallery/exhentai-manga-manager',
+          'X-Title': 'ExHentai Manga Manager'
+        },
+        body: JSON.stringify({
+          model: API_CONFIG.model,
+          messages: [
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: API_CONFIG.temperature,
+          max_tokens: API_CONFIG.maxTokens
+        })
+      })
 
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new Error(`API request failed: ${errorData.error?.message || response.statusText}`)
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(`API request failed: ${errorData.error?.message || response.statusText}`)
+      }
+
+      const data = await response.json()
+      chineseTitle = data.choices[0].message.content.trim()
     }
-
-    const data = await response.json()
-    const chineseTitle = data.choices[0].message.content.trim()
 
     // 移除可能的引号包裹
     const cleanTitle = chineseTitle.replace(/^["'《]|["'》]$/g, '')
@@ -431,37 +464,52 @@ async function translateTitleToChinese(englishTitle, japaneseTitle, filename) {
  */
 async function testApiConnection() {
   try {
-    const response = await fetch(`${API_CONFIG.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${API_CONFIG.apiKey}`,
-        'HTTP-Referer': 'https://github.com/NekoImageGallery/exhentai-manga-manager',
-        'X-Title': 'ExHentai Manga Manager'
-      },
-      body: JSON.stringify({
+    let responseContent = ''
+    
+    if (API_CONFIG.provider === 'gemini') {
+      // 使用Google GenAI SDK
+      const genAI = new GoogleGenAI({ apiKey: API_CONFIG.apiKey })
+      const response = await genAI.models.generateContent({
         model: API_CONFIG.model,
-        messages: [
-          {
-            role: 'user',
-            content: 'Hello'
-          }
-        ],
-        temperature: 0.3,
-        max_tokens: 10
+        contents: 'Hello'
       })
-    })
+      responseContent = response.text.trim()
+    } else {
+      // 使用OpenAI兼容API
+      const response = await fetch(`${API_CONFIG.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${API_CONFIG.apiKey}`,
+          'HTTP-Referer': 'https://github.com/NekoImageGallery/exhentai-manga-manager',
+          'X-Title': 'ExHentai Manga Manager'
+        },
+        body: JSON.stringify({
+          model: API_CONFIG.model,
+          messages: [
+            {
+              role: 'user',
+              content: 'Hello'
+            }
+          ],
+          temperature: 0.3,
+          max_tokens: 10
+        })
+      })
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.error?.message || response.statusText)
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error?.message || response.statusText)
+      }
+
+      const data = await response.json()
+      responseContent = data.choices[0].message.content
     }
-
-    const data = await response.json()
+    
     return {
       success: true,
       message: 'API连接测试成功',
-      response: data.choices[0].message.content
+      response: responseContent
     }
   } catch (error) {
     return {
@@ -647,7 +695,7 @@ async function batchTranslateBooks(books, settings, onProgress) {
     }
   }
 
-  console.log(`\n[Translation Backend] 🎉 Batch translation completed:`, results)
+  // console.log(`\n[Translation Backend] 🎉 Batch translation completed:`, results)
   console.log(`[Translation Backend] Speed: ${booksToTranslate.length} books in ${batches.length} API calls (avg ${(booksToTranslate.length / batches.length).toFixed(1)} books/call)`)
   
   return results
@@ -721,7 +769,7 @@ function initTranslationIPC(ipcMain, getSettings) {
         event.sender.send('batch-translate-progress', progress)
       })
       
-      console.log(`[Translation IPC] Batch translate completed:`, result)
+      // console.log(`[Translation IPC] Batch translate completed:`, result)
       return result
     } catch (error) {
       console.error(`[Translation IPC] Batch translate error:`, error)

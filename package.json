@@ -75,6 +75,7 @@
     "@element-plus/icons-vue": "^2.3.2",
     "@ghostery/adblocker-electron": "^2.11.6",
     "@ghostery/adblocker-electron-preload": "^2.11.6",
+    "@google/genai": "^1.22.0",
     "adm-zip": "^0.5.9",
     "cross-fetch": "^4.1.0",
     "electron-window-state": "^5.0.3",
