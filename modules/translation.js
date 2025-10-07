@@ -235,8 +235,8 @@ ${booksInfo}
           // 如果没有编号，按行号对应
           chineseTitle = lines[i].replace(/^\d+\.\s*/, '').trim()
         } else {
-          // 如果解析失败，使用fallback
-          chineseTitle = book.title_jpn || book.title || book.filename
+          // 如果解析失败，使用失败标记
+          chineseTitle = '翻译失败'
         }
 
         // 清理引号
@@ -273,11 +273,11 @@ ${booksInfo}
     }
   }
 
-  // 所有重试都失败，返回fallback结果
-  console.error(`[Translation] All ${maxRetries} attempts failed, using fallback`)
+  // 所有重试都失败，返回失败标记（不使用原文）
+  console.error(`[Translation] All ${maxRetries} attempts failed, marking as failed`)
   return books.map(book => ({
     hash: book.hash,
-    chinese_title: cleanTitle(book.title_jpn || book.title || book.filename),
+    chinese_title: '翻译失败', // 使用失败标记而不是原文
     original_english: book.title,
     original_japanese: book.title_jpn,
     filename: book.filename,
@@ -376,31 +376,9 @@ async function translateTitleToChinese(englishTitle, japaneseTitle, filename) {
       console.error('[Translation] 💡 Suggestion: Wait a moment or consider using a paid API key.')
     }
     
-    // 如果AI调用失败，使用简单的规则-based翻译作为后备方案
-    let chineseTitle = ''
-    
-    if (japaneseTitle) {
-      let cleanTitle = japaneseTitle
-        .replace(/\[[^\]]*\]/g, '') // 移除方括号内容
-        .replace(/【[^】]*】/g, '') // 移除双括号内容
-        .replace(/（[^）]*）/g, '') // 移除小括号内容
-        .replace(/\([^\)]*\)/g, '') // 移除英文括号内容
-        .trim()
-      chineseTitle = cleanTitle
-    } else if (englishTitle) {
-      let cleanTitle = englishTitle
-        .replace(/\[[^\]]*\]/g, '')
-        .replace(/【[^】]*】/g, '')
-        .replace(/（[^）]*）/g, '')
-        .replace(/\([^\)]*\)/g, '')
-        .trim()
-      chineseTitle = cleanTitle
-    } else {
-      chineseTitle = '未命名作品'
-    }
-
+    // 如果AI调用失败，返回失败标记（不使用原文）
     return {
-      chinese_title: chineseTitle,
+      chinese_title: '翻译失败', // 使用失败标记而不是原文
       original_english: englishTitle,
       original_japanese: japaneseTitle,
       filename: filename,
