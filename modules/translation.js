@@ -10,10 +10,10 @@ const OpenAI = require('openai')
 const { GoogleGenAI } = require('@google/genai')
 
 // 导入现成的URL分组排序函数
-const { sortByUrlGroup } = require('./sqlFilter.js')
 
 // 导入存储路径（与数据库等文件放在一起）
 const { STORE_PATH } = require('./init_folder_setting.js')
+const { sortByUrlGroup } = require('./sqlFilter.js')
 
 // 导入翻译数据库模块
 const {
@@ -29,11 +29,16 @@ const {
 const TRANSLATIONS_FILE = path.join(STORE_PATH, 'translations.json')
 
 
-// API配置文件路径（保存到用户数据目录）
-const API_CONFIG_FILE = path.join(STORE_PATH, 'ai_api_config.json')
+// API配置文件路径（保存到用户数据目录）- 使用函数确保在需要时获取最新路径
+function getApiConfigFilePath() {
+  const { STORE_PATH } = require('./init_folder_setting.js')
+  return path.join(STORE_PATH, 'ai_api_config.json')
+}
+
 let API_CONFIG = null
 
 function loadApiConfig() {
+  const API_CONFIG_FILE = getApiConfigFilePath()
   try {
     if (fs.existsSync(API_CONFIG_FILE)) {
       const data = fs.readFileSync(API_CONFIG_FILE, 'utf8')
@@ -137,8 +142,8 @@ function saveApiConfig(config) {
   }
 }
 
-// 启动时加载一次
-loadApiConfig()
+// 启动时加载一次 - 移到 initTranslationIPC 中延迟执行
+// loadApiConfig()
 
 /**
  * Update API configuration from settings
@@ -794,6 +799,9 @@ async function batchTranslateBooks(books, settings, onProgress) {
  * 初始化翻译相关的IPC处理器
  */
 function initTranslationIPC(ipcMain, getSettings) {
+  // 延迟加载API配置，确保STORE_PATH已正确初始化
+  loadApiConfig()
+  
   // 获取API配置
   ipcMain.handle('get-api-config', async () => {
     return loadApiConfig()

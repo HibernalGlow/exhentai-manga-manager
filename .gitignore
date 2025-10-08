@@ -36,3 +36,9 @@ test/
 /config/ai_api_config.json
 /modules/test-translation.js
 /tests
+ai_api_config.json
+collectionList.json
+database.sqlite
+log.txt
+metadata.sqlite
+setting.json

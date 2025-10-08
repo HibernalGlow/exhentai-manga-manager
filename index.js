@@ -61,7 +61,6 @@ const {
 const { findSameFile, makeShardedPath } = require('./fileLoader/folder.js')
 const { ElectronBlocker } = require('@ghostery/adblocker-electron')
 const { QueryTypes } = require("sequelize");
-const { initTranslationIPC } = require('./modules/translation.js')
 const { 
   normalizeString, 
   calculateSimilarity,
@@ -117,8 +116,35 @@ const titleIndexCache = {
 }
 
 preparePath()
+
+// 检查STORE_PATH是否正确初始化
+console.log('🔍 检查STORE_PATH状态:')
+console.log('  STORE_PATH:', STORE_PATH)
+console.log('  isPortable:', isPortable)
+console.log('  TEMP_PATH:', TEMP_PATH)
+console.log('  COVER_PATH:', COVER_PATH)
+console.log('  VIEWER_PATH:', VIEWER_PATH)
+
+// 验证路径是否存在
+try {
+  fs.accessSync(STORE_PATH)
+  console.log('  ✅ STORE_PATH 存在')
+} catch (e) {
+  console.error('  ❌ STORE_PATH 不存在:', e.message)
+}
+
+try {
+  fs.accessSync(TEMP_PATH)
+  console.log('  ✅ TEMP_PATH 存在')
+} catch (e) {
+  console.error('  ❌ TEMP_PATH 不存在:', e.message)
+}
+
 let setting = prepareSetting()
 let collectionList = prepareCollectionList()
+
+// 在路径初始化之后再加载翻译模块，确保 STORE_PATH 已被正确设置
+const { initTranslationIPC } = require('./modules/translation.js')
 
 const Manga = prepareMangaModel(path.join(STORE_PATH, './database.sqlite'))
 let metadataSqliteFile

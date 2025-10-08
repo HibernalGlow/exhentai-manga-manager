@@ -1,27 +1,53 @@
-const { app } = require('electron')
 const fs = require('fs')
 const path = require('path')
 const { getRootPath } = require('./utils.js')
 
-
-let STORE_PATH = app.getPath('userData')
-if (!fs.existsSync(STORE_PATH)) {
-  fs.mkdirSync(STORE_PATH)
+// 检查是否有模拟的app环境（用于外部脚本）
+let STORE_PATH
+try {
+  const { app } = require('electron')
+  STORE_PATH = app.getPath('userData')
+} catch {
+  // 如果没有electron，使用环境变量或默认路径
+  STORE_PATH = process.env.STORE_PATH || path.join(require('os').homedir(), 'AppData', 'Roaming', 'exhentai-manga-manager')
 }
+
+if (!fs.existsSync(STORE_PATH)) {
+  fs.mkdirSync(STORE_PATH, { recursive: true })
+}
+
 const rootPath = getRootPath()
 let isPortable = false
-try {
-  const dataPath = path.join(rootPath, 'data')
-  fs.accessSync(dataPath)
-  STORE_PATH = dataPath
-  isPortable = true
-} catch {
+
+console.log('🔍 便携式应用检测:')
+console.log('  NODE_ENV:', JSON.stringify(process.env.NODE_ENV))
+console.log('  NODE_ENV 类型:', typeof process.env.NODE_ENV)
+console.log('  NODE_ENV 长度:', process.env.NODE_ENV ? process.env.NODE_ENV.length : 'undefined')
+console.log('  rootPath:', rootPath)
+console.log('  app.isPackaged:', require('electron').app.isPackaged)
+console.log('  app.getAppPath():', require('electron').app.getAppPath())
+console.log('  检查 data 目录:', path.join(rootPath, 'data'))
+console.log('  检查 portable 目录:', path.join(rootPath, 'portable'))
+
+// 只有在生产环境中才检测便携式应用，开发环境始终使用用户数据目录
+// 加强检查：确保NODE_ENV确实是'development'字符串
+const isDevelopment = process.env.NODE_ENV === 'development'
+console.log('  isDevelopment 检查:', isDevelopment)
+if (!isDevelopment) {
+  console.log('  🔍 执行便携式应用检测')
   try {
-    fs.accessSync(path.join(rootPath, 'portable'))
-    STORE_PATH = rootPath
+    const dataPath = path.join(rootPath, 'data')
+    fs.accessSync(dataPath)
+    STORE_PATH = dataPath
     isPortable = true
   } catch {
-    STORE_PATH = app.getPath('userData')
+    try {
+      fs.accessSync(path.join(rootPath, 'portable'))
+      STORE_PATH = rootPath
+      isPortable = true
+    } catch {
+      // 保持当前的 STORE_PATH
+    }
   }
 }
 
