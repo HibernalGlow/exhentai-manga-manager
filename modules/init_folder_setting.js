@@ -30,8 +30,8 @@ console.log('  检查 data 目录:', path.join(rootPath, 'data'))
 console.log('  检查 portable 目录:', path.join(rootPath, 'portable'))
 
 // 只有在生产环境中才检测便携式应用，开发环境始终使用用户数据目录
-// 加强检查：确保NODE_ENV确实是'development'字符串
-const isDevelopment = process.env.NODE_ENV === 'development'
+// 加强检查：确保NODE_ENV确实是'development'字符串（去除空格）
+const isDevelopment = process.env.NODE_ENV && process.env.NODE_ENV.trim() === 'development'
 console.log('  isDevelopment 检查:', isDevelopment)
 if (!isDevelopment) {
   console.log('  🔍 执行便携式应用检测')
