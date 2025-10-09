@@ -292,14 +292,20 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
     // 智能提取关键词，针对系列作品优化
     const keyword = extractSmartKeyword(searchTermNormalized)
     
+    // 提取系列信息，用于精确匹配
+    const seriesInfo = extractSeriesInfo(searchTermNormalized)
+    
     // 如果关键词太短（少于2个字符），跳过此策略
     if (keyword.length >= 2) {
       // console.log(`\n[关键词预筛选] 原始文件: ${originalFilename}`)
       // console.log(`[关键词预筛选] 裁剪标题: "${searchTerm}"`)
       console.log(`[关键词预筛选][${source}] 提取关键词: "${keyword}"`)
+      if (seriesInfo.numbers.length > 0) {
+        console.log(`[关键词预筛选] 系列信息: 系列名="${seriesInfo.seriesName}", 数字=${seriesInfo.numbers.join(', ')}`)
+      }
       
       // 预筛选：只保留包含关键词的标题
-      const candidates = []
+      let candidates = []
       for (const title of titleArray) {
         if (title.includes(keyword)) {
           candidates.push(title)
@@ -308,38 +314,115 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
       
       console.log(`[关键词预筛选] 数据库总量: ${titleArray.length} -> 筛选后候选: ${candidates.length}`)
       
+      // 如果候选数量合理，进行分组预处理以提高匹配精度
+      if (candidates.length > 0 && candidates.length <= 200) {
+        console.log(`[关键词预筛选] 候选数量适中(${candidates.length})，进行分组预处理...`)
+        candidates = preprocessTitlesForGrouping(candidates)
+        console.log(`[关键词预筛选] 分组预处理后候选: ${candidates.length}`)
+      }
+      
       // 对筛选后的候选标题计算相似度
       if (candidates.length > 0) {
         // 动态相似度阈值：根据候选数量和关键词类型调整
         // 候选越少 = 关键词越精准 = 可以用更低的阈值
         // 候选越多 = 关键词太泛 = 需要更高的阈值避免误匹配
         // 对于系列关键词（包含系列标识符），可以使用稍低的阈值
+        // 同时考虑关键词长度：长关键词通常来自系列作品，需要更宽松的阈值
+        // 候选数量多也可能是热门系列，需要适当降低阈值
         let MIN_SIMILARITY_FALLBACK
-        const isSeriesKeyword = /\b(vol|volume|第|code|episode|chapter|part)\b/i.test(keyword)
+        const isSeriesKeyword = /\b(vol|volume|第|code|episode|chapter|part|～|~|afterstory|side story|外伝)\b/i.test(keyword)
+        const isLongKeyword = keyword.length > 8 // 长关键词通常是系列标题
+        const isPopularSeries = candidates.length > 50 // 大量候选通常表示热门系列
+        const isJapaneseSeries = /[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf]/.test(keyword) // 包含日文字符的可能是系列作品
 
         if (candidates.length <= 5) {
-          MIN_SIMILARITY_FALLBACK = isSeriesKeyword ? 0.25 : 0.3 // 系列关键词可以更宽松
+          MIN_SIMILARITY_FALLBACK = (isSeriesKeyword || isLongKeyword || isPopularSeries) ? 0.2 : 0.3
         } else if (candidates.length <= 20) {
-          MIN_SIMILARITY_FALLBACK = isSeriesKeyword ? 0.35 : 0.4
+          MIN_SIMILARITY_FALLBACK = (isSeriesKeyword || isLongKeyword || isPopularSeries) ? 0.3 : 0.4
         } else if (candidates.length <= 100) {
-          MIN_SIMILARITY_FALLBACK = isSeriesKeyword ? 0.45 : 0.6
+          MIN_SIMILARITY_FALLBACK = (isSeriesKeyword || isLongKeyword || isPopularSeries || isJapaneseSeries) ? 0.35 : 0.6
         } else if (candidates.length <= 500) {
-          MIN_SIMILARITY_FALLBACK = isSeriesKeyword ? 0.55 : 0.7
+          MIN_SIMILARITY_FALLBACK = (isSeriesKeyword || isLongKeyword || isPopularSeries || isJapaneseSeries) ? 0.4 : 0.7
         } else {
-          MIN_SIMILARITY_FALLBACK = 0.7 // 候选太多时必须严格
+          MIN_SIMILARITY_FALLBACK = (isSeriesKeyword || isLongKeyword || isPopularSeries || isJapaneseSeries) ? 0.45 : 0.75
         }
         
-        console.log(`[关键词预筛选] 动态阈值: ${MIN_SIMILARITY_FALLBACK} (基于候选数: ${candidates.length})`)
-        
-        let bestMatch = null
-        let bestSimilarity = 0
-        let bestTitle = ''
-        
-        for (const title of candidates) {
-          const similarity = calculateSimilarity(originalNormalized, title)
+        // 如果有系列数字信息，优先尝试精确匹配相同数字的标题
+        if (seriesInfo.numbers.length > 0) {
+          console.log(`[关键词预筛选] 检测到系列数字，优先匹配相同数字的标题...`)
+          const numberCandidates = []
           
-          if (similarity >= MIN_SIMILARITY_FALLBACK && similarity > bestSimilarity) {
-            bestSimilarity = similarity
+          for (const candidate of candidates) {
+            const candidateInfo = extractSeriesInfo(candidate)
+            // 检查是否有相同的数字
+            const hasCommonNumber = seriesInfo.numbers.some(num => 
+              candidateInfo.numbers.includes(num)
+            )
+            if (hasCommonNumber) {
+              numberCandidates.push(candidate)
+            }
+          }
+          
+          if (numberCandidates.length > 0) {
+            console.log(`[关键词预筛选] 找到 ${numberCandidates.length} 个相同数字的候选`)
+            
+            // 对数字匹配的候选使用较低的阈值
+            const NUMBER_MATCH_THRESHOLD = Math.max(0.3, MIN_SIMILARITY_FALLBACK - 0.1)
+            
+            let numberBestMatch = null
+            let numberBestSimilarity = 0
+            let numberBestTitle = ''
+            
+            for (const candidate of numberCandidates) {
+              const title = candidate
+              const normalizedTitle = normalizeString(title).toLowerCase()
+              const similarity = calculateSimilarity(originalNormalized, normalizedTitle)
+              
+              if (similarity >= NUMBER_MATCH_THRESHOLD && similarity > numberBestSimilarity) {
+                numberBestSimilarity = similarity
+                numberBestMatch = titleMap.get(title)
+                numberBestTitle = title
+              }
+            }
+            
+            if (numberBestMatch) {
+              console.log(`[关键词预筛选] ✅ 数字精确匹配成功! 相似度: ${numberBestSimilarity.toFixed(3)}`)
+              console.log(`[关键词预筛选] 匹配标题: "${numberBestTitle}"`)
+              console.log(`[关键词预筛选] 原始文件名: "${originalFilename}"`)
+              return numberBestMatch
+            } else {
+              console.log(`[关键词预筛选] ❌ 数字匹配失败，继续尝试关键词缩短策略`)
+            }
+          } else {
+            console.log(`[关键词预筛选] 未找到相同数字的候选，继续尝试关键词缩短策略`)
+          }
+        }
+        
+        // 检查是否进行了分组预处理
+        const isGrouped = candidates.length > 0 && typeof candidates[0] === 'object' && candidates[0].original
+        
+        for (const candidate of candidates) {
+          const title = isGrouped ? candidate.original : candidate
+          const normalizedTitle = isGrouped ? candidate.normalized : normalizeString(title).toLowerCase()
+          
+          // 计算相似度
+          const similarity = calculateSimilarity(originalNormalized, normalizedTitle)
+          
+          // 如果有系列数字信息，优先匹配包含相同数字的标题
+          let numberBonus = 0
+          if (seriesInfo.numbers.length > 0) {
+            const titleNumbers = extractSeriesInfo(title).numbers
+            const commonNumbers = seriesInfo.numbers.filter(num => titleNumbers.includes(num))
+            if (commonNumbers.length > 0) {
+              numberBonus = 0.1 // 相同数字加分
+              console.log(`[数字匹配] 找到相同数字 ${commonNumbers.join(', ')}: "${title}"`)
+            }
+          }
+          
+          const adjustedSimilarity = Math.min(1.0, similarity + numberBonus)
+          
+          if (adjustedSimilarity >= MIN_SIMILARITY_FALLBACK && adjustedSimilarity > bestSimilarity) {
+            bestSimilarity = adjustedSimilarity
             bestMatch = titleMap.get(title)
             bestTitle = title
           }
@@ -371,8 +454,21 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
             console.log(`[关键词预筛选] 前60%关键词筛选结果: ${partialCandidates.length} 个候选`)
             
             if (partialCandidates.length > 0) {
-              // 使用更高的阈值，因为前60%关键词匹配需要更精确
-              const MIN_SIMILARITY_PARTIAL = Math.max(0.4, MIN_SIMILARITY_FALLBACK)
+              // 根据候选数量和关键词特征动态调整阈值
+              // 前60%关键词通常更短，需要适当降低阈值
+              const isSeriesPartial = /\b(vol|volume|第|code|episode|chapter|part|～|~|afterstory|side story|外伝)\b/i.test(partialKeyword)
+              const isLongPartial = partialKeyword.length > 6
+              const isPopularPartial = partialCandidates.length > 30
+              const isJapanesePartial = /[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf]/.test(partialKeyword)
+              
+              let MIN_SIMILARITY_PARTIAL
+              if (partialCandidates.length <= 10) {
+                MIN_SIMILARITY_PARTIAL = (isSeriesPartial || isLongPartial || isPopularPartial) ? 0.25 : 0.4
+              } else if (partialCandidates.length <= 50) {
+                MIN_SIMILARITY_PARTIAL = (isSeriesPartial || isLongPartial || isPopularPartial || isJapanesePartial) ? 0.35 : 0.5
+              } else {
+                MIN_SIMILARITY_PARTIAL = (isSeriesPartial || isLongPartial || isPopularPartial || isJapanesePartial) ? 0.4 : 0.55
+              }
               
               let partialBestMatch = null
               let partialBestSimilarity = 0
@@ -422,8 +518,21 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
           console.log(`[关键词预筛选] 前60%关键词筛选结果: ${partialCandidates.length} 个候选`)
           
           if (partialCandidates.length > 0) {
-            // 使用较高的阈值，因为前60%关键词匹配需要更精确
-            const MIN_SIMILARITY_PARTIAL = 0.5
+            // 根据候选数量和关键词特征动态调整阈值
+            // 系列作品或长关键词可以使用更宽松的阈值
+            const isSeriesPartial = /\b(vol|volume|第|code|episode|chapter|part|～|~|afterstory|side story|外伝)\b/i.test(partialKeyword)
+            const isLongPartial = partialKeyword.length > 6
+            const isPopularPartial = partialCandidates.length > 30
+            const isJapanesePartial = /[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf]/.test(partialKeyword)
+            
+            let MIN_SIMILARITY_PARTIAL
+            if (partialCandidates.length <= 10) {
+              MIN_SIMILARITY_PARTIAL = (isSeriesPartial || isLongPartial || isPopularPartial) ? 0.25 : 0.4
+            } else if (partialCandidates.length <= 50) {
+              MIN_SIMILARITY_PARTIAL = (isSeriesPartial || isLongPartial || isPopularPartial || isJapanesePartial) ? 0.35 : 0.5
+            } else {
+              MIN_SIMILARITY_PARTIAL = (isSeriesPartial || isLongPartial || isPopularPartial || isJapanesePartial) ? 0.4 : 0.55
+            }
             
             let partialBestMatch = null
             let partialBestSimilarity = 0
@@ -575,12 +684,87 @@ function extractSmartKeyword(searchTerm) {
     }
   }
 
+  // 对于长标题（>8字符），尝试提取更短的关键词以提高匹配成功率
+  // 优先提取到常见分隔符（如：- ~ ( 等）前的部分
+  if (searchTerm.length > 8) {
+    const separators = [' - ', ' ~ ', '～', '(', '（', ':', '：']
+    for (const sep of separators) {
+      const sepIndex = searchTerm.indexOf(sep)
+      if (sepIndex > 2) { // 确保提取的关键词有意义
+        const shortKeyword = searchTerm.substring(0, sepIndex).trim()
+        if (shortKeyword.length >= 3 && shortKeyword.length <= 10) {
+          console.log(`[智能关键词] 长标题优化: "${searchTerm}" -> 短关键词: "${shortKeyword}"`)
+          return shortKeyword
+        }
+      }
+    }
+
+    // 如果没有找到合适的分隔符，提取前8个字符
+    const shortKeyword = searchTerm.substring(0, 8)
+    console.log(`[智能关键词] 长标题截取: "${searchTerm}" -> 前8字符: "${shortKeyword}"`)
+    return shortKeyword
+  }
+
   // 默认策略：提取第一个空格前的关键词
   const firstSpaceIndex = searchTerm.indexOf(' ')
   const keyword = firstSpaceIndex > 0 ? searchTerm.substring(0, firstSpaceIndex) : searchTerm
 
   return keyword
 }
+
+/**
+ * Extract numeric information from search term for precise series matching
+ * 从搜索词中提取数字信息，用于精确的系列匹配
+ * @param {string} searchTerm - Normalized search term
+ * @returns {Object} Object containing series name and numeric info
+ */
+function extractSeriesInfo(searchTerm) {
+  if (!searchTerm) return { seriesName: searchTerm, numbers: [] }
+
+  // 检测系列标识符的正则表达式
+  const seriesPatterns = [
+    /\s+(vol\.?|volume)\s*(\d+(?:\.\d+)?)/i,  // Vol.1, Volume 2
+    /\s+第\s*(\d+(?:\.\d+)?)/i,              // 第1话, 第2集
+    /\s+code:?\s*(\d+(?:\.\d+)?)/i,          // code:1, code 2
+    /\s+episode\s*(\d+(?:\.\d+)?)/i,         // episode 1
+    /\s+chapter\s*(\d+(?:\.\d+)?)/i,         // chapter 1
+    /\s+part\s*(\d+(?:\.\d+)?)/i,            // part 1
+    /\s+(\d+(?:\.\d+)?)$/,                   // 末尾的数字，如 1.0, 2
+  ]
+
+  // 如果包含系列标识符，提取系列名和数字
+  for (const pattern of seriesPatterns) {
+    const match = searchTerm.match(pattern)
+    if (match) {
+      const seriesName = searchTerm.substring(0, match.index).trim()
+      const number = match[match.length - 1] // 最后一个捕获组是数字
+      if (seriesName.length >= 2) {
+        console.log(`[系列信息] 检测到系列: "${searchTerm}" -> 系列名: "${seriesName}", 数字: "${number}"`)
+        return { seriesName, numbers: [number] }
+      }
+    }
+  }
+
+  // 查找所有数字（用于复杂的情况）
+  const numberMatches = searchTerm.match(/\d+(?:\.\d+)?/g)
+  const numbers = numberMatches || []
+
+  // 如果有数字但没有明确的系列标识符，尝试提取系列名
+  if (numbers.length > 0) {
+    // 找到第一个数字的位置，取前面的部分作为系列名
+    const firstNumberMatch = searchTerm.match(/\d+(?:\.\d+)?/)
+    if (firstNumberMatch) {
+      const seriesName = searchTerm.substring(0, firstNumberMatch.index).trim()
+      if (seriesName.length >= 2) {
+        console.log(`[系列信息] 检测到数字系列: "${searchTerm}" -> 系列名: "${seriesName}", 数字: ${numbers.join(', ')}`)
+        return { seriesName, numbers }
+      }
+    }
+  }
+
+  return { seriesName: searchTerm, numbers: [] }
+}
+
 function isPrimarilyEnglish(str) {
   if (!str) return false
   
@@ -593,8 +777,35 @@ function isPrimarilyEnglish(str) {
   // If more than 70% are English letters, consider it primarily English
   return (englishChars.length / totalChars) > 0.7
 }
+
+/**
+ * Preprocess titles for better grouping and matching
+ * 对标题进行预处理，提高分组和匹配效果
+ * @param {Array} titles - Array of title strings
+ * @returns {Array} Processed titles
+ */
+function preprocessTitlesForGrouping(titles) {
+  const processed = []
+  
+  for (const title of titles) {
+    // 将特殊符号替换为空格，便于分组匹配
+    let processedTitle = title
+      .replace(/[-~～_+=:：;；,，．．*＊@＠#＃$＄%％^＾&＆!！?？<＜>＞【】《》「」『』()（）\[\]{}]/g, ' ')
+      .replace(/\s+/g, ' ') // 多个空格合并为一个
+      .trim()
+    
+    // 保留原始标题和处理后的标题
+    processed.push({
+      original: title,
+      processed: processedTitle,
+      normalized: normalizeString(processedTitle).toLowerCase()
+    })
+  }
+  
+  return processed
+}
+
 function matchByHash(book, hashIndex) {
-  if (!book.hash || !hashIndex) return []
   
   const hashMatches = hashIndex.get(book.hash)
   if (hashMatches && hashMatches.length > 0) {

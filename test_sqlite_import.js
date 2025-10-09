@@ -20,6 +20,10 @@ const mockTitles = [
   { gid: 2004, token: 'token_sao4', title: 'SAO Darkness 2.0 ~ それいけ！最前線くん～', title_jpn: 'SAO Darkness 2.0 ~ それいけ！最前線くん～' },
   { gid: 3001, token: 'token_series1', title: '本日のお宿', title_jpn: '本日のお宿' },
   { gid: 3002, token: 'token_series2', title: 'Different Title', title_jpn: 'Different Title' },
+  // Add series works for testing
+  { gid: 4001, token: 'token_series_vol1', title: '天使学園の寮姦性活 Vol.1', title_jpn: '天使学園の寮姦性活 Vol.1' },
+  { gid: 4002, token: 'token_series_vol2', title: '天使学園の寮姦性活 Vol.2', title_jpn: '天使学園の寮姦性活 Vol.2' },
+  { gid: 4003, token: 'token_series_after', title: '天使学園の寮姦性活～afterstory～', title_jpn: '天使学園の寮姦性活～afterstory～' },
 ]
 
 // Test cases - series works and long titles
@@ -33,7 +37,11 @@ const testCases = [
   'Sword Art Online: Darkness 1.0', // Test different format
   'サキちゃんのなつやすみ おじいちゃんといっしょ！', // Long Japanese title
   'エロマンガアカデミー', // Another long title
-  '世界迷作官能童話劇場 三匹の子豚' // Very long title
+  '世界迷作官能童話劇場 三匹の子豚', // Very long title
+  // Test series matching
+  '天使学園の寮姦性活 Vol.1', // Should match gid=4001
+  '天使学園の寮姦性活 Vol.2', // Should match gid=4002
+  '天使学園の寮姦性活～afterstory～', // Should match gid=4003
 ]
 
 async function runTests() {
