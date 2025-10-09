@@ -140,6 +140,20 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
     return exactMatch
   }
   
+  // 步骤1.5: 分组匹配策略 - 先整体匹配，再逐步回退到前x个词
+  const words = normalizedOriginal.split(/\s+/).filter(word => word.length > 0)
+  if (words.length > 1) {
+    // 从完整词组开始，逐步减少词数
+    for (let i = words.length; i >= 2; i--) {
+      const partialPhrase = words.slice(0, i).join(' ')
+      const groupMatch = titleMap.get(partialPhrase)
+      if (groupMatch) {
+        console.log(`[分组匹配] 匹配成功: "${partialPhrase}" (前${i}个词)`)
+        return groupMatch
+      }
+    }
+  }
+  
   // 步骤2: 尝试原标题模糊匹配（线性搜索但只用一个变体）
   if (titleArray && titleArray.length > 0) {
     const quickMatch = await quickLinearSearch(normalizedOriginal, titleMap, titleArray, originalFilename)
@@ -156,6 +170,22 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
     const exactMatch = titleMap.get(variant)
     if (exactMatch) {
       return exactMatch
+    }
+  }
+  
+  // 策略1.5: 对变体进行分组匹配
+  for (const variant of searchVariants) {
+    const variantWords = variant.split(/\s+/).filter(word => word.length > 0)
+    if (variantWords.length > 1) {
+      // 从完整词组开始，逐步减少词数
+      for (let i = variantWords.length; i >= 2; i--) {
+        const partialPhrase = variantWords.slice(0, i).join(' ')
+        const groupMatch = titleMap.get(partialPhrase)
+        if (groupMatch) {
+          console.log(`[变体分组匹配] 匹配成功: "${partialPhrase}" (变体: ${variant}, 前${i}个词)`)
+          return groupMatch
+        }
+      }
     }
   }
   
@@ -299,9 +329,105 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
           return bestMatch
         } else {
           console.log(`[关键词预筛选] ❌ 匹配失败: 所有候选项相似度均低于阈值 ${MIN_SIMILARITY_FALLBACK}`)
+          
+          // 回退策略：使用关键词的前30%重新匹配（如果大于一个字）
+          const keywordLength = keyword.length
+          const partialLength = Math.floor(keywordLength * 0.6)
+          if (partialLength > 1) { // 确保大于一个字
+            const partialKeyword = keyword.substring(0, partialLength)
+            console.log(`[关键词预筛选] 尝试前30%关键词: "${partialKeyword}" (原关键词: "${keyword}")`)
+            
+            // 用前30%关键词重新筛选
+            const partialCandidates = []
+            for (const title of titleArray) {
+              if (title.includes(partialKeyword)) {
+                partialCandidates.push(title)
+              }
+            }
+            
+            console.log(`[关键词预筛选] 前30%关键词筛选结果: ${partialCandidates.length} 个候选`)
+            
+            if (partialCandidates.length > 0) {
+              // 使用更高的阈值，因为前30%关键词匹配需要更精确
+              const MIN_SIMILARITY_PARTIAL = Math.max(0.4, MIN_SIMILARITY_FALLBACK)
+              
+              let partialBestMatch = null
+              let partialBestSimilarity = 0
+              let partialBestTitle = ''
+              
+              for (const title of partialCandidates) {
+                const similarity = calculateSimilarity(originalNormalized, title)
+                
+                if (similarity >= MIN_SIMILARITY_PARTIAL && similarity > partialBestSimilarity) {
+                  partialBestSimilarity = similarity
+                  partialBestMatch = titleMap.get(title)
+                  partialBestTitle = title
+                }
+              }
+              
+              if (partialBestMatch) {
+                console.log(`[关键词预筛选] ✅ 前30%关键词匹配成功! 相似度: ${partialBestSimilarity.toFixed(3)}`)
+                console.log(`[关键词预筛选] 匹配标题: "${partialBestTitle}"`)
+                console.log(`[关键词预筛选] 原始文件名: "${originalFilename}"`)
+                return partialBestMatch
+              } else {
+                console.log(`[关键词预筛选] ❌ 前30%关键词匹配失败: 所有候选项相似度均低于阈值 ${MIN_SIMILARITY_PARTIAL}`)
+              }
+            } else {
+              console.log(`[关键词预筛选] ❌ 前30%关键词匹配失败: 数据库中没有包含关键词 "${partialKeyword}" 的标题`)
+            }
+          }
         }
       } else {
         console.log(`[关键词预筛选] ❌ 匹配失败: 数据库中没有包含关键词 "${keyword}" 的标题`)
+        
+        // 回退策略：使用关键词的前30%重新匹配（如果大于一个字）
+        const keywordLength = keyword.length
+        const partialLength = Math.floor(keywordLength * 0.3)
+        if (partialLength > 1) { // 确保大于一个字
+          const partialKeyword = keyword.substring(0, partialLength)
+          console.log(`[关键词预筛选] 尝试前30%关键词: "${partialKeyword}" (原关键词: "${keyword}")`)
+          
+          // 用前30%关键词重新筛选
+          const partialCandidates = []
+          for (const title of titleArray) {
+            if (title.includes(partialKeyword)) {
+              partialCandidates.push(title)
+            }
+          }
+          
+          console.log(`[关键词预筛选] 前30%关键词筛选结果: ${partialCandidates.length} 个候选`)
+          
+          if (partialCandidates.length > 0) {
+            // 使用较高的阈值，因为前30%关键词匹配需要更精确
+            const MIN_SIMILARITY_PARTIAL = 0.5
+            
+            let partialBestMatch = null
+            let partialBestSimilarity = 0
+            let partialBestTitle = ''
+            
+            for (const title of partialCandidates) {
+              const similarity = calculateSimilarity(originalNormalized, title)
+              
+              if (similarity >= MIN_SIMILARITY_PARTIAL && similarity > partialBestSimilarity) {
+                partialBestSimilarity = similarity
+                partialBestMatch = titleMap.get(title)
+                partialBestTitle = title
+              }
+            }
+            
+            if (partialBestMatch) {
+              console.log(`[关键词预筛选] ✅ 前30%关键词匹配成功! 相似度: ${partialBestSimilarity.toFixed(3)}`)
+              console.log(`[关键词预筛选] 匹配标题: "${partialBestTitle}"`)
+              console.log(`[关键词预筛选] 原始文件名: "${originalFilename}"`)
+              return partialBestMatch
+            } else {
+              console.log(`[关键词预筛选] ❌ 前30%关键词匹配失败: 所有候选项相似度均低于阈值 ${MIN_SIMILARITY_PARTIAL}`)
+            }
+          } else {
+            console.log(`[关键词预筛选] ❌ 前30%关键词匹配失败: 数据库中没有包含关键词 "${partialKeyword}" 的标题`)
+          }
+        }
       }
     }
   }
