@@ -13,8 +13,27 @@ const {
 
 /**
  * Build title index for fast matching
- * 构建标题索引以加速匹配
- * @param {Array} allTitles - Array of gallery records from database
+ * 构建标题索引以加速          console.log(`[关键词预筛选] ❌ 匹配失败: 所有候选项相似度均低于阈值 ${MIN_SIM                  console.log(`[关键词预筛选] 尝试前60%关键词: "${partialKeyword}" (原关键词: "${keyword}")`)
+          
+          // 用前60%关键词重新筛选
+          const partialCandidates = []
+          for (const title of titleArray) {
+            if (title.includes(partialKeyword)) {
+              partialCandidates.push(title)
+            }
+          }
+          
+          console.log(`[关键词预筛选] 前60%关键词筛选结果: ${partialCandidates.length} 个候选`)键词的前60%重新匹配（如果大于一个字，且不是英文标题）
+        const keywordLength = keyword.length
+        const partialLength = Math.floor(keywordLength * 0.6)
+        if (partialLength > 1 && !isPrimarilyEnglish(keyword)) { // 确保大于一个字且不是英文ITY_FALLBACK}`)
+          
+          // 回退策略：使用关键词的前60%重新匹配（如果大于一个字，且不是英文标题）
+          const keywordLength = keyword.length
+          const partialLength = Math.floor(keywordLength * 0.6)
+          if (partialLength > 1 && !isPrimarilyEnglish(keyword)) { // 确保大于一个字且不是英文
+            const partialKeyword = keyword.substring(0, partialLength)
+            console.log(`[关键词预筛选] 尝试前60%关键词: "${partialKeyword}" (原关键词: "${keyword}")`)param {Array} allTitles - Array of gallery records from database
  * @param {boolean} hasHashColumn - Whether the database has a hash column
  * @returns {Object} Index object with titleMap, titleArray, and hashIndex
  */
@@ -124,7 +143,7 @@ async function quickLinearSearch(searchTerm, titleMap, titleArray, originalFilen
  * @param {Array} titleArray - Title array from buildTitleIndex
  * @returns {Array} Array of matching keys {gid, token, hash}
  */
-async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleArray) {
+async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleArray, source = 'unknown') {
   let foundKeys = []
   
   // 移除长度限制，允许短标题匹配
@@ -270,15 +289,14 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
     // 从裁剪后的标题 (searchTerm) 提取关键词，而不是原始文件名
     const searchTermNormalized = normalizeString(searchTerm).toLowerCase()
     
-    // 提取第一个空格前的关键词
-    const firstSpaceIndex = searchTermNormalized.indexOf(' ')
-    const keyword = firstSpaceIndex > 0 ? searchTermNormalized.substring(0, firstSpaceIndex) : searchTermNormalized
+    // 智能提取关键词，针对系列作品优化
+    const keyword = extractSmartKeyword(searchTermNormalized)
     
     // 如果关键词太短（少于2个字符），跳过此策略
     if (keyword.length >= 2) {
       // console.log(`\n[关键词预筛选] 原始文件: ${originalFilename}`)
       // console.log(`[关键词预筛选] 裁剪标题: "${searchTerm}"`)
-      console.log(`[关键词预筛选] 提取关键词: "${keyword}"`)
+      console.log(`[关键词预筛选][${source}] 提取关键词: "${keyword}"`)
       
       // 预筛选：只保留包含关键词的标题
       const candidates = []
@@ -292,18 +310,23 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
       
       // 对筛选后的候选标题计算相似度
       if (candidates.length > 0) {
-        // 动态相似度阈值：根据候选数量调整
+        // 动态相似度阈值：根据候选数量和关键词类型调整
         // 候选越少 = 关键词越精准 = 可以用更低的阈值
         // 候选越多 = 关键词太泛 = 需要更高的阈值避免误匹配
+        // 对于系列关键词（包含系列标识符），可以使用稍低的阈值
         let MIN_SIMILARITY_FALLBACK
+        const isSeriesKeyword = /\b(vol|volume|第|code|episode|chapter|part)\b/i.test(keyword)
+
         if (candidates.length <= 5) {
-          MIN_SIMILARITY_FALLBACK = 0.3 // 1-5个候选：很精准，用中等阈值
+          MIN_SIMILARITY_FALLBACK = isSeriesKeyword ? 0.25 : 0.3 // 系列关键词可以更宽松
         } else if (candidates.length <= 20) {
-          MIN_SIMILARITY_FALLBACK = 0.4 // 6-20个候选：较精准，用较高阈值
+          MIN_SIMILARITY_FALLBACK = isSeriesKeyword ? 0.35 : 0.4
         } else if (candidates.length <= 100) {
-          MIN_SIMILARITY_FALLBACK = 0.6 // 21-100个候选：一般精准，用高阈值
+          MIN_SIMILARITY_FALLBACK = isSeriesKeyword ? 0.45 : 0.6
+        } else if (candidates.length <= 500) {
+          MIN_SIMILARITY_FALLBACK = isSeriesKeyword ? 0.55 : 0.7
         } else {
-          MIN_SIMILARITY_FALLBACK = 0.7 // 100+个候选：不够精准，用很高阈值
+          MIN_SIMILARITY_FALLBACK = 0.7 // 候选太多时必须严格
         }
         
         console.log(`[关键词预筛选] 动态阈值: ${MIN_SIMILARITY_FALLBACK} (基于候选数: ${candidates.length})`)
@@ -330,14 +353,14 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
         } else {
           console.log(`[关键词预筛选] ❌ 匹配失败: 所有候选项相似度均低于阈值 ${MIN_SIMILARITY_FALLBACK}`)
           
-          // 回退策略：使用关键词的前30%重新匹配（如果大于一个字）
+          // 回退策略：使用关键词的前60%重新匹配（如果大于一个字，且不是英文标题）
           const keywordLength = keyword.length
           const partialLength = Math.floor(keywordLength * 0.6)
-          if (partialLength > 1) { // 确保大于一个字
+          if (partialLength > 1 && !isPrimarilyEnglish(keyword)) { // 确保大于一个字且不是英文
             const partialKeyword = keyword.substring(0, partialLength)
-            console.log(`[关键词预筛选] 尝试前30%关键词: "${partialKeyword}" (原关键词: "${keyword}")`)
+            console.log(`[关键词预筛选] 尝试前60%关键词: "${partialKeyword}" (原关键词: "${keyword}")`)
             
-            // 用前30%关键词重新筛选
+            // 用前60%关键词重新筛选
             const partialCandidates = []
             for (const title of titleArray) {
               if (title.includes(partialKeyword)) {
@@ -345,10 +368,10 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
               }
             }
             
-            console.log(`[关键词预筛选] 前30%关键词筛选结果: ${partialCandidates.length} 个候选`)
+            console.log(`[关键词预筛选] 前60%关键词筛选结果: ${partialCandidates.length} 个候选`)
             
             if (partialCandidates.length > 0) {
-              // 使用更高的阈值，因为前30%关键词匹配需要更精确
+              // 使用更高的阈值，因为前60%关键词匹配需要更精确
               const MIN_SIMILARITY_PARTIAL = Math.max(0.4, MIN_SIMILARITY_FALLBACK)
               
               let partialBestMatch = null
@@ -366,29 +389,29 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
               }
               
               if (partialBestMatch) {
-                console.log(`[关键词预筛选] ✅ 前30%关键词匹配成功! 相似度: ${partialBestSimilarity.toFixed(3)}`)
+                console.log(`[关键词预筛选] ✅ 前60%关键词匹配成功! 相似度: ${partialBestSimilarity.toFixed(3)}`)
                 console.log(`[关键词预筛选] 匹配标题: "${partialBestTitle}"`)
                 console.log(`[关键词预筛选] 原始文件名: "${originalFilename}"`)
                 return partialBestMatch
               } else {
-                console.log(`[关键词预筛选] ❌ 前30%关键词匹配失败: 所有候选项相似度均低于阈值 ${MIN_SIMILARITY_PARTIAL}`)
+                console.log(`[关键词预筛选] ❌ 前60%关键词匹配失败: 所有候选项相似度均低于阈值 ${MIN_SIMILARITY_PARTIAL}`)
               }
             } else {
-              console.log(`[关键词预筛选] ❌ 前30%关键词匹配失败: 数据库中没有包含关键词 "${partialKeyword}" 的标题`)
+              console.log(`[关键词预筛选] ❌ 前60%关键词匹配失败: 数据库中没有包含关键词 "${partialKeyword}" 的标题`)
             }
           }
         }
       } else {
         console.log(`[关键词预筛选] ❌ 匹配失败: 数据库中没有包含关键词 "${keyword}" 的标题`)
         
-        // 回退策略：使用关键词的前30%重新匹配（如果大于一个字）
+        // 回退策略：使用关键词的前60%重新匹配（如果大于一个字，且不是英文标题）
         const keywordLength = keyword.length
-        const partialLength = Math.floor(keywordLength * 0.3)
-        if (partialLength > 1) { // 确保大于一个字
+        const partialLength = Math.floor(keywordLength * 0.6)
+        if (partialLength > 1 && !isPrimarilyEnglish(keyword)) { // 确保大于一个字且不是英文
           const partialKeyword = keyword.substring(0, partialLength)
-          console.log(`[关键词预筛选] 尝试前30%关键词: "${partialKeyword}" (原关键词: "${keyword}")`)
+          console.log(`[关键词预筛选] 尝试前60%关键词: "${partialKeyword}" (原关键词: "${keyword}")`)
           
-          // 用前30%关键词重新筛选
+          // 用前60%关键词重新筛选
           const partialCandidates = []
           for (const title of titleArray) {
             if (title.includes(partialKeyword)) {
@@ -396,10 +419,10 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
             }
           }
           
-          console.log(`[关键词预筛选] 前30%关键词筛选结果: ${partialCandidates.length} 个候选`)
+          console.log(`[关键词预筛选] 前60%关键词筛选结果: ${partialCandidates.length} 个候选`)
           
           if (partialCandidates.length > 0) {
-            // 使用较高的阈值，因为前30%关键词匹配需要更精确
+            // 使用较高的阈值，因为前60%关键词匹配需要更精确
             const MIN_SIMILARITY_PARTIAL = 0.5
             
             let partialBestMatch = null
@@ -417,15 +440,15 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
             }
             
             if (partialBestMatch) {
-              console.log(`[关键词预筛选] ✅ 前30%关键词匹配成功! 相似度: ${partialBestSimilarity.toFixed(3)}`)
+              console.log(`[关键词预筛选] ✅ 前60%关键词匹配成功! 相似度: ${partialBestSimilarity.toFixed(3)}`)
               console.log(`[关键词预筛选] 匹配标题: "${partialBestTitle}"`)
               console.log(`[关键词预筛选] 原始文件名: "${originalFilename}"`)
               return partialBestMatch
             } else {
-              console.log(`[关键词预筛选] ❌ 前30%关键词匹配失败: 所有候选项相似度均低于阈值 ${MIN_SIMILARITY_PARTIAL}`)
+              console.log(`[关键词预筛选] ❌ 前60%关键词匹配失败: 所有候选项相似度均低于阈值 ${MIN_SIMILARITY_PARTIAL}`)
             }
           } else {
-            console.log(`[关键词预筛选] ❌ 前30%关键词匹配失败: 数据库中没有包含关键词 "${partialKeyword}" 的标题`)
+            console.log(`[关键词预筛选] ❌ 前60%关键词匹配失败: 数据库中没有包含关键词 "${partialKeyword}" 的标题`)
           }
         }
       }
@@ -521,12 +544,55 @@ function parseMetadataTags(metadata) {
 }
 
 /**
- * Match book against database using hash (highest priority)
- * 使用 hash 匹配书籍（最高优先级）
- * @param {Object} book - Book object
- * @param {Map} hashIndex - Hash index from buildTitleIndex
- * @returns {Array} Array of matching keys or empty array
+ * Extract smart keyword from search term, optimized for series
+ * 智能提取关键词，针对系列作品优化
+ * @param {string} searchTerm - Normalized search term
+ * @returns {string} Extracted keyword
  */
+function extractSmartKeyword(searchTerm) {
+  if (!searchTerm) return searchTerm
+
+  // 检测系列标识符的正则表达式
+  const seriesPatterns = [
+    /\s+(vol\.?|volume)\s*\d+/i,  // Vol.1, Volume 2
+    /\s+第\s*\d+/i,              // 第1话, 第2集
+    /\s+code:?\s*\d+/i,          // code:1, code 2
+    /\s+episode\s*\d+/i,         // episode 1
+    /\s+chapter\s*\d+/i,         // chapter 1
+    /\s+part\s*\d+/i,            // part 1
+    /\s+\d+(\.\d+)?$/,           // 末尾的数字，如 1.0, 2
+  ]
+
+  // 如果包含系列标识符，提取系列名
+  for (const pattern of seriesPatterns) {
+    const match = searchTerm.match(pattern)
+    if (match) {
+      const seriesName = searchTerm.substring(0, match.index).trim()
+      if (seriesName.length >= 2) {
+        console.log(`[智能关键词] 检测到系列作品: "${searchTerm}" -> 系列名: "${seriesName}"`)
+        return seriesName
+      }
+    }
+  }
+
+  // 默认策略：提取第一个空格前的关键词
+  const firstSpaceIndex = searchTerm.indexOf(' ')
+  const keyword = firstSpaceIndex > 0 ? searchTerm.substring(0, firstSpaceIndex) : searchTerm
+
+  return keyword
+}
+function isPrimarilyEnglish(str) {
+  if (!str) return false
+  
+  // Count English letters and total characters
+  const englishChars = str.match(/[A-Za-z]/g) || []
+  const totalChars = str.replace(/\s/g, '').length
+  
+  if (totalChars === 0) return false
+  
+  // If more than 70% are English letters, consider it primarily English
+  return (englishChars.length / totalChars) > 0.7
+}
 function matchByHash(book, hashIndex) {
   if (!book.hash || !hashIndex) return []
   

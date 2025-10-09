@@ -1545,7 +1545,7 @@ ipcMain.handle('fill-no-category-metadata', async (event, bookList) => {
         if (!metadata) {
           const filename = book.title || path.parse(book.filepath).name
           sendMessageToWebContents(`   🔍 Trying title match: "${filename}"`)
-          const foundKeys = await findMatchesByTitle(filename, filename, titleMap, titleArray)
+          const foundKeys = await findMatchesByTitle(filename, filename, titleMap, titleArray, 'main-import')
           
           if (foundKeys && foundKeys.length > 0) {
             sendMessageToWebContents(`   🔍 Found ${foundKeys.length} potential matches, refining...`)
@@ -2479,7 +2479,7 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                   
                   // 如果 hash 没匹配到，使用标题匹配（使用独立模块）
                   if (foundKeys.length === 0) {
-                    foundKeys = await findMatchesByTitle(searchTerm, originalFilename, titleMap, global.titleArray)
+                    foundKeys = await findMatchesByTitle(searchTerm, originalFilename, titleMap, global.titleArray, 'fast-match')
                     // 输出调试信息
                     if (foundKeys.length > 1) {
                       sendMessageToWebContents(`🔍 [多匹配] "${originalFilename}" 找到 ${foundKeys.length} 个候选`)
