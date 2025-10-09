@@ -71,6 +71,8 @@
             <el-option :label="$t('m.urlGroupDescend')" value="urlGroupDescend"></el-option>
             <el-option :label="$t('m.collectTagCountAscend')" value="collectTagCountAscend"></el-option>
             <el-option :label="$t('m.collectTagCountDescend')" value="collectTagCountDescend"></el-option>
+            <el-option :label="$t('m.duplicateCountAscend')" value="duplicateCountAscend"></el-option>
+            <el-option :label="$t('m.duplicateCountDescend')" value="duplicateCountDescend"></el-option>
             <el-option :label="$t('m.addTimeAscend')" value="addAscend"></el-option>
             <el-option :label="$t('m.addTimeDescend')" value="addDescend"></el-option>
             <el-option :label="$t('m.mtimeAscend')" value="mtimeAscend"></el-option>
@@ -320,6 +322,8 @@ export default defineComponent({
       openCollectionTitle: undefined,
       // 收藏标签匹配数量缓存
       collectTagMatchCache: new Map(),
+      // 重复画廊数量缓存
+      duplicateCountCache: new Map(),
     }
   },
   computed: {
@@ -481,6 +485,8 @@ export default defineComponent({
       this.handleSortChange(this.sortValue, this.bookList)
       // 书籍列表改变时重新计算收藏标签匹配缓存
       this.recalculateCollectTagMatchCache()
+      // 重新构建重复画廊数量缓存
+      this.buildDuplicateCountCache()
     },
     'setting.collectTag': {
       handler() {
@@ -650,6 +656,89 @@ export default defineComponent({
       
       // 如果有多个书籍有相同的url，则认为是重复的
       return duplicateCount > 1
+    },
+
+    // 获取书籍的重复画廊数量（相同URL的书籍数量）
+    getDuplicateGalleryCount(book) {
+      if (!book || !book.url || book.isCollection) {
+        return 0
+      }
+      
+      // 只统计exhentai和e-hentai的URL
+      if (!book.url.includes('exhentai.org') && !book.url.includes('e-hentai.org')) {
+        return 0
+      }
+      
+      // 从缓存中获取重复数量
+      return this.duplicateCountCache.get(book.url) || 0
+    },
+
+    // 构建重复画廊数量缓存
+    async buildDuplicateCountCache() {
+      try {
+        console.log('🔍 开始构建重复画廊数量缓存...')
+        const startTime = performance.now()
+        
+        // 使用SQL查询获取所有URL的重复统计
+        const sqlQuery = `
+          SELECT url, COUNT(*) as count
+          FROM Metadata
+          WHERE url IS NOT NULL AND url != "" 
+          AND (url LIKE '%exhentai.org%' OR url LIKE '%e-hentai.org%')
+          GROUP BY url
+          HAVING COUNT(*) > 1
+        `
+        
+        const sqlResult = await window.ipcRenderer.invoke('execute-sql-query', {
+          query: sqlQuery,
+          replacements: {}
+        })
+        
+        // 清空缓存
+        this.duplicateCountCache.clear()
+        
+        // 填充缓存
+        if (sqlResult && Array.isArray(sqlResult)) {
+          sqlResult.forEach(row => {
+            this.duplicateCountCache.set(row.url, row.count)
+          })
+        }
+        
+        console.log(`📊 重复画廊数量缓存构建完成: ${this.duplicateCountCache.size} 个重复URL, 耗时: ${(performance.now() - startTime).toFixed(2)}ms`)
+        
+      } catch (error) {
+        console.error('❌ 构建重复画廊数量缓存失败:', error)
+        // 回退到内存统计
+        this.buildDuplicateCountCacheFallback()
+      }
+    },
+
+    // 回退方案：内存中构建重复画廊数量缓存
+    buildDuplicateCountCacheFallback() {
+      console.log('🔄 使用内存回退方案构建重复画廊数量缓存...')
+      const startTime = performance.now()
+      
+      // 清空缓存
+      this.duplicateCountCache.clear()
+      
+      // 统计URL出现次数
+      const urlCount = new Map()
+      
+      this.bookList.forEach(book => {
+        if (book && book.url && !book.isCollection && 
+            (book.url.includes('exhentai.org') || book.url.includes('e-hentai.org'))) {
+          urlCount.set(book.url, (urlCount.get(book.url) || 0) + 1)
+        }
+      })
+      
+      // 只保留重复的URL
+      urlCount.forEach((count, url) => {
+        if (count > 1) {
+          this.duplicateCountCache.set(url, count)
+        }
+      })
+      
+      console.log(`📊 内存重复画廊数量缓存构建完成: ${this.duplicateCountCache.size} 个重复URL, 耗时: ${(performance.now() - startTime).toFixed(2)}ms`)
     },
 
     // base function
@@ -945,6 +1034,8 @@ export default defineComponent({
         this.handleSortChange(this.sortValue, this.bookList)
         // 预计算收藏标签匹配缓存
         this.recalculateCollectTagMatchCache()
+        // 预计算重复画廊数量缓存
+        this.buildDuplicateCountCache()
         console.log('cached loaded')
       } else {
         throw new Error('Database changed, skip cache')
@@ -963,6 +1054,8 @@ export default defineComponent({
         this.$refs.EditViewRef.selectBookList = []
         // 预计算收藏标签匹配缓存
         this.recalculateCollectTagMatchCache()
+        // 预计算重复画廊数量缓存
+        this.buildDuplicateCountCache()
         this.buttonLoadBookListLoading = false
       } catch (error) {
         this.buttonLoadBookListLoading = false
@@ -1155,6 +1248,14 @@ export default defineComponent({
           break
         case 'collectTagCountDescend':
           this.displayBookList = bookList.toSorted((a, b) => this.getCollectTagMatchCount(b) - this.getCollectTagMatchCount(a))
+          this.chunkList()
+          break
+        case 'duplicateCountAscend':
+          this.displayBookList = bookList.toSorted((a, b) => this.getDuplicateGalleryCount(a) - this.getDuplicateGalleryCount(b))
+          this.chunkList()
+          break
+        case 'duplicateCountDescend':
+          this.displayBookList = bookList.toSorted((a, b) => this.getDuplicateGalleryCount(b) - this.getDuplicateGalleryCount(a))
           this.chunkList()
           break
         default:

@@ -33,6 +33,8 @@
     "pageDescend": "页数倒序",
     "collectTagCountAscend": "收藏标签数正序",
     "collectTagCountDescend": "收藏标签数倒序",
+    "duplicateCountAscend": "重复画廊数正序",
+    "duplicateCountDescend": "重复画廊数倒序",
     "manageCollection": "管理合集",
     "addCollection": "新增合集",
     "editCollection": "编辑合集",

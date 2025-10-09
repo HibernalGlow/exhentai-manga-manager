@@ -292,8 +292,8 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
     // 智能提取关键词，针对系列作品优化
     const keyword = extractSmartKeyword(searchTermNormalized)
     
-    // 如果关键词太短（少于2个字符），跳过此策略
-    if (keyword.length >= 2) {
+    // 如果关键词太短（少于2个字符）或无效（纯数字），跳过此策略
+    if (keyword.length >= 2 && !/^\d+(\.\d+)?$/.test(keyword.trim())) {
       // console.log(`\n[关键词预筛选] 原始文件: ${originalFilename}`)
       // console.log(`[关键词预筛选] 裁剪标题: "${searchTerm}"`)
       console.log(`[关键词预筛选][${source}] 提取关键词: "${keyword}"`)
@@ -570,6 +570,14 @@ function parseMetadataTags(metadata) {
 function extractSmartKeyword(searchTerm) {
   if (!searchTerm) return searchTerm
 
+  // 验证关键词是否有效（不是纯数字）
+  function isValidKeyword(keyword) {
+    if (!keyword || keyword.length < 2) return false
+    // 不允许纯数字关键词
+    if (/^\d+(\.\d+)?$/.test(keyword.trim())) return false
+    return true
+  }
+
   // 检测系列标识符的正则表达式
   const seriesPatterns = [
     /\s+(vol\.?|volume)\s*\d+/i,  // Vol.1, Volume 2
@@ -586,7 +594,7 @@ function extractSmartKeyword(searchTerm) {
     const match = searchTerm.match(pattern)
     if (match) {
       const seriesName = searchTerm.substring(0, match.index).trim()
-      if (seriesName.length >= 2) {
+      if (isValidKeyword(seriesName)) {
         console.log(`[智能关键词] 检测到系列作品: "${searchTerm}" -> 系列名: "${seriesName}"`)
         return seriesName
       }
@@ -601,7 +609,7 @@ function extractSmartKeyword(searchTerm) {
       const sepIndex = searchTerm.indexOf(sep)
       if (sepIndex > 2) { // 确保提取的关键词有意义
         const shortKeyword = searchTerm.substring(0, sepIndex).trim()
-        if (shortKeyword.length >= 3 && shortKeyword.length <= 10) {
+        if (shortKeyword.length >= 3 && shortKeyword.length <= 10 && isValidKeyword(shortKeyword)) {
           console.log(`[智能关键词] 长标题优化: "${searchTerm}" -> 短关键词: "${shortKeyword}"`)
           return shortKeyword
         }
@@ -610,13 +618,18 @@ function extractSmartKeyword(searchTerm) {
 
     // 如果没有找到合适的分隔符，提取前8个字符
     const shortKeyword = searchTerm.substring(0, 8)
-    console.log(`[智能关键词] 长标题截取: "${searchTerm}" -> 前8字符: "${shortKeyword}"`)
-    return shortKeyword
+    if (isValidKeyword(shortKeyword)) {
+      console.log(`[智能关键词] 长标题截取: "${searchTerm}" -> 前8字符: "${shortKeyword}"`)
+      return shortKeyword
+    }
   }
 
   // 默认策略：提取第一个空格前的关键词
   const firstSpaceIndex = searchTerm.indexOf(' ')
   const keyword = firstSpaceIndex > 0 ? searchTerm.substring(0, firstSpaceIndex) : searchTerm
+
+  // 如果默认关键词无效，返回整个搜索词
+  return isValidKeyword(keyword) ? keyword : searchTerm
 
   return keyword
 }

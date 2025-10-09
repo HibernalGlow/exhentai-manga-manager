@@ -33,6 +33,8 @@
     "pageDescend": "Page Descend",
     "collectTagCountAscend": "Collect Tag Count Ascend",
     "collectTagCountDescend": "Collect Tag Count Descend",
+    "duplicateCountAscend": "Duplicate Gallery Count Ascend",
+    "duplicateCountDescend": "Duplicate Gallery Count Descend",
     "manageCollection": "Manage Collection",
     "addCollection": "Add Collection",
     "editCollection": "Edit Collection",
