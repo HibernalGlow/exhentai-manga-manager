@@ -1909,6 +1909,39 @@ ipcMain.handle('save-book', async (event, book) => {
   return await saveBookToDatabase(book)
 })
 
+ipcMain.handle('reset-metadata-batch', async (event, booksToReset) => {
+    try {
+        const mangaUpdatePromises = [];
+        const hashes = booksToReset.map(b => b.hash).filter(Boolean);
+
+        for (const bookData of booksToReset) {
+            const resetValues = {
+                title: bookData.title,
+                title_jpn: null,
+                posted: null,
+                filecount: null,
+                rating: null,
+                filesize: null,
+                category: null,
+                tags: '{}',
+                status: 'non-tag',
+                url: null
+            };
+            mangaUpdatePromises.push(Manga.update(resetValues, { where: { id: bookData.id } }));
+        }
+
+        await Promise.all(mangaUpdatePromises);
+
+        if (hashes.length > 0) {
+            await Metadata.destroy({ where: { hash: hashes } });
+        }
+
+        return { success: true, count: booksToReset.length };
+    } catch (error) {
+        console.error('Batch reset metadata failed:', error);
+        throw error;
+    }
+});
 // detail
 ipcMain.handle('open-url', async (event, url) => {
   shell.openExternal(url)

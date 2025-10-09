@@ -247,6 +247,31 @@ export const useAppStore = defineStore('appStore', {
       book.url = null
       await this.saveBook(book)
     },
+    async resetMetadataBatch (books) {
+        const booksToReset = books.map(book => {
+            return {
+                id: book.id,
+                hash: book.hash,
+                title: this.returnFileName(book)
+            }
+        })
+
+        await ipcRenderer.invoke('reset-metadata-batch', booksToReset)
+
+        // Update local store
+        for (const book of books) {
+            book.title = this.returnFileName(book)
+            book.title_jpn = null
+            book.posted = null
+            book.filecount = null
+            book.rating = null
+            book.filesize = null
+            book.category = null
+            book.tags = {}
+            book.status = 'non-tag'
+            book.url = null
+        }
+    },
     saveBook (book) {
       return ipcRenderer.invoke('save-book', _.cloneDeep(book))
     },

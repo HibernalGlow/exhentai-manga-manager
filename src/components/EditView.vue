@@ -192,7 +192,7 @@ const {
   visibleChunkDisplayBookListForCollectView,
   visibleChunkDisplayBookListForEditTagView,
 } = storeToRefs(appStore)
-const { getDisplayTitle, saveBook, printMessage, filterFolderMethod, resetMetadata } = appStore
+const { getDisplayTitle, saveBook, printMessage, filterFolderMethod, resetMetadataBatch } = appStore
 
 const { t } = useI18n()
 
@@ -630,11 +630,9 @@ const groupTriggerHiddenBook = async (val) => {
 const groupResetMetadata = async () => {
   try {
     updateTagsLoading.value = true
-    for (const id of selectBookList.value) {
-      const book = _.find(displayBookList.value, { id })
-      if (book) {
-        await resetMetadata(book)
-      }
+    const books = _.compact(selectBookList.value.map(id => _.find(displayBookList.value, { id })))
+    if (books.length > 0) {
+        await resetMetadataBatch(books)
     }
     printMessage('success', t('c.resetMetadataSuccess'))
     updateTagsLoading.value = false
@@ -644,7 +642,6 @@ const groupResetMetadata = async () => {
     updateTagsLoading.value = false
   }
 }
-
 const selectFolderToMove = ref(null)
 
 const applyMoveFile = async () => {
