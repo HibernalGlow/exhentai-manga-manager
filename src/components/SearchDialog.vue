@@ -64,6 +64,31 @@ const resolveSearchResult = (bookId, url, type) => {
   }
   dialogVisibleEhSearch.value = false
 }
+
+const getBookInfo = (book) => {
+  console.log('[Batch Metadata] 🔄 开始获取书籍元数据')
+  console.log('[Batch Metadata] 📖 书籍ID:', book.id)
+  console.log('[Batch Metadata] 🔗 URL:', book.url)
+
+  if (!book.url) {
+    console.warn('[Batch Metadata] ⚠️ 书籍没有URL，跳过元数据获取')
+    return
+  }
+
+  // 根据URL类型调用相应的获取方法
+  if (book.url.includes('hentag.com')) {
+    console.log('[Batch Metadata] 🎯 检测到Hentag URL')
+    getBookInfoFromHentag(book)
+  } else if (book.url.includes('exhentai.org') || book.url.includes('e-hentai.org')) {
+    console.log('[Batch Metadata] 🎯 检测到E-Hentai/ExHentai URL')
+    getBookInfoFromEh(book)
+  } else if (book.url.includes('nhentai.net')) {
+    console.log('[Batch Metadata] 🎯 检测到Nhentai URL')
+    getBookInfoFromNH(book)
+  } else {
+    console.warn('[Batch Metadata] ⚠️ 未知的URL类型:', book.url)
+  }
+}
 const getBookInfoFromHentag = async (book) => {
   const data = await fetch(`https://hentag.com/public/api/vault/${book.url.slice(25)}`).then(res => res.json())
   const tags = {}
@@ -198,22 +223,15 @@ const getBookInfoFromNH = async (book) => {
     await saveBook(book)
   }
 }
-const getBookInfo = (book) => {
-  if (book.url.startsWith('https://hentag.com')) {
-    getBookInfoFromHentag(book)
-  } else if (book.url.includes('exhentai') || book.url.includes('e-hentai')) {
-    getBookInfoFromEh(book)
-  } else if (book.url.includes('nhentai')) {
-    getBookInfoFromNH(book)
-  }
-}
 
 // use in the main window to batch get metadata
 const getBooksMetadata = async (bookList, gap, callback) => {
   const server = setting.value.defaultScraper || 'exhentai'
-  console.log('[Batch Metadata] Starting batch operation for', bookList.length, 'books')
-  console.log('[Batch Metadata] Using server:', server)
-  
+  console.log('[Batch Metadata] ===== 开始批量获取元数据 =====')
+  console.log('[Batch Metadata] 总书籍数量:', bookList.length)
+  console.log('[Batch Metadata] 使用服务器:', server)
+  console.log('[Batch Metadata] 请求间隔:', gap, 'ms')
+
   serviceAvailable.value = true
   const timer = ms => new Promise(res => setTimeout(res, ms))
   const messageInstance = ElMessage({
@@ -225,45 +243,94 @@ const getBooksMetadata = async (bookList, gap, callback) => {
       serviceAvailable.value = false
     }
   })
-  
+
+  let successCount = 0
+  let failedCount = 0
+  let skippedCount = 0
+  let startTime = Date.now()
+
   for (let i = 0; i < bookList.length; i++) {
     ipcRenderer.invoke('set-progress-bar', (i + 1) / bookList.length)
     const book = bookList[i]
-    console.log(`[Batch Metadata] Processing book ${i + 1}/${bookList.length}:`, book.filepath)
-    console.log('[Batch Metadata] Book has URL:', book.url)
-    
+
+    console.log(`[Batch Metadata] --- 处理书籍 ${i + 1}/${bookList.length} ---`)
+    console.log(`[Batch Metadata] 书籍ID: ${book.id}`)
+    console.log(`[Batch Metadata] 文件路径: ${book.filepath}`)
+    console.log(`[Batch Metadata] 当前状态: ${book.status}`)
+    console.log(`[Batch Metadata] 是否有URL: ${!!book.url}`)
+    console.log(`[Batch Metadata] 是否有Hash: ${!!book.hash}`)
+
     try {
       if (serviceAvailable.value) {
         if (!book.url) {
-          console.log('[Batch Metadata] No URL, searching with title:', returnTrimFileName(book))
+          console.log('[Batch Metadata] 📋 无URL，开始搜索标题')
+          const searchTitle = returnTrimFileName(book)
+          console.log('[Batch Metadata] 🔍 搜索标题:', searchTitle)
+
           const resultList = await getBookListFromWeb(
-              book.hash.toUpperCase(),
-              returnTrimFileName(book),
+              book.hash?.toUpperCase(),
+              searchTitle,
               server,
               book.filepath
           )
-          console.log('[Batch Metadata] Search results:', resultList.length, 'items')
-          
-          if (!resultList[0]) {
-            console.warn('[Batch Metadata] No results found')
+          console.log('[Batch Metadata] 📊 搜索结果数量:', resultList.length)
+
+          if (resultList.length > 0) {
+            console.log('[Batch Metadata] ✅ 找到匹配结果')
+            console.log('[Batch Metadata] 🎯 使用第一个结果:')
+            console.log(`  - URL: ${resultList[0].url}`)
+            console.log(`  - 类型: ${resultList[0].type}`)
+            console.log(`  - 标题: ${resultList[0].title || 'N/A'}`)
+
+            resolveSearchResult(book.id, resultList[0].url, resultList[0].type)
+            successCount++
+            console.log('[Batch Metadata] ✅ 解析搜索结果成功')
+          } else {
+            console.warn('[Batch Metadata] ❌ 未找到搜索结果')
             book.status = 'tag-failed'
             await saveBook(book)
-          } else {
-            console.log('[Batch Metadata] Using first result:', resultList[0].url, resultList[0].type)
-            resolveSearchResult(book.id, resultList[0].url, resultList[0].type)
+            failedCount++
+            console.log('[Batch Metadata] 💾 已保存为失败状态')
           }
         } else {
-          console.log('[Batch Metadata] Book already has URL, fetching metadata directly')
+          console.log('[Batch Metadata] 📋 已有URL，直接获取元数据')
+          console.log('[Batch Metadata] 🔗 URL:', book.url)
           getBookInfo(book)
+          successCount++
+          console.log('[Batch Metadata] ✅ 直接获取元数据完成')
         }
+
+        console.log(`[Batch Metadata] ⏱️ 等待 ${gap}ms 后继续...`)
         await timer(gap)
+      } else {
+        console.log('[Batch Metadata] ⏸️ 服务不可用，跳过处理')
+        skippedCount++
       }
     } catch (error) {
-      console.error('[Batch Metadata] Error processing book:', error)
+      console.error('[Batch Metadata] ❌ 处理书籍时出错:', error)
+      console.error('[Batch Metadata] 错误详情:', error.message)
+      console.error('[Batch Metadata] 错误堆栈:', error.stack)
       book.status = 'tag-failed'
       await saveBook(book)
+      failedCount++
+      console.log('[Batch Metadata] 💾 已保存为失败状态')
     }
+
+    console.log(`[Batch Metadata] --- 书籍 ${i + 1} 处理完成 ---\n`)
   }
+
+  const endTime = Date.now()
+  const duration = endTime - startTime
+
+  console.log('[Batch Metadata] ===== 批量获取元数据完成 =====')
+  console.log('[Batch Metadata] 📈 处理统计:')
+  console.log(`  - 总数量: ${bookList.length}`)
+  console.log(`  - 成功: ${successCount}`)
+  console.log(`  - 失败: ${failedCount}`)
+  console.log(`  - 跳过: ${skippedCount}`)
+  console.log(`  - 总耗时: ${duration}ms`)
+  console.log(`  - 平均耗时: ${bookList.length > 0 ? Math.round(duration / bookList.length) : 0}ms/本`)
+
   messageInstance.close()
   ipcRenderer.invoke('set-progress-bar', -1)
   printMessage('success', t('c.getMetadataComplete'))
