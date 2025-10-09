@@ -122,6 +122,17 @@ async function quickLinearSearch(searchTerm, titleMap, titleArray, originalFilen
 }
 
 async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleArray, source = 'unknown') {
+  const cleanedSearchTerm = searchTerm.trim().toLowerCase()
+  const hasCJK = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]/.test(cleanedSearchTerm)
+  const hasNumbers = /\d/.test(cleanedSearchTerm)
+
+  if (!hasCJK && !hasNumbers) {
+      if (cleanedSearchTerm.length < 5) {
+        console.log(`[${source}] "${originalFilename}" -> ❌ Stage: Reject, Reason: Short, non-CJK, numberless search term "${searchTerm}"`)
+        return []
+      }
+  }
+
   const originalNormalized = normalizeString(originalFilename).toLowerCase()
   let foundKeys = []
   
