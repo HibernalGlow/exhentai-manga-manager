@@ -1052,10 +1052,6 @@ export default defineComponent({
         // this function is called after scan, force-gene-book-list, patch-local-metadata
         this.loadCollectionList()
         this.$refs.EditViewRef.selectBookList = []
-        // 预计算收藏标签匹配缓存
-        this.recalculateCollectTagMatchCache()
-        // 预计算重复画廊数量缓存
-        this.buildDuplicateCountCache()
         this.buttonLoadBookListLoading = false
       } catch (error) {
         this.buttonLoadBookListLoading = false

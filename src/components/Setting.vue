@@ -1735,10 +1735,6 @@ const importMetadataFromSqlite = async () => {
     matchOptions
   })
   if (success) {
-    // 重新加载书籍列表，避免传输大量数据
-    await ipcRenderer.invoke('load-book-list').then(res => {
-      bookList.value = res
-    })
     const skipMsg = skipped > 0 ? `, 跳过已标记:${skipped}` : ''
     printMessage('success', t('c.importMessage') + ` (匹配:${matched}, 新增黑名单:${blacklisted}, 处理:${processed}${skipMsg})`)
     emit('loadBookList')
