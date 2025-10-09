@@ -133,8 +133,8 @@ const loadBlacklist = () => {
       if (data.version === '2.0' && data.blacklist && typeof data.blacklist === 'object') {
         // 新格式：对象格式
         const blacklistMap = new Map()
-        for (const [hash, info] of Object.entries(data.blacklist)) {
-          blacklistMap.set(hash, {
+        for (const [id, info] of Object.entries(data.blacklist)) {
+          blacklistMap.set(id, {
             filename: info.filename || '',
             fullPath: info.fullPath || ''
           })
@@ -174,10 +174,18 @@ const saveBlacklist = (blacklistMap) => {
     console.log(`[黑名单保存] 保存路径: ${blacklistPath}`)
     console.log(`[黑名单保存] 黑名单数量: ${blacklistMap.size}`)
     
-    // 转换为对象格式
+    // 转换为对象格式，按fullPath升序排序
+    const blacklistArray = Array.from(blacklistMap.entries())
+      .filter(([id, info]) => info.fullPath) // 只包含有路径的条目
+      .sort((a, b) => {
+        const pathA = a[1].fullPath.toLowerCase()
+        const pathB = b[1].fullPath.toLowerCase()
+        return pathA.localeCompare(pathB)
+      })
+    
     const blacklistObj = {}
-    for (const [hash, info] of blacklistMap) {
-      blacklistObj[hash] = {
+    for (const [id, info] of blacklistArray) {
+      blacklistObj[id] = {
         filename: info.filename || '',
         fullPath: info.fullPath || ''
       }

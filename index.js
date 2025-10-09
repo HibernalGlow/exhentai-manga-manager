@@ -1507,8 +1507,7 @@ ipcMain.handle('fill-no-category-metadata', async (event, bookList) => {
 
       // 检查是否在黑名单中
       if (skipBlacklistEnabled) {
-        const bookKey = `${book.id}|${book.title}`
-        const isBlacklisted = (book.hash && blacklist.has(book.hash)) || blacklist.has(bookKey)
+        const isBlacklisted = blacklist.has(book.id)
         if (isBlacklisted) {
           sendMessageToWebContents(`   ⏭️ 跳过: 文件在黑名单中`)
           failedCount++
@@ -2466,13 +2465,12 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
           const book = bookList[i];
           
           // 跳过已标记和黑名单中的项目
-          const bookKey = `${book.id}|${book.title}`
           if (book.status === 'tagged') {
             skippedTagged++
             continue
           }
-          // 检查黑名单：优先使用hash，其次使用旧的bookKey格式
-          const isBlacklisted = (book.hash && blacklist.has(book.hash)) || blacklist.has(bookKey)
+          // 检查黑名单：使用book.id作为键
+          const isBlacklisted = blacklist.has(book.id)
           if (isBlacklisted) {
             skippedBlacklist++
             processed++
@@ -2581,19 +2579,10 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                   
                   if (!metadata) {
                     // 匹配失败，加入黑名单
-                    if (book.hash) {
-                      blacklist.set(book.hash, {
-                        filename: path.basename(book.filepath),
-                        fullPath: book.filepath
-                      })
-                    } else {
-                      // 如果没有hash，使用旧格式作为fallback
-                      const bookKey = `${book.id}|${book.title}`
-                      blacklist.set(bookKey, {
-                        filename: path.basename(book.filepath),
-                        fullPath: book.filepath
-                      })
-                    }
+                    blacklist.set(book.id, {
+                      filename: path.basename(book.filepath),
+                      fullPath: book.filepath
+                    })
                     blacklisted++
                     sendMessageToWebContents(`❌ [SQL] 未匹配: "${filename}" (已加入黑名单)`);
                   } else {
