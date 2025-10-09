@@ -12,6 +12,55 @@ const {
 } = require('./string_utils')
 
 /**
+ * 验证关键词是否有效（只允许中文和日文字符，且不是通用名称）
+ * @param {string} keyword - 关键词
+ * @returns {boolean} 是否有效
+ */
+function isValidKeyword(keyword) {
+  if (!keyword || keyword.length < 2) return false
+  // 不允许纯数字关键词
+  if (/^\d+(\.\d+)?$/.test(keyword.trim())) return false
+  // 只允许包含中文或日文字符的关键词
+  // 中文: \u4e00-\u9fff (CJK统一表意文字)
+  // 日文平假名: \u3040-\u309f
+  // 日文片假名: \u30a0-\u30ff
+  // 日文汉字: \u4e00-\u9fff (与中文重叠)
+  const chineseJapaneseRegex = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]/
+  if (!chineseJapaneseRegex.test(keyword)) return false
+
+  // 过滤掉常见的通用名称和太短的关键词
+  // 这些关键词太通用，会匹配到大量不相关的标题
+  const commonNames = ['酱', '妹', '姐', '妹子', '姐姐', '妹妹', '老婆', '媳妇', '老婆子', '小妹', '小姐姐', '大姐姐', '小妹妹']
+  // 检查关键词是否包含通用名称
+  const containsCommonName = commonNames.some(name => keyword.includes(name))
+  if (containsCommonName || keyword.length <= 2) return false
+
+  // 对于3-4个字符的关键词，只有包含系列标识符的才有效
+  if (keyword.length <= 4 && !/\b(vol|volume|第|code|episode|chapter|part|～|~|no\.?|number|#|酱|妹|姐)\b/i.test(keyword)) {
+    return false
+  }
+
+  return true
+}
+
+/**
+ * 去除英文、数字和符号，只保留中文和日文字符
+ * @param {string} text - 原始文本
+ * @returns {string} 清理后的文本
+ */
+function removeEnglishNumbersSymbols(text) {
+  if (!text) return text
+  // 保留中文、日文字符，移除英文、数字、符号
+  // 中文: \u4e00-\u9fff (CJK统一表意文字)
+  // 日文平假名: \u3040-\u309f
+  // 日文片假名: \u30a0-\u30ff
+  // 日文汉字: \u4e00-\u9fff (与中文重叠)
+  // 空格: \s
+  const chineseJapaneseRegex = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\s]/
+  return text.split('').filter(char => chineseJapaneseRegex.test(char)).join('').trim()
+}
+
+/**
  * Build title index for fast matching
  * 构建标题索引以加速          console.log(`[关键词预筛选] ❌ 匹配失败: 所有候选项相似度均低于阈值 ${MIN_SIM                  console.log(`[关键词预筛选] 尝试前60%关键词: "${partialKeyword}" (原关键词: "${keyword}")`)
           
@@ -292,8 +341,8 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
     // 智能提取关键词，针对系列作品优化
     const keyword = extractSmartKeyword(searchTermNormalized)
     
-    // 如果关键词太短（少于2个字符）或无效（纯数字），跳过此策略
-    if (keyword.length >= 2 && !/^\d+(\.\d+)?$/.test(keyword.trim())) {
+    // 如果关键词太短（少于2个字符）或无效（纯数字或非中文日文），跳过此策略
+    if (keyword.length >= 2 && !/^\d+(\.\d+)?$/.test(keyword.trim()) && isValidKeyword(keyword)) {
       // console.log(`\n[关键词预筛选] 原始文件: ${originalFilename}`)
       // console.log(`[关键词预筛选] 裁剪标题: "${searchTerm}"`)
       console.log(`[关键词预筛选][${source}] 提取关键词: "${keyword}"`)
@@ -313,25 +362,23 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
         // 动态相似度阈值：根据候选数量和关键词类型调整
         // 候选越少 = 关键词越精准 = 可以用更低的阈值
         // 候选越多 = 关键词太泛 = 需要更高的阈值避免误匹配
-        // 对于系列关键词（包含系列标识符），可以使用稍低的阈值
-        // 同时考虑关键词长度：长关键词通常来自系列作品，需要更宽松的阈值
-        // 候选数量多也可能是热门系列，需要适当降低阈值
+        // 只有真正的系列关键词才可以使用较低的阈值
         let MIN_SIMILARITY_FALLBACK
-        const isSeriesKeyword = /\b(vol|volume|第|code|episode|chapter|part|～|~|afterstory|side story|外伝)\b/i.test(keyword)
+        const isSeriesKeyword = /\b(vol|volume|第|code|episode|chapter|part|～|~|afterstory|side story|外伝|no\.?|number|#)\b/i.test(keyword)
         const isLongKeyword = keyword.length > 8 // 长关键词通常是系列标题
-        const isPopularSeries = candidates.length > 50 // 大量候选通常表示热门系列
-        const isJapaneseSeries = /[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf]/.test(keyword) // 包含日文字符的可能是系列作品
+        const isPopularSeries = candidates.length > 50 && isSeriesKeyword // 只有系列关键词且候选很多时才认为是热门系列
+        const isJapaneseSeries = /[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf]/.test(keyword) && isSeriesKeyword // 日文关键词且是系列
 
         if (candidates.length <= 5) {
-          MIN_SIMILARITY_FALLBACK = (isSeriesKeyword || isLongKeyword || isPopularSeries) ? 0.2 : 0.3
+          MIN_SIMILARITY_FALLBACK = (isSeriesKeyword || isLongKeyword) ? 0.25 : 0.4
         } else if (candidates.length <= 20) {
-          MIN_SIMILARITY_FALLBACK = (isSeriesKeyword || isLongKeyword || isPopularSeries) ? 0.3 : 0.4
+          MIN_SIMILARITY_FALLBACK = (isSeriesKeyword || isLongKeyword) ? 0.35 : 0.5
         } else if (candidates.length <= 100) {
-          MIN_SIMILARITY_FALLBACK = (isSeriesKeyword || isLongKeyword || isPopularSeries || isJapaneseSeries) ? 0.35 : 0.6
-        } else if (candidates.length <= 500) {
           MIN_SIMILARITY_FALLBACK = (isSeriesKeyword || isLongKeyword || isPopularSeries || isJapaneseSeries) ? 0.4 : 0.7
+        } else if (candidates.length <= 500) {
+          MIN_SIMILARITY_FALLBACK = (isSeriesKeyword || isLongKeyword || isPopularSeries || isJapaneseSeries) ? 0.45 : 0.8
         } else {
-          MIN_SIMILARITY_FALLBACK = (isSeriesKeyword || isLongKeyword || isPopularSeries || isJapaneseSeries) ? 0.45 : 0.75
+          MIN_SIMILARITY_FALLBACK = (isSeriesKeyword || isLongKeyword || isPopularSeries || isJapaneseSeries) ? 0.5 : 0.85
         }
         
         console.log(`[关键词预筛选] 动态阈值: ${MIN_SIMILARITY_FALLBACK} (基于候选数: ${candidates.length})`)
@@ -473,6 +520,63 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
     }
   }
   
+  // 最终回退策略：去除英文数字和符号后重新匹配
+  // 适用于标题中混杂了英文文件名的情况
+  if (titleArray && titleArray.length > 0) {
+    const searchTermNormalized = normalizeString(searchTerm).toLowerCase()
+    const cleanedSearchTerm = removeEnglishNumbersSymbols(searchTermNormalized)
+    if (cleanedSearchTerm && cleanedSearchTerm !== searchTermNormalized && cleanedSearchTerm.length >= 2) {
+      console.log(`[关键词预筛选] 尝试去除英文数字符号后的关键词: "${cleanedSearchTerm}" (原关键词: "${searchTermNormalized}")`)
+      
+      // 智能提取清理后的关键词
+      const cleanedKeyword = extractSmartKeyword(cleanedSearchTerm)
+      
+      if (cleanedKeyword && isValidKeyword(cleanedKeyword)) {
+        console.log(`[关键词预筛选] 清理后提取关键词: "${cleanedKeyword}"`)
+        
+        // 用清理后的关键词重新筛选
+        const cleanedCandidates = []
+        for (const title of titleArray) {
+          if (title.includes(cleanedKeyword)) {
+            cleanedCandidates.push(title)
+          }
+        }
+        
+        console.log(`[关键词预筛选] 清理关键词筛选结果: ${cleanedCandidates.length} 个候选`)
+        
+        if (cleanedCandidates.length > 0) {
+          // 使用稍高的阈值，因为清理后的匹配需要更精确
+          const MIN_SIMILARITY_CLEANED = 0.4
+          
+          let cleanedBestMatch = null
+          let cleanedBestSimilarity = 0
+          let cleanedBestTitle = ''
+          
+          for (const title of cleanedCandidates) {
+            const similarity = calculateSimilarity(originalNormalized, title)
+            
+            if (similarity >= MIN_SIMILARITY_CLEANED && similarity > cleanedBestSimilarity) {
+              cleanedBestSimilarity = similarity
+              cleanedBestMatch = titleMap.get(title)
+              cleanedBestTitle = title
+            }
+          }
+          
+          if (cleanedBestMatch) {
+            console.log(`[关键词预筛选] ✅ 清理关键词匹配成功! 相似度: ${cleanedBestSimilarity.toFixed(3)}`)
+            console.log(`[关键词预筛选] 匹配标题: "${cleanedBestTitle}"`)
+            console.log(`[关键词预筛选] 原始文件名: "${originalFilename}"`)
+            return cleanedBestMatch
+          } else {
+            console.log(`[关键词预筛选] ❌ 清理关键词匹配失败: 所有候选项相似度均低于阈值 ${MIN_SIMILARITY_CLEANED}`)
+          }
+        } else {
+          console.log(`[关键词预筛选] ❌ 清理关键词匹配失败: 数据库中没有包含关键词 "${cleanedKeyword}" 的标题`)
+        }
+      }
+    }
+  }
+  
   return foundKeys
 }
 
@@ -570,11 +674,31 @@ function parseMetadataTags(metadata) {
 function extractSmartKeyword(searchTerm) {
   if (!searchTerm) return searchTerm
 
-  // 验证关键词是否有效（不是纯数字）
-  function isValidKeyword(keyword) {
+  // 验证关键词是否有效（只允许中文和日文字符，且不是通用名称）
+  function isValidKeywordLocal(keyword) {
     if (!keyword || keyword.length < 2) return false
     // 不允许纯数字关键词
     if (/^\d+(\.\d+)?$/.test(keyword.trim())) return false
+    // 只允许包含中文或日文字符的关键词
+    // 中文: \u4e00-\u9fff (CJK统一表意文字)
+    // 日文平假名: \u3040-\u309f
+    // 日文片假名: \u30a0-\u30ff
+    // 日文汉字: \u4e00-\u9fff (与中文重叠)
+    const chineseJapaneseRegex = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]/
+    if (!chineseJapaneseRegex.test(keyword)) return false
+
+    // 过滤掉常见的通用名称和太短的关键词
+    // 这些关键词太通用，会匹配到大量不相关的标题
+    const commonNames = ['酱', '妹', '姐', '妹子', '姐姐', '妹妹', '老婆', '媳妇', '老婆子', '小妹', '小姐姐', '大姐姐', '小妹妹']
+    // 检查关键词是否包含通用名称
+    const containsCommonName = commonNames.some(name => keyword.includes(name))
+    if (containsCommonName || keyword.length <= 2) return false
+
+    // 对于3-4个字符的关键词，只有包含系列标识符的才有效
+    if (keyword.length <= 4 && !/\b(vol|volume|第|code|episode|chapter|part|～|~|no\.?|number|#|酱|妹|姐)\b/i.test(keyword)) {
+      return false
+    }
+
     return true
   }
 
@@ -594,7 +718,7 @@ function extractSmartKeyword(searchTerm) {
     const match = searchTerm.match(pattern)
     if (match) {
       const seriesName = searchTerm.substring(0, match.index).trim()
-      if (isValidKeyword(seriesName)) {
+      if (isValidKeywordLocal(seriesName)) {
         console.log(`[智能关键词] 检测到系列作品: "${searchTerm}" -> 系列名: "${seriesName}"`)
         return seriesName
       }
@@ -609,7 +733,7 @@ function extractSmartKeyword(searchTerm) {
       const sepIndex = searchTerm.indexOf(sep)
       if (sepIndex > 2) { // 确保提取的关键词有意义
         const shortKeyword = searchTerm.substring(0, sepIndex).trim()
-        if (shortKeyword.length >= 3 && shortKeyword.length <= 10 && isValidKeyword(shortKeyword)) {
+        if (shortKeyword.length >= 3 && shortKeyword.length <= 10 && isValidKeywordLocal(shortKeyword)) {
           console.log(`[智能关键词] 长标题优化: "${searchTerm}" -> 短关键词: "${shortKeyword}"`)
           return shortKeyword
         }
@@ -618,7 +742,7 @@ function extractSmartKeyword(searchTerm) {
 
     // 如果没有找到合适的分隔符，提取前8个字符
     const shortKeyword = searchTerm.substring(0, 8)
-    if (isValidKeyword(shortKeyword)) {
+    if (isValidKeywordLocal(shortKeyword)) {
       console.log(`[智能关键词] 长标题截取: "${searchTerm}" -> 前8字符: "${shortKeyword}"`)
       return shortKeyword
     }
@@ -629,10 +753,11 @@ function extractSmartKeyword(searchTerm) {
   const keyword = firstSpaceIndex > 0 ? searchTerm.substring(0, firstSpaceIndex) : searchTerm
 
   // 如果默认关键词无效，返回整个搜索词
-  return isValidKeyword(keyword) ? keyword : searchTerm
+  return isValidKeywordLocal(keyword) ? keyword : searchTerm
 
   return keyword
 }
+
 function isPrimarilyEnglish(str) {
   if (!str) return false
   
