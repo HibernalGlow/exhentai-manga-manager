@@ -1469,6 +1469,15 @@ ipcMain.handle('fill-no-category-metadata', async (event, bookList) => {
   // 已成功写入数据库的数量（与 successCount 区别：successCount 是匹配成功数，savedCount 是实际保存成功数）
   let savedCount = 0
 
+    // 加载黑名单
+    const blacklist = loadBlacklist()
+    const skipBlacklistEnabled = setting.skipBlacklistInBatchMetadata !== false // 默认开启
+    if (skipBlacklistEnabled) {
+      sendMessageToWebContents(`📋 黑名单: 已加载 ${blacklist.size} 个项目，将跳过黑名单中的文件`)
+    } else {
+      sendMessageToWebContents(`📋 黑名单: 已加载 ${blacklist.size} 个项目，但跳过功能已关闭`)
+    }
+
     // 检查数据库是否有 hash 列
     sendMessageToWebContents('🔍 Checking database schema...')
     const columns = await db.all(`PRAGMA table_info(gallery)`)
@@ -1495,6 +1504,17 @@ ipcMain.handle('fill-no-category-metadata', async (event, bookList) => {
       setProgressBar((i + 1) / totalCount)
       sendMessageToWebContents(`\n📖 Processing ${i + 1}/${totalCount}: ${book.title}`)
       sendMessageToWebContents(`   ID: ${book.id}, Type: ${book.type}, Status: ${book.status}, Category: ${book.category || 'N/A'}`)
+
+      // 检查是否在黑名单中
+      if (skipBlacklistEnabled) {
+        const bookKey = `${book.id}|${book.title}`
+        const isBlacklisted = (book.hash && blacklist.has(book.hash)) || blacklist.has(bookKey)
+        if (isBlacklisted) {
+          sendMessageToWebContents(`   ⏭️ 跳过: 文件在黑名单中`)
+          failedCount++
+          continue
+        }
+      }
 
       try {
         let metadata = null
@@ -2451,7 +2471,9 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
             skippedTagged++
             continue
           }
-          if (blacklist.has(bookKey)) {
+          // 检查黑名单：优先使用hash，其次使用旧的bookKey格式
+          const isBlacklisted = (book.hash && blacklist.has(book.hash)) || blacklist.has(bookKey)
+          if (isBlacklisted) {
             skippedBlacklist++
             processed++
             continue
@@ -2559,8 +2581,19 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                   
                   if (!metadata) {
                     // 匹配失败，加入黑名单
-                    const bookKey = `${book.id}|${book.title}`
-                    blacklist.add(bookKey)
+                    if (book.hash) {
+                      blacklist.set(book.hash, {
+                        filename: path.basename(book.filepath),
+                        fullPath: book.filepath
+                      })
+                    } else {
+                      // 如果没有hash，使用旧格式作为fallback
+                      const bookKey = `${book.id}|${book.title}`
+                      blacklist.set(bookKey, {
+                        filename: path.basename(book.filepath),
+                        fullPath: book.filepath
+                      })
+                    }
                     blacklisted++
                     sendMessageToWebContents(`❌ [SQL] 未匹配: "${filename}" (已加入黑名单)`);
                   } else {

@@ -772,6 +772,13 @@
                 @change="saveSetting"
             />
           </el-col>
+          <el-col :span="12" class="setting-switch">
+            <el-switch
+                v-model="setting.skipBlacklistInBatchMetadata"
+                :active-text="$t('m.skipBlacklistInBatchMetadata')"
+                @change="saveSetting"
+            />
+          </el-col>
           <el-col :span="6" class="setting-switch">
             <el-switch
                 v-model="setting.showComment"
@@ -1377,7 +1384,7 @@ onMounted(() => {
     if (res.autoTranslateMissing === undefined) setting.value.autoTranslateMissing = false
     if (res.excludePureNumberChinese === undefined) setting.value.excludePureNumberChinese = true
     if (res.aiApiProvider === undefined) setting.value.aiApiProvider = 'openrouter'
-    if (res.aiApiKey === undefined) setting.value.aiApiKey = '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'
+    if (res.aiApiKey === undefined) setting.value.aiApiKey = ''
     if (res.aiModel === undefined) setting.value.aiModel = 'deepseek/deepseek-chat-v3.1:free'
     if (res.aiTemperature === undefined) setting.value.aiTemperature = 0.3
     if (res.aiMaxTokens === undefined) setting.value.aiMaxTokens = 100

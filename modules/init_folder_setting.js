@@ -96,7 +96,8 @@ const prepareSetting = () => {
       keepReadingProgress: true,
       concurrentScan: 4,
       concurrentWrite: 2,
-      allowFolderAsManga: false // 新增，默认关闭
+      allowFolderAsManga: false, // 新增，默认关闭
+      skipBlacklistInBatchMetadata: true // 批量获取元数据时跳过黑名单文件，默认开启
     }
     fs.writeFileSync(path.join(STORE_PATH, 'setting.json'), JSON.stringify(setting, null, '  '), { encoding: 'utf-8' })
   }
@@ -127,29 +128,65 @@ const loadBlacklist = () => {
     
     if (fs.existsSync(blacklistPath)) {
       const data = JSON.parse(fs.readFileSync(blacklistPath, { encoding: 'utf-8' }))
-      const blacklistSet = new Set(data.blacklist || [])
-      console.log(`[黑名单加载] ✅ 加载成功! 黑名单数量: ${blacklistSet.size}`)
-      return blacklistSet
+      
+      // 检查版本，支持向后兼容
+      if (data.version === '2.0' && data.blacklist && typeof data.blacklist === 'object') {
+        // 新格式：对象格式
+        const blacklistMap = new Map()
+        for (const [hash, info] of Object.entries(data.blacklist)) {
+          blacklistMap.set(hash, {
+            filename: info.filename || '',
+            fullPath: info.fullPath || ''
+          })
+        }
+        console.log(`[黑名单加载] ✅ 加载成功! 新格式黑名单数量: ${blacklistMap.size}`)
+        return blacklistMap
+      } else if (data.version === '1.0' && Array.isArray(data.blacklist)) {
+        // 旧格式：数组格式，需要迁移
+        console.log(`[黑名单加载] ℹ️ 检测到旧格式黑名单，正在迁移...`)
+        const blacklistMap = new Map()
+        for (const hash of data.blacklist) {
+          blacklistMap.set(hash, {
+            filename: '', // 旧格式没有文件名信息
+            fullPath: ''  // 旧格式没有路径信息
+          })
+        }
+        // 保存为新格式
+        saveBlacklist(blacklistMap)
+        console.log(`[黑名单加载] ✅ 迁移完成! 黑名单数量: ${blacklistMap.size}`)
+        return blacklistMap
+      } else {
+        console.log(`[黑名单加载] ⚠️ 未知的黑名单格式，使用空黑名单`)
+      }
     } else {
       console.log(`[黑名单加载] ℹ️ 文件不存在，返回空黑名单`)
     }
   } catch (e) {
     console.log('[黑名单加载] ❌ 加载失败:', e)
   }
-  return new Set()
+  return new Map()
 }
 
-const saveBlacklist = (blacklistSet) => {
+const saveBlacklist = (blacklistMap) => {
   try {
     const blacklistPath = getBlacklistPath()
     console.log(`[黑名单保存] STORE_PATH: ${STORE_PATH}`)
     console.log(`[黑名单保存] 保存路径: ${blacklistPath}`)
-    console.log(`[黑名单保存] 黑名单数量: ${blacklistSet.size}`)
+    console.log(`[黑名单保存] 黑名单数量: ${blacklistMap.size}`)
+    
+    // 转换为对象格式
+    const blacklistObj = {}
+    for (const [hash, info] of blacklistMap) {
+      blacklistObj[hash] = {
+        filename: info.filename || '',
+        fullPath: info.fullPath || ''
+      }
+    }
     
     const data = {
-      version: '1.0',
+      version: '2.0',
       lastUpdate: new Date().toISOString(),
-      blacklist: Array.from(blacklistSet)
+      blacklist: blacklistObj
     }
     
     fs.writeFileSync(blacklistPath, JSON.stringify(data, null, 2), { encoding: 'utf-8' })

@@ -169,6 +169,7 @@
     "disableRandomTag": "禁用首頁顯示隨機標籤",
     "deleteMode": "Delete Mode",
     "onlyGetMetadataOfSelectedFolder": "僅獲取選中資料夾的元數據",
+    "skipBlacklistInBatchMetadata": "批量獲取元數據時跳過黑名單檔案",
     "fitWidth": "適應寬度",
     "fitHeight": "適應高度",
     "fitWindow": "適應視窗",
