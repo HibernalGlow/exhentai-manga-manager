@@ -249,6 +249,9 @@ const getBooksMetadata = async (bookList, gap, callback) => {
   let skippedCount = 0
   let startTime = Date.now()
 
+  // 收集所有搜索结果的JSON数据
+  const allSearchResults = []
+
   for (let i = 0; i < bookList.length; i++) {
     ipcRenderer.invoke('set-progress-bar', (i + 1) / bookList.length)
     const book = bookList[i]
@@ -277,12 +280,47 @@ const getBooksMetadata = async (bookList, gap, callback) => {
 
           if (resultList.length > 0) {
             console.log('[Batch Metadata] ✅ 找到匹配结果')
-            console.log('[Batch Metadata] 🎯 使用第一个结果:')
-            console.log(`  - URL: ${resultList[0].url}`)
-            console.log(`  - 类型: ${resultList[0].type}`)
-            console.log(`  - 标题: ${resultList[0].title || 'N/A'}`)
 
-            resolveSearchResult(book.id, resultList[0].url, resultList[0].type)
+            // 创建结构化的搜索结果JSON
+            const searchResults = {
+              bookId: book.id,
+              bookTitle: book.title,
+              searchTitle: searchTitle,
+              bookHash: book.hash,
+              server: server,
+              totalResults: resultList.length,
+              candidates: resultList.map((result, index) => ({
+                index: index + 1,
+                url: result.url,
+                type: result.type,
+                title: result.title || 'N/A',
+                thumbnail: result.thumbnail || null,
+                category: result.category || 'N/A',
+                tags: result.tags || {},
+                pages: result.pages || 0,
+                posted: result.posted || null,
+                rating: result.rating || null,
+                uploader: result.uploader || null,
+                // 计算相似度分数（基于标题匹配度）
+                similarityScore: calculateSimilarityScore(searchTitle, result.title || '')
+              })).sort((a, b) => b.similarityScore - a.similarityScore) // 按相似度降序排序
+            }
+
+            // 添加到结果集合中
+            allSearchResults.push(searchResults)
+
+            console.log('[Batch Metadata] 📋 已收集搜索结果到JSON流')
+            console.log(`[Batch Metadata] 当前JSON流大小: ${allSearchResults.length}`)
+
+            // 暂时使用相似度最高的结果（可以后续让AI选择）
+            const bestMatch = searchResults.candidates[0]
+            console.log('[Batch Metadata] 🎯 自动选择最佳匹配:')
+            console.log(`  - 相似度: ${bestMatch.similarityScore.toFixed(2)}`)
+            console.log(`  - URL: ${bestMatch.url}`)
+            console.log(`  - 类型: ${bestMatch.type}`)
+            console.log(`  - 标题: ${bestMatch.title}`)
+
+            resolveSearchResult(book.id, bestMatch.url, bestMatch.type)
             successCount++
             console.log('[Batch Metadata] ✅ 解析搜索结果成功')
           } else {
@@ -330,6 +368,24 @@ const getBooksMetadata = async (bookList, gap, callback) => {
   console.log(`  - 跳过: ${skippedCount}`)
   console.log(`  - 总耗时: ${duration}ms`)
   console.log(`  - 平均耗时: ${bookList.length > 0 ? Math.round(duration / bookList.length) : 0}ms/本`)
+
+  // 输出完整的JSON结果流
+  if (allSearchResults.length > 0) {
+    console.log('[Batch Metadata] 📋 ===== 完整搜索结果JSON流 =====')
+    console.log(JSON.stringify({
+      summary: {
+        totalBooks: bookList.length,
+        booksWithResults: allSearchResults.length,
+        successCount: successCount,
+        failedCount: failedCount,
+        skippedCount: skippedCount,
+        duration: duration,
+        server: server
+      },
+      searchResults: allSearchResults
+    }, null, 2))
+    console.log('[Batch Metadata] 📋 ===== JSON流输出完成 =====')
+  }
 
   messageInstance.close()
   ipcRenderer.invoke('set-progress-bar', -1)
@@ -536,6 +592,35 @@ async function onConfirmPartialUpdate({bookDetail, url, wcId}) {
   } finally {
     dialogVisibleEhSearch.value = false
   }
+}
+
+function calculateSimilarityScore(searchTitle, resultTitle) {
+  if (!searchTitle || !resultTitle) return 0
+
+  const search = searchTitle.toLowerCase().trim()
+  const result = resultTitle.toLowerCase().trim()
+
+  // 完全匹配
+  if (search === result) return 1.0
+
+  // 包含关系
+  if (result.includes(search) || search.includes(result)) return 0.8
+
+  // 计算词重叠度
+  const searchWords = search.split(/\s+/).filter(word => word.length > 1)
+  const resultWords = result.split(/\s+/).filter(word => word.length > 1)
+
+  if (searchWords.length === 0 || resultWords.length === 0) return 0
+
+  let matchCount = 0
+  for (const word of searchWords) {
+    if (resultWords.some(rWord => rWord.includes(word) || word.includes(rWord))) {
+      matchCount++
+    }
+  }
+
+  const overlapRatio = matchCount / Math.max(searchWords.length, resultWords.length)
+  return Math.min(overlapRatio * 0.6, 0.6) // 最高0.6，避免与完全匹配冲突
 }
 
 defineExpose({
