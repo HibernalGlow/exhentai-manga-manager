@@ -22,7 +22,7 @@ function isValidKeyword(keyword) {
   const chineseJapaneseRegex = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff]/
   if (!chineseJapaneseRegex.test(keyword)) return false
 
-  const commonNames = ['酱', '妹', '姐', '妹子', '姐姐', '妹妹', '老婆', '媳妇', '老婆子', '小妹', '小姐姐', '大姐姐', '小妹妹']
+  const commonNames = ['酱',  '自拍']
   const containsCommonName = commonNames.some(name => keyword.includes(name))
   if (containsCommonName && keyword.length <= 2) return false
 
@@ -143,17 +143,21 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
     return exactMatch
   }
   
+  /*
   const words = normalizedOriginal.split(/\s+/).filter(word => word.length > 0)
   if (words.length > 1) {
     for (let i = words.length; i >= 2; i--) {
       const partialPhrase = words.slice(0, i).join(' ')
       const groupMatch = titleMap.get(partialPhrase)
       if (groupMatch) {
-        console.log(`[${source}] "${originalFilename}" -> ✅ Stage: Group Match, Phrase: "${partialPhrase}" (first ${i} words)`)
-        return groupMatch
+        if (partialPhrase.length / normalizedOriginal.length > 0.7) {
+            console.log(`[${source}] "${originalFilename}" -> ✅ Stage: Group Match, Phrase: "${partialPhrase}" (first ${i} words)`)
+            return groupMatch
+        }
       }
     }
   }
+  */
   
   if (titleArray && titleArray.length > 0) {
     const quickMatch = await quickLinearSearch(normalizedOriginal, titleMap, titleArray, originalFilename)
@@ -173,6 +177,7 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
     }
   }
   
+  /*
   for (const variant of searchVariants) {
     const variantWords = variant.split(/\s+/).filter(word => word.length > 0)
     if (variantWords.length > 1) {
@@ -180,12 +185,15 @@ async function findMatchesByTitle(searchTerm, originalFilename, titleMap, titleA
         const partialPhrase = variantWords.slice(0, i).join(' ')
         const groupMatch = titleMap.get(partialPhrase)
         if (groupMatch) {
-          console.log(`[${source}] "${originalFilename}" -> ✅ Stage: Variant Group Match, Phrase: "${partialPhrase}" (from variant "${variant}")`)
-          return groupMatch
+            if (partialPhrase.length / normalizedOriginal.length > 0.7) {
+                console.log(`[${source}] "${originalFilename}" -> ✅ Stage: Variant Group Match, Phrase: "${partialPhrase}" (from variant "${variant}")`)
+                return groupMatch
+            }
         }
       }
     }
   }
+  */
   
   if (titleArray && titleArray.length > 0) {
     const matchedTitles = []
