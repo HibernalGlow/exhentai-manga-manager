@@ -199,7 +199,6 @@
     "enabledLANBrowsing": "启用局域网浏览",
     "disableRandomTag": "禁用首页显示随机标签",
     "onlyGetMetadataOfSelectedFolder": "仅获取选中文件夹的元数据",
-    "skipBlacklistInBatchMetadata": "批量获取元数据时跳过黑名单文件",
     "fitWidth": "适应宽度",
     "fitHeight": "适应高度",
     "fitWindow": "适应窗口",

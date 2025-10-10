@@ -205,7 +205,6 @@
     "enabledLANBrowsing": "Enable LAN Browsing",
     "disableRandomTag": "Disable Random Tag",
     "onlyGetMetadataOfSelectedFolder": "Only Get Metadata of Selected Folder",
-    "skipBlacklistInBatchMetadata": "Skip Blacklist Files in Batch Metadata Retrieval",
     "fitWidth": "fit width",
     "fitHeight": "fit height",
     "fitWindow": "fit window",

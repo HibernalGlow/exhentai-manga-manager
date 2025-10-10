@@ -772,13 +772,6 @@
                 @change="saveSetting"
             />
           </el-col>
-          <el-col :span="12" class="setting-switch">
-            <el-switch
-                v-model="setting.skipBlacklistInBatchMetadata"
-                :active-text="$t('m.skipBlacklistInBatchMetadata')"
-                @change="saveSetting"
-            />
-          </el-col>
           <el-col :span="6" class="setting-switch">
             <el-switch
                 v-model="setting.showComment"

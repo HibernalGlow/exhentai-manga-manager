@@ -64,31 +64,6 @@ const resolveSearchResult = (bookId, url, type) => {
   }
   dialogVisibleEhSearch.value = false
 }
-
-const getBookInfo = (book) => {
-  console.log('[Batch Metadata] 🔄 开始获取书籍元数据')
-  console.log('[Batch Metadata] 📖 书籍ID:', book.id)
-  console.log('[Batch Metadata] 🔗 URL:', book.url)
-
-  if (!book.url) {
-    console.warn('[Batch Metadata] ⚠️ 书籍没有URL，跳过元数据获取')
-    return
-  }
-
-  // 根据URL类型调用相应的获取方法
-  if (book.url.includes('hentag.com')) {
-    console.log('[Batch Metadata] 🎯 检测到Hentag URL')
-    getBookInfoFromHentag(book)
-  } else if (book.url.includes('exhentai.org') || book.url.includes('e-hentai.org')) {
-    console.log('[Batch Metadata] 🎯 检测到E-Hentai/ExHentai URL')
-    getBookInfoFromEh(book)
-  } else if (book.url.includes('nhentai.net')) {
-    console.log('[Batch Metadata] 🎯 检测到Nhentai URL')
-    getBookInfoFromNH(book)
-  } else {
-    console.warn('[Batch Metadata] ⚠️ 未知的URL类型:', book.url)
-  }
-}
 const getBookInfoFromHentag = async (book) => {
   const data = await fetch(`https://hentag.com/public/api/vault/${book.url.slice(25)}`).then(res => res.json())
   const tags = {}
@@ -223,15 +198,22 @@ const getBookInfoFromNH = async (book) => {
     await saveBook(book)
   }
 }
+const getBookInfo = (book) => {
+  if (book.url.startsWith('https://hentag.com')) {
+    getBookInfoFromHentag(book)
+  } else if (book.url.includes('exhentai') || book.url.includes('e-hentai')) {
+    getBookInfoFromEh(book)
+  } else if (book.url.includes('nhentai')) {
+    getBookInfoFromNH(book)
+  }
+}
 
 // use in the main window to batch get metadata
 const getBooksMetadata = async (bookList, gap, callback) => {
   const server = setting.value.defaultScraper || 'exhentai'
-  console.log('[Batch Metadata] ===== 开始批量获取元数据 =====')
-  console.log('[Batch Metadata] 总书籍数量:', bookList.length)
-  console.log('[Batch Metadata] 使用服务器:', server)
-  console.log('[Batch Metadata] 请求间隔:', gap, 'ms')
-
+  console.log('[Batch Metadata] Starting batch operation for', bookList.length, 'books')
+  console.log('[Batch Metadata] Using server:', server)
+  
   serviceAvailable.value = true
   const timer = ms => new Promise(res => setTimeout(res, ms))
   const messageInstance = ElMessage({
@@ -243,150 +225,45 @@ const getBooksMetadata = async (bookList, gap, callback) => {
       serviceAvailable.value = false
     }
   })
-
-  let successCount = 0
-  let failedCount = 0
-  let skippedCount = 0
-  let startTime = Date.now()
-
-  // 收集所有搜索结果的JSON数据
-  const allSearchResults = []
-
+  
   for (let i = 0; i < bookList.length; i++) {
     ipcRenderer.invoke('set-progress-bar', (i + 1) / bookList.length)
     const book = bookList[i]
-
-    console.log(`[Batch Metadata] --- 处理书籍 ${i + 1}/${bookList.length} ---`)
-    console.log(`[Batch Metadata] 书籍ID: ${book.id}`)
-    console.log(`[Batch Metadata] 文件路径: ${book.filepath}`)
-    console.log(`[Batch Metadata] 当前状态: ${book.status}`)
-    console.log(`[Batch Metadata] 是否有URL: ${!!book.url}`)
-    console.log(`[Batch Metadata] 是否有Hash: ${!!book.hash}`)
-
+    console.log(`[Batch Metadata] Processing book ${i + 1}/${bookList.length}:`, book.filepath)
+    console.log('[Batch Metadata] Book has URL:', book.url)
+    
     try {
       if (serviceAvailable.value) {
         if (!book.url) {
-          console.log('[Batch Metadata] 📋 无URL，开始搜索标题')
-          const searchTitle = returnTrimFileName(book)
-          console.log('[Batch Metadata] 🔍 搜索标题:', searchTitle)
-
+          console.log('[Batch Metadata] No URL, searching with title:', returnTrimFileName(book))
           const resultList = await getBookListFromWeb(
-              book.hash?.toUpperCase(),
-              searchTitle,
+              book.hash.toUpperCase(),
+              returnTrimFileName(book),
               server,
               book.filepath
           )
-          console.log('[Batch Metadata] 📊 搜索结果数量:', resultList.length)
-
-          if (resultList.length > 0) {
-            console.log('[Batch Metadata] ✅ 找到匹配结果')
-
-            // 创建结构化的搜索结果JSON
-            const searchResults = {
-              bookId: book.id,
-              bookTitle: book.title,
-              searchTitle: searchTitle,
-              bookHash: book.hash,
-              server: server,
-              totalResults: resultList.length,
-              candidates: resultList.map((result, index) => ({
-                index: index + 1,
-                url: result.url,
-                type: result.type,
-                title: result.title || 'N/A',
-                thumbnail: result.thumbnail || null,
-                category: result.category || 'N/A',
-                tags: result.tags || {},
-                pages: result.pages || 0,
-                posted: result.posted || null,
-                rating: result.rating || null,
-                uploader: result.uploader || null,
-                // 计算相似度分数（基于标题匹配度）
-                similarityScore: calculateSimilarityScore(searchTitle, result.title || '')
-              })).sort((a, b) => b.similarityScore - a.similarityScore) // 按相似度降序排序
-            }
-
-            // 添加到结果集合中
-            allSearchResults.push(searchResults)
-
-            console.log('[Batch Metadata] 📋 已收集搜索结果到JSON流')
-            console.log(`[Batch Metadata] 当前JSON流大小: ${allSearchResults.length}`)
-
-            // 暂时使用相似度最高的结果（可以后续让AI选择）
-            const bestMatch = searchResults.candidates[0]
-            console.log('[Batch Metadata] 🎯 自动选择最佳匹配:')
-            console.log(`  - 相似度: ${bestMatch.similarityScore.toFixed(2)}`)
-            console.log(`  - URL: ${bestMatch.url}`)
-            console.log(`  - 类型: ${bestMatch.type}`)
-            console.log(`  - 标题: ${bestMatch.title}`)
-
-            resolveSearchResult(book.id, bestMatch.url, bestMatch.type)
-            successCount++
-            console.log('[Batch Metadata] ✅ 解析搜索结果成功')
-          } else {
-            console.warn('[Batch Metadata] ❌ 未找到搜索结果')
+          console.log('[Batch Metadata] Search results:', resultList.length, 'items')
+          
+          if (!resultList[0]) {
+            console.warn('[Batch Metadata] No results found')
             book.status = 'tag-failed'
             await saveBook(book)
-            failedCount++
-            console.log('[Batch Metadata] 💾 已保存为失败状态')
+          } else {
+            console.log('[Batch Metadata] Using first result:', resultList[0].url, resultList[0].type)
+            resolveSearchResult(book.id, resultList[0].url, resultList[0].type)
           }
         } else {
-          console.log('[Batch Metadata] 📋 已有URL，直接获取元数据')
-          console.log('[Batch Metadata] 🔗 URL:', book.url)
+          console.log('[Batch Metadata] Book already has URL, fetching metadata directly')
           getBookInfo(book)
-          successCount++
-          console.log('[Batch Metadata] ✅ 直接获取元数据完成')
         }
-
-        console.log(`[Batch Metadata] ⏱️ 等待 ${gap}ms 后继续...`)
         await timer(gap)
-      } else {
-        console.log('[Batch Metadata] ⏸️ 服务不可用，跳过处理')
-        skippedCount++
       }
     } catch (error) {
-      console.error('[Batch Metadata] ❌ 处理书籍时出错:', error)
-      console.error('[Batch Metadata] 错误详情:', error.message)
-      console.error('[Batch Metadata] 错误堆栈:', error.stack)
+      console.error('[Batch Metadata] Error processing book:', error)
       book.status = 'tag-failed'
       await saveBook(book)
-      failedCount++
-      console.log('[Batch Metadata] 💾 已保存为失败状态')
     }
-
-    console.log(`[Batch Metadata] --- 书籍 ${i + 1} 处理完成 ---\n`)
   }
-
-  const endTime = Date.now()
-  const duration = endTime - startTime
-
-  console.log('[Batch Metadata] ===== 批量获取元数据完成 =====')
-  console.log('[Batch Metadata] 📈 处理统计:')
-  console.log(`  - 总数量: ${bookList.length}`)
-  console.log(`  - 成功: ${successCount}`)
-  console.log(`  - 失败: ${failedCount}`)
-  console.log(`  - 跳过: ${skippedCount}`)
-  console.log(`  - 总耗时: ${duration}ms`)
-  console.log(`  - 平均耗时: ${bookList.length > 0 ? Math.round(duration / bookList.length) : 0}ms/本`)
-
-  // 输出完整的JSON结果流
-  if (allSearchResults.length > 0) {
-    console.log('[Batch Metadata] 📋 ===== 完整搜索结果JSON流 =====')
-    console.log(JSON.stringify({
-      summary: {
-        totalBooks: bookList.length,
-        booksWithResults: allSearchResults.length,
-        successCount: successCount,
-        failedCount: failedCount,
-        skippedCount: skippedCount,
-        duration: duration,
-        server: server
-      },
-      searchResults: allSearchResults
-    }, null, 2))
-    console.log('[Batch Metadata] 📋 ===== JSON流输出完成 =====')
-  }
-
   messageInstance.close()
   ipcRenderer.invoke('set-progress-bar', -1)
   printMessage('success', t('c.getMetadataComplete'))
@@ -592,35 +469,6 @@ async function onConfirmPartialUpdate({bookDetail, url, wcId}) {
   } finally {
     dialogVisibleEhSearch.value = false
   }
-}
-
-function calculateSimilarityScore(searchTitle, resultTitle) {
-  if (!searchTitle || !resultTitle) return 0
-
-  const search = searchTitle.toLowerCase().trim()
-  const result = resultTitle.toLowerCase().trim()
-
-  // 完全匹配
-  if (search === result) return 1.0
-
-  // 包含关系
-  if (result.includes(search) || search.includes(result)) return 0.8
-
-  // 计算词重叠度
-  const searchWords = search.split(/\s+/).filter(word => word.length > 1)
-  const resultWords = result.split(/\s+/).filter(word => word.length > 1)
-
-  if (searchWords.length === 0 || resultWords.length === 0) return 0
-
-  let matchCount = 0
-  for (const word of searchWords) {
-    if (resultWords.some(rWord => rWord.includes(word) || word.includes(rWord))) {
-      matchCount++
-    }
-  }
-
-  const overlapRatio = matchCount / Math.max(searchWords.length, resultWords.length)
-  return Math.min(overlapRatio * 0.6, 0.6) // 最高0.6，避免与完全匹配冲突
 }
 
 defineExpose({
