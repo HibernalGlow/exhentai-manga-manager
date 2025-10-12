@@ -1410,31 +1410,47 @@ ipcMain.handle('repair-missing-covers', async (event, arg) => {
 })
 
 // Function to find archive file in folder for SHA1 matching
-function findArchiveInFolder(dir) {
+function findArchiveInFolder(filepath) {
   try {
-    if (!fs.existsSync(dir)) {
+    if (!fs.existsSync(filepath)) {
       return null
     }
 
-    const files = fs.readdirSync(dir)
-    // 查找7z文件，优先选择包含sha1或hash的文件名
-    const archives = files.filter(file => {
-      const ext = path.extname(file).toLowerCase()
-      return ext === '.7z' || ext === '.zip' || ext === '.rar'
-    })
+    const stat = fs.statSync(filepath)
 
-    if (archives.length === 0) {
+    // 如果是文件且是压缩包格式，直接返回
+    if (stat.isFile()) {
+      const ext = path.extname(filepath).toLowerCase()
+      if (ext === '.7z' || ext === '.zip' || ext === '.rar') {
+        return filepath
+      }
       return null
     }
 
-    // 优先选择包含sha1、hash、checksum等关键词的文件
-    const priorityArchives = archives.filter(archive => {
-      const name = archive.toLowerCase()
-      return name.includes('sha1') || name.includes('hash') || name.includes('checksum')
-    })
+    // 如果是目录，查找其中的压缩包文件
+    if (stat.isDirectory()) {
+      const files = fs.readdirSync(filepath)
+      // 查找7z文件，优先选择包含sha1或hash的文件名
+      const archives = files.filter(file => {
+        const ext = path.extname(file).toLowerCase()
+        return ext === '.7z' || ext === '.zip' || ext === '.rar'
+      })
 
-    const selectedArchive = priorityArchives.length > 0 ? priorityArchives[0] : archives[0]
-    return path.join(dir, selectedArchive)
+      if (archives.length === 0) {
+        return null
+      }
+
+      // 优先选择包含sha1、hash、checksum等关键词的文件
+      const priorityArchives = archives.filter(archive => {
+        const name = archive.toLowerCase()
+        return name.includes('sha1') || name.includes('hash') || name.includes('checksum')
+      })
+
+      const selectedArchive = priorityArchives.length > 0 ? priorityArchives[0] : archives[0]
+      return path.join(filepath, selectedArchive)
+    }
+
+    return null
   } catch (error) {
     console.error('Failed to find archive in folder:', error)
     return null
@@ -1578,7 +1594,7 @@ ipcMain.handle('fill-no-category-metadata', async (event, bookList) => {
         }
 
         // 步骤3.5: 使用压缩包中的SHA1记录匹配
-        if (!metadata && book.type === 'folder') {
+        if (!metadata && setting.matchSha1) {
           const archivePath = findArchiveInFolder(book.filepath)
           if (archivePath) {
             sendMessageToWebContents(`   🔍 Trying SHA1 archive match: ${path.basename(archivePath)}`)
@@ -2407,7 +2423,7 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
     // 发送开始信息到前端
     const dbPath = path.basename(result.filePaths[0])
     sendMessageToWebContents(`🔄 开始从 ${dbPath} 导入元数据...`)
-    sendMessageToWebContents(`📋 匹配选项: ${matchOptions?.matchTitleOnly ? '仅标题' : '全字段'}, 快速模式:${matchOptions?.fastMatch ? '是' : '否'}, 哈希:${matchOptions?.matchHash ? '是' : '否'}, 并发数:${setting.concurrentScan || 4}`)
+    sendMessageToWebContents(`📋 匹配选项: ${matchOptions?.matchTitleOnly ? '仅标题' : '全字段'}, 快速模式:${matchOptions?.fastMatch ? '是' : '否'}, 哈希:${matchOptions?.matchHash ? '是' : '否'}, SHA1:${matchOptions?.matchSha1 ? '是' : '否'}, 并发数:${setting.concurrentScan || 4}`)
     
     try {
       const re = /'/g
@@ -2562,28 +2578,15 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                     }
                   }
 
-                  // 如果 hash 没匹配到，尝试SHA1在线搜索匹配
-                  if (foundKeys.length === 0 && book.type === 'folder') {
+                  // 如果 hash 没匹配到，尝试SHA1压缩包匹配
+                  if (foundKeys.length === 0 && matchOptions?.matchSha1) {
                     const archivePath = findArchiveInFolder(book.filepath)
                     if (archivePath) {
-                      try {
-                        const sha1Map = await require('./modules/sha1_archive_matcher').getSha1MapFromArchive(archivePath)
-                        const sha1 = require('./modules/sha1_archive_matcher').matchSha1ByFilename(originalFilename, sha1Map)
-                        if (sha1) {
-                          sendMessageToWebContents(`🔍 [SHA1在线] 尝试搜索: ${sha1}`)
-                          const onlineMatch = await matchBySha1Online(sha1, matchOptions?.defaultScraper || 'exhentai', wcId)
-                          if (onlineMatch) {
-                            // 从URL中提取gid和token
-                            const urlMatch = onlineMatch.url.match(/\/g\/(\d+)\/([a-f0-9]+)/)
-                            if (urlMatch) {
-                              const [, gid, token] = urlMatch
-                              foundKeys.push({ gid: parseInt(gid), token })
-                              sendMessageToWebContents(`✅ [SHA1在线] 匹配成功: gid=${gid}`)
-                            }
-                          }
-                        }
-                      } catch (error) {
-                        console.error('SHA1 online match error:', error)
+                      sendMessageToWebContents(`🔍 [SHA1压缩包] 尝试匹配: ${path.basename(archivePath)}`)
+                      const sha1Match = await matchBySha1FromArchive(archivePath, originalFilename, db)
+                      if (sha1Match) {
+                        foundKeys.push({ gid: sha1Match.gid, token: sha1Match.token })
+                        sendMessageToWebContents(`✅ [SHA1压缩包] 匹配成功: gid=${sha1Match.gid}`)
                       }
                     }
                   }

@@ -99,7 +99,7 @@ async function extractSha1Records(archivePath) {
 
     // 首先列出压缩包内容，查找.sha1文件
     console.log(`[SHA1] 📋 Listing archive contents...`);
-    const listProcess = spawn(sevenZipPath, ['l', archivePath]);
+    const listProcess = spawn(sevenZipPath, ['l', '-sccUTF-8', archivePath]);
 
     let listOutput = '';
     listProcess.stdout.on('data', (data) => {
@@ -114,27 +114,47 @@ async function extractSha1Records(archivePath) {
         return;
       }
 
-      console.log(`[SHA1] ✅ Archive listing completed (${listOutput.length} bytes of output)`);
-
       // 解析输出，查找所有.sha1文件
       const lines = listOutput.split('\n');
       const sha1Files = [];
 
+      console.log(`[SHA1] 🔍 Parsing ${lines.length} lines for .sha1 files`);
+
       // 查找所有.sha1文件
-      for (const line of lines) {
-        const match = line.match(/\s+(\S+\.sha1)\s*$/i);
-        if (match) {
-          sha1Files.push(match[1]);
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+
+        // 跳过表头和分隔线
+        if (!line || line.startsWith('---') || line.startsWith('Date') || line.includes('files,') || line.includes('folders')) {
+          continue;
+        }
+
+        // 检查是否包含.sha1
+        if (line.includes('.sha1')) {
+          console.log(`[SHA1] 📄 Found line with .sha1: ${line.substring(0, 100)}...`);
+
+          // 7z列表格式：
+          // Date Time Attr Size Compressed Name
+          // 跳过前5个字段（日期、时间、属性、大小、压缩大小），剩下的都是文件名
+          const parts = line.split(/\s+/);
+          if (parts.length >= 6) {
+            // 文件名从第6个部分开始
+            const filename = parts.slice(5).join(' ').trim();
+
+            // 确保文件名以.sha1结尾
+            if (filename.toLowerCase().endsWith('.sha1')) {
+              console.log(`[SHA1] ✅ Extracted SHA1 filename: "${filename}"`);
+              sha1Files.push(filename);
+            } else {
+              console.log(`[SHA1] ⚠️ Filename doesn't end with .sha1: "${filename}"`);
+            }
+          } else {
+            console.log(`[SHA1] ⚠️ Line doesn't have enough parts: ${parts.length}`);
+          }
         }
       }
 
-      if (sha1Files.length === 0) {
-        console.warn(`[SHA1] ⚠️ No .sha1 files found in archive: ${path.basename(archivePath)}`);
-        reject(new Error('No .sha1 file found in archive'));
-        return;
-      }
-
-      console.log(`[SHA1] 📁 Found ${sha1Files.length} .sha1 file(s) in archive: ${sha1Files.join(', ')}`);
+      console.log(`[SHA1] 📁 Found ${sha1Files.length} .sha1 file(s): ${sha1Files.join(', ')}`);
 
       // 依次提取所有SHA1文件的内容
       extractAllSha1Files(sha1Files, archivePath, sevenZipPath, resolve, reject);
@@ -175,9 +195,10 @@ function extractAllSha1Files(sha1Files, archivePath, sevenZipPath, resolve, reje
 
     const sha1File = sha1Files[currentIndex];
     const fileStartTime = Date.now();
-    console.log(`[SHA1] 📄 Extracting ${sha1File} (${currentIndex + 1}/${sha1Files.length})`);
+    console.log(`[SHA1] 📄 Extracting "${sha1File}" (${currentIndex + 1}/${sha1Files.length})`);
 
-    const extractProcess = spawn(sevenZipPath, ['e', archivePath, sha1File, '-so']);
+    // 直接使用解析出来的文件名进行提取
+    const extractProcess = spawn(sevenZipPath, ['e', '-sccUTF-8', archivePath, sha1File, '-so']);
 
     let fileContent = '';
     extractProcess.stdout.on('data', (data) => {
@@ -195,13 +216,13 @@ function extractAllSha1Files(sha1Files, archivePath, sevenZipPath, resolve, reje
         }
         combinedContent += fileContent;
 
-        console.log(`[SHA1] ✅ Extracted ${sha1File} (${fileSize} bytes, ${fileTime}ms)`);
+        console.log(`[SHA1] ✅ Extracted "${sha1File}" (${fileSize} bytes, ${fileTime}ms)`);
 
         currentIndex++;
         extractNext(); // 处理下一个文件
       } else {
-        console.error(`[SHA1] ❌ 7z extract failed for ${sha1File} with exit code ${code}`);
-        reject(new Error(`7z extract failed for ${sha1File} with code ${code}`));
+        console.error(`[SHA1] ❌ 7z extract failed for "${sha1File}" with exit code ${code}`);
+        reject(new Error(`7z extract failed for "${sha1File}" with code ${code}`));
       }
     });
 
@@ -226,6 +247,15 @@ function parseSha1Records(content) {
 
   console.log(`[SHA1] 🔍 Parsing SHA1 records (${lines.length} lines of content)`);
 
+  // 调试：显示前几行内容
+  if (lines.length > 0) {
+    console.log(`[SHA1] 📄 Sample content (first 3 lines):`);
+    for (let i = 0; i < Math.min(3, lines.length); i++) {
+      const line = lines[i];
+      console.log(`  Line ${i + 1}: "${line}" (length: ${line.length}, trimmed: "${line.trim()}")`);
+    }
+  }
+
   // SHA1哈希验证正则表达式（预编译以提高性能）
   const sha1Regex = /^[a-f0-9]{40}$/i;
   let validRecords = 0;
@@ -239,21 +269,37 @@ function parseSha1Records(content) {
       continue;
     }
 
-    if (!trimmed.includes('*')) {
+    let filename, hash;
+
+    // 尝试多种SHA1文件格式
+    if (trimmed.includes('*')) {
+      // 标准格式: filename * hash
+      const starIndex = trimmed.indexOf('*');
+      filename = trimmed.substring(0, starIndex).trim();
+      hash = trimmed.substring(starIndex + 1).trim();
+    } else if (trimmed.includes(' ')) {
+      // 空格分隔格式: hash filename 或 filename hash
+      const parts = trimmed.split(/\s+/);
+      if (parts.length >= 2) {
+        // 检查第一个部分是否是SHA1哈希
+        if (sha1Regex.test(parts[0])) {
+          hash = parts[0];
+          filename = parts.slice(1).join(' ');
+        } else {
+          // 假设最后一个部分是SHA1哈希
+          hash = parts[parts.length - 1];
+          filename = parts.slice(0, -1).join(' ');
+        }
+      } else {
+        invalidRecords++;
+        console.warn(`[SHA1] ⚠️ Unrecognized format (insufficient parts): ${trimmed.substring(0, 50)}...`);
+        continue;
+      }
+    } else {
       invalidRecords++;
-      console.warn(`[SHA1] ⚠️ Invalid line format (no '*'): ${trimmed.substring(0, 50)}...`);
+      console.warn(`[SHA1] ⚠️ Invalid line format (no separator): ${trimmed.substring(0, 50)}...`);
       continue;
     }
-
-    // 使用indexOf优化分割
-    const starIndex = trimmed.indexOf('*');
-    if (starIndex === -1) {
-      invalidRecords++;
-      continue;
-    }
-
-    const filename = trimmed.substring(0, starIndex).trim();
-    const hash = trimmed.substring(starIndex + 1).trim();
 
     // 验证SHA1格式（使用预编译正则表达式）
     if (sha1Regex.test(hash)) {

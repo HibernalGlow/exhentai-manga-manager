@@ -648,19 +648,29 @@
           </el-col>
           <el-col :span="8">
             <div class="setting-line">
-                <el-checkbox v-model="setting.matchTitleOnly" style="margin-right:12px">
-                  仅用标题匹配（title/title_jpn）
-                </el-checkbox>
-                <el-checkbox v-model="setting.matchHash" style="margin-right:12px">
-                  启用 hash 匹配
-                </el-checkbox>
-                <el-checkbox v-model="setting.fastMatch" style="margin-right:12px">
-                  ⚡ 快速匹配模式
-                </el-checkbox>
+              <div style="margin-bottom: 8px;">
+                <strong style="color: var(--el-text-color-primary); margin-bottom: 8px; display: block;">匹配策略</strong>
+                <div style="display: flex; flex-wrap: wrap; gap: 12px;">
+                  <el-checkbox v-model="setting.matchTitleOnly" style="margin-right: 0;">
+                    仅用标题匹配（title/title_jpn）
+                  </el-checkbox>
+                  <el-checkbox v-model="setting.matchHash" style="margin-right: 0;">
+                    启用 hash 匹配
+                  </el-checkbox>
+                  <el-checkbox v-model="setting.matchSha1" style="margin-right: 0;">
+                    启用 SHA1 压缩包匹配
+                  </el-checkbox>
+                  <el-checkbox v-model="setting.fastMatch" style="margin-right: 0;">
+                    ⚡ 快速匹配模式
+                  </el-checkbox>
+                </div>
+              </div>
+              <div style="margin-top: 12px;">
                 <el-button class="function-button" type="primary" plain @click="importMetadataFromSqlite">{{
                     $t('m.importMetadataFromSqlite')
                   }}
                 </el-button>
+              </div>
             </div>
           </el-col>
           <el-col :span="8">
@@ -1385,6 +1395,11 @@ onMounted(() => {
     if (res.batchTranslationSize === undefined) setting.value.batchTranslationSize = 10
     setting.value.concurrentScan = normalizeConcurrency(res.concurrentScan, defaultConcurrentScan)
     setting.value.concurrentWrite = normalizeConcurrency(res.concurrentWrite, defaultConcurrentWrite)
+    
+    // Matching defaults
+    if (res.matchSha1 === undefined) setting.value.matchSha1 = true
+    if (res.fastMatch === undefined) setting.value.fastMatch = true
+    
     // libray folders
     const okPath = validateLibrariesShallow(setting.value.libraries)
     if (!okPath) {
@@ -1725,6 +1740,7 @@ const importMetadataFromSqlite = async () => {
   const matchOptions = {
     matchTitleOnly: setting.value.matchTitleOnly,
     matchHash: setting.value.matchHash,
+    matchSha1: setting.value.matchSha1,
     fastMatch: setting.value.fastMatch,
     trimTitleRegExp: setting.value.trimTitleRegExp  // 传递裁剪标题正则表达式
   }
