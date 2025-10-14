@@ -71,7 +71,9 @@ const {
   findMatchesByTitle,
   refineMatchesWithJapaneseTitle,
   parseMetadataTags,
-  matchByHash
+  matchByHash,
+  matchBySha1FromArchive,
+  matchBySha1Online
 } = require('./modules/sqlite_import')
 const { cleanFolderManga } = require('./modules/clean_utils')
 
@@ -1405,6 +1407,38 @@ ipcMain.handle('repair-missing-covers', async (event, arg) => {
   return { repairedCount }
 })
 
+// Function to find archive file in folder for SHA1 matching
+function findArchiveInFolder(dir) {
+  try {
+    if (!fs.existsSync(dir)) {
+      return null
+    }
+
+    const files = fs.readdirSync(dir)
+    // 查找7z文件，优先选择包含sha1或hash的文件名
+    const archives = files.filter(file => {
+      const ext = path.extname(file).toLowerCase()
+      return ext === '.7z' || ext === '.zip' || ext === '.rar'
+    })
+
+    if (archives.length === 0) {
+      return null
+    }
+
+    // 优先选择包含sha1、hash、checksum等关键词的文件
+    const priorityArchives = archives.filter(archive => {
+      const name = archive.toLowerCase()
+      return name.includes('sha1') || name.includes('hash') || name.includes('checksum')
+    })
+
+    const selectedArchive = priorityArchives.length > 0 ? priorityArchives[0] : archives[0]
+    return path.join(dir, selectedArchive)
+  } catch (error) {
+    console.error('Failed to find archive in folder:', error)
+    return null
+  }
+}
+
 // Function to read the .ehviewer file
 function getEhviewerDataManually(dir) {
   try {
@@ -1537,6 +1571,22 @@ ipcMain.handle('fill-no-category-metadata', async (event, bookList) => {
             if (metadata) {
               matchMethod = 'Hash'
               sendMessageToWebContents(`   ✅ Matched by hash: ${firstMatch.gid}/${firstMatch.token}`)
+            }
+          }
+        }
+
+        // 步骤3.5: 使用压缩包中的SHA1记录匹配
+        if (!metadata && book.type === 'folder') {
+          const archivePath = findArchiveInFolder(book.filepath)
+          if (archivePath) {
+            sendMessageToWebContents(`   🔍 Trying SHA1 archive match: ${path.basename(archivePath)}`)
+            const sha1Match = await matchBySha1FromArchive(archivePath, book.title || path.parse(book.filepath).name, db)
+            if (sha1Match) {
+              metadata = await db.get('SELECT * FROM gallery WHERE gid = ? AND token = ?', [sha1Match.gid, sha1Match.token])
+              if (metadata) {
+                matchMethod = 'SHA1-Archive'
+                sendMessageToWebContents(`   ✅ Matched by SHA1 archive: ${sha1Match.gid}/${sha1Match.token}`)
+              }
             }
           }
         }
@@ -2509,8 +2559,34 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                       foundKeys.push(...hashKeys)
                     }
                   }
+
+                  // 如果 hash 没匹配到，尝试SHA1在线搜索匹配
+                  if (foundKeys.length === 0 && book.type === 'folder') {
+                    const archivePath = findArchiveInFolder(book.filepath)
+                    if (archivePath) {
+                      try {
+                        const sha1Map = await require('./modules/sha1_archive_matcher').getSha1MapFromArchive(archivePath)
+                        const sha1 = require('./modules/sha1_archive_matcher').matchSha1ByFilename(originalFilename, sha1Map)
+                        if (sha1) {
+                          sendMessageToWebContents(`🔍 [SHA1在线] 尝试搜索: ${sha1}`)
+                          const onlineMatch = await matchBySha1Online(sha1, matchOptions?.defaultScraper || 'exhentai', wcId)
+                          if (onlineMatch) {
+                            // 从URL中提取gid和token
+                            const urlMatch = onlineMatch.url.match(/\/g\/(\d+)\/([a-f0-9]+)/)
+                            if (urlMatch) {
+                              const [, gid, token] = urlMatch
+                              foundKeys.push({ gid: parseInt(gid), token })
+                              sendMessageToWebContents(`✅ [SHA1在线] 匹配成功: gid=${gid}`)
+                            }
+                          }
+                        }
+                      } catch (error) {
+                        console.error('SHA1 online match error:', error)
+                      }
+                    }
+                  }
                   
-                  // 如果 hash 没匹配到，使用标题匹配（使用独立模块）
+                  // 如果 hash 和 SHA1 都没匹配到，使用标题匹配（使用独立模块）
                   if (foundKeys.length === 0) {
                     foundKeys = await findMatchesByTitle(searchTerm, originalFilename, titleMap, global.titleArray, 'fast-match')
                     // 输出调试信息

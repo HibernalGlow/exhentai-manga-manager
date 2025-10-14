@@ -10,6 +10,11 @@ const {
   calculateSimilarity,
   generateVariants
 } = require('./string_utils')
+const {
+  getSha1MapFromArchive,
+  matchSha1ByFilename,
+  matchBySha1InDatabase
+} = require('./sha1_archive_matcher')
 
 /**
  * 验证关键词是否有效（只允许中文和日文字符，且不是通用名称）
@@ -575,10 +580,53 @@ function matchByHash(book, hashIndex) {
   
   return []
 }
+
+/**
+ * 使用压缩包中的SHA1记录进行匹配
+ * @param {string} archivePath - 压缩包路径
+ * @param {string} filename - 文件名
+ * @param {Object} db - 数据库连接
+ * @returns {Promise<Object|null>} 匹配结果或null
+ */
+async function matchBySha1FromArchive(archivePath, filename, db) {
+  try {
+    // 从压缩包中获取SHA1映射
+    const sha1Map = await getSha1MapFromArchive(archivePath)
+    if (sha1Map.size === 0) {
+      return null
+    }
+
+    // 根据文件名匹配SHA1
+    const sha1 = matchSha1ByFilename(filename, sha1Map)
+    if (!sha1) {
+      return null
+    }
+
+    console.log(`[SHA1] "${filename}" -> Found SHA1: ${sha1}`)
+
+    // 使用SHA1在数据库中匹配
+    const metadata = await matchBySha1InDatabase(sha1, db)
+    if (metadata) {
+      console.log(`[SHA1] "${filename}" -> ✅ Database match found: gid=${metadata.gid}, token=${metadata.token}`)
+      return {
+        gid: metadata.gid,
+        token: metadata.token,
+        hash: sha1,
+        source: 'sha1_archive'
+      }
+    }
+
+    return null
+  } catch (error) {
+    console.error('SHA1 archive matching error:', error)
+    return null
+  }
+}
 module.exports = {
   buildTitleIndex,
   findMatchesByTitle,
   refineMatchesWithJapaneseTitle,
   parseMetadataTags,
-  matchByHash
+  matchByHash,
+  matchBySha1FromArchive
 }
