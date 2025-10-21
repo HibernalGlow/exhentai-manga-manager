@@ -398,8 +398,8 @@ async function matchBySha1InDatabase(sha1, db) {
 
   try {
     console.log(`[SHA1] 🔍 Querying database for SHA1: ${sha1}`);
-    const sql = 'SELECT * FROM Metadata WHERE hash = ?';
-    const result = await db.get(sql, sha1);
+    const sql = 'SELECT * FROM gallery WHERE thumb LIKE ?';
+    const result = await db.get(sql, `%${sha1}%`);
 
     if (result) {
       console.log(`[SHA1] ✅ Database match found: gid=${result.gid}, token=${result.token}, title="${result.title}"`);
