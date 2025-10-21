@@ -143,7 +143,7 @@ const loadBlacklist = () => {
             reason: item.reason || '未知原因',
             filename: item.filename,
             fullPath: item.fullPath,
-            addedAt: data.lastUpdate || new Date().toISOString()
+            addedAt: item.addedAt || data.lastUpdate || new Date().toISOString()
           })
         }
       } else if (version === '1.1') {

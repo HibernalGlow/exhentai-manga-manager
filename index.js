@@ -1561,7 +1561,11 @@ ipcMain.handle('fill-no-category-metadata', async (event, bookList) => {
             metadata = await db.get('SELECT * FROM gallery WHERE gid = ? AND token = ?', [gid, token])
             if (metadata) {
               matchMethod = 'URL'
-              sendMessageToWebContents(`   ✅ Matched by URL token: ${gid}/${token}`)
+              sendMessageToWebContents(`╔══════════════════════════════════════════════════════════════╗
+║                        🎉 匹配成功! 🎉                        ║
+║ 匹配方式: URL Token                                             ║
+║ 匹配结果: ${gid}/${token}                                       ║
+╚══════════════════════════════════════════════════════════════╝`)
             }
           }
         }
@@ -1574,7 +1578,11 @@ ipcMain.handle('fill-no-category-metadata', async (event, bookList) => {
             metadata = await db.get('SELECT * FROM gallery WHERE gid = ? AND token = ?', [ehviewerData.gid, ehviewerData.token])
             if (metadata) {
               matchMethod = '.ehviewer'
-              sendMessageToWebContents(`   ✅ Matched by .ehviewer file: ${ehviewerData.gid}/${ehviewerData.token}`)
+              sendMessageToWebContents(`╔══════════════════════════════════════════════════════════════╗
+║                        🎉 匹配成功! 🎉                        ║
+║ 匹配方式: .ehviewer文件                                         ║
+║ 匹配结果: ${ehviewerData.gid}/${ehviewerData.token}             ║
+╚══════════════════════════════════════════════════════════════╝`)
             }
           }
         }
@@ -1588,7 +1596,11 @@ ipcMain.handle('fill-no-category-metadata', async (event, bookList) => {
             metadata = await db.get('SELECT * FROM gallery WHERE gid = ? AND token = ?', [firstMatch.gid, firstMatch.token])
             if (metadata) {
               matchMethod = 'Hash'
-              sendMessageToWebContents(`   ✅ Matched by hash: ${firstMatch.gid}/${firstMatch.token}`)
+              sendMessageToWebContents(`╔══════════════════════════════════════════════════════════════╗
+║                        🎉 匹配成功! 🎉                        ║
+║ 匹配方式: Hash                                                  ║
+║ 匹配结果: ${firstMatch.gid}/${firstMatch.token}                     ║
+╚══════════════════════════════════════════════════════════════╝`)
             }
           }
         }
@@ -1603,7 +1615,11 @@ ipcMain.handle('fill-no-category-metadata', async (event, bookList) => {
               metadata = await db.get('SELECT * FROM gallery WHERE gid = ? AND token = ?', [sha1Match.gid, sha1Match.token])
               if (metadata) {
                 matchMethod = 'SHA1-Archive'
-                sendMessageToWebContents(`   ✅ Matched by SHA1 archive: ${sha1Match.gid}/${sha1Match.token}`)
+                sendMessageToWebContents(`╔══════════════════════════════════════════════════════════════╗
+║                        🎉 匹配成功! 🎉                        ║
+║ 匹配方式: SHA1压缩包                                             ║
+║ 匹配结果: ${sha1Match.gid}/${sha1Match.token}                     ║
+╚══════════════════════════════════════════════════════════════╝`)
               }
             }
           }
@@ -1621,7 +1637,11 @@ ipcMain.handle('fill-no-category-metadata', async (event, bookList) => {
             metadata = await refineMatchesWithJapaneseTitle(foundKeys, filename, db)
             if (metadata) {
               matchMethod = 'Title'
-              sendMessageToWebContents(`   ✅ Matched by title: ${metadata.gid}/${metadata.token}`)
+              sendMessageToWebContents(`╔══════════════════════════════════════════════════════════════╗
+║                        🎉 匹配成功! 🎉                        ║
+║ 匹配方式: 标题匹配                                                ║
+║ 匹配结果: ${metadata.gid}/${metadata.token}                       ║
+╚══════════════════════════════════════════════════════════════╝`)
             }
           } else {
             sendMessageToWebContents(`   ❌ No title matches found`)
@@ -2586,7 +2606,11 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                       const sha1Match = await matchBySha1FromArchive(archivePath, originalFilename, db)
                       if (sha1Match) {
                         foundKeys.push({ gid: sha1Match.gid, token: sha1Match.token })
-                        sendMessageToWebContents(`✅ [SHA1压缩包] 匹配成功: gid=${sha1Match.gid}`)
+                        sendMessageToWebContents(`╔══════════════════════════════════════════════════════════════╗
+║                        🎉 匹配成功! 🎉                        ║
+║ 匹配方式: SHA1压缩包                                             ║
+║ 匹配结果: gid=${sha1Match.gid}                                  ║
+╚══════════════════════════════════════════════════════════════╝`)
                       }
                     }
                   }
@@ -2612,10 +2636,22 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                   }
                   
                   if (!metadata) {
-                    // 匹配失败，加入黑名单
+                    // 匹配失败，加入黑名单 - 根据失败阶段设置不同reason
+                    let failureReason = '自动添加（匹配失败）'
+                    if (matchOptions?.matchHash && book.hash && global.hashIndex) {
+                      // Hash匹配已启用但失败
+                      failureReason = '自动添加（Hash匹配失败）'
+                    } else if (matchOptions?.matchSha1) {
+                      // SHA1匹配已启用但失败
+                      failureReason = '自动添加（SHA1匹配失败）'
+                    } else {
+                      // 标题匹配失败
+                      failureReason = '自动添加（标题匹配失败）'
+                    }
+                    
                     const bookKey = `${book.id}|${book.title}`
                     blacklist.set(bookKey, {
-                      reason: '自动添加（匹配失败）',
+                      reason: failureReason,
                       filename: book.title,
                       fullPath: book.filepath,
                       addedAt: new Date().toISOString()
@@ -2623,7 +2659,7 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                     blacklisted++
                     
                     // 移除"标题过短跳过"的提示，所有未匹配的都显示相同消息
-                    sendMessageToWebContents(`❌ [Fast] 未匹配: "${filename}" (已加入黑名单)`)
+                    sendMessageToWebContents(`❌ [Fast] 未匹配: "${filename}" (已加入黑名单: ${failureReason})`)
                   }
                 } else {
                   // 原始匹配模式（直接 SQL 查询，无归一化支持，不推荐）
@@ -2644,16 +2680,25 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                   metadata = await db.get(sql, ...params);
                   
                   if (!metadata) {
-                    // 匹配失败，加入黑名单
+                    // 匹配失败，加入黑名单 - 根据匹配选项设置不同reason
+                    let failureReason = '自动添加（匹配失败）'
+                    if (matchOptions?.matchTitleOnly) {
+                      failureReason = '自动添加（仅标题匹配失败）'
+                    } else if (matchOptions?.matchHash && book.hash) {
+                      failureReason = '自动添加（Hash匹配失败）'
+                    } else {
+                      failureReason = '自动添加（SQL匹配失败）'
+                    }
+                    
                     const bookKey = `${book.id}|${book.title}`
                     blacklist.set(bookKey, {
-                      reason: '自动添加（匹配失败）',
+                      reason: failureReason,
                       filename: book.title,
                       fullPath: book.filepath,
                       addedAt: new Date().toISOString()
                     })
                     blacklisted++
-                    sendMessageToWebContents(`❌ [SQL] 未匹配: "${filename}" (已加入黑名单)`);
+                    sendMessageToWebContents(`❌ [SQL] 未匹配: "${filename}" (已加入黑名单: ${failureReason})`);
                   } else {
                     matchType = 'SQL';
                   }
@@ -2678,7 +2723,13 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                   const originalFileName = path.parse(bookPath).name;
                   // 优先显示日文标题
                   const matchedTitle = metadata.title_jpn || metadata.title || 'N/A';
-                  sendMessageToWebContents(`✅ [${matchType}] "${originalFileName}" -> "${matchedTitle}" (gid:${metadata.gid})`);
+                  sendMessageToWebContents(`╔══════════════════════════════════════════════════════════════╗
+║                        🎉 匹配成功! 🎉                        ║
+║ 匹配方式: ${matchType}                                            ║
+║ 文件名: "${originalFileName}"                                     ║
+║ 匹配标题: "${matchedTitle}"                                       ║
+║ GID: ${metadata.gid}                                              ║
+╚══════════════════════════════════════════════════════════════╝`);
                 }
                 matched++;
               }

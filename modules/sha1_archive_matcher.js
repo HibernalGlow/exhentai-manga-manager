@@ -380,7 +380,18 @@ function matchSha1ByFilename(filename, sha1Map) {
     }
   }
 
-  console.log(`[SHA1] ❌ No SHA1 match found for: "${filename}" (basename: "${basename}")`);
+  // 尝试匹配目录名（去掉扩展名）
+  const nameWithoutExt = path.parse(basename).name;
+  for (const [key, value] of sha1Map) {
+    // 提取SHA1记录中的目录名（第一个/之前的部分）
+    const dirName = key.split('/')[0];
+    if (dirName === nameWithoutExt) {
+      console.log(`[SHA1] ✅ Directory name match: "${nameWithoutExt}" -> ${value} (from "${key}")`);
+      return value;
+    }
+  }
+
+  console.log(`[SHA1] ❌ No SHA1 match found for: "${filename}" (basename: "${basename}", nameWithoutExt: "${nameWithoutExt}")`);
   return null;
 }
 
@@ -429,26 +440,24 @@ async function matchBySha1FromArchive(archivePath, filename, db) {
       return null;
     }
 
-    // 根据文件名匹配SHA1
-    const sha1 = matchSha1ByFilename(filename, sha1Map);
-    if (!sha1) {
-      return null;
+    console.log(`[SHA1] "${filename}" -> Found ${sha1Map.size} SHA1 records, trying to match any of them in database`);
+
+    // 遍历所有SHA1，尝试在数据库中匹配
+    for (const [filePath, sha1] of sha1Map) {
+      console.log(`[SHA1] Trying SHA1: ${sha1} (from "${filePath}")`);
+      const metadata = await matchBySha1InDatabase(sha1, db);
+      if (metadata) {
+        console.log(`[SHA1] "${filename}" -> ✅ Database match found using SHA1: ${sha1}`);
+        return {
+          gid: metadata.gid,
+          token: metadata.token,
+          hash: sha1,
+          source: 'sha1_archive'
+        };
+      }
     }
 
-    console.log(`[SHA1] "${filename}" -> Found SHA1: ${sha1}`);
-
-    // 使用SHA1在数据库中匹配
-    const metadata = await matchBySha1InDatabase(sha1, db);
-    if (metadata) {
-      console.log(`[SHA1] "${filename}" -> ✅ Database match found: gid=${metadata.gid}, token=${metadata.token}`);
-      return {
-        gid: metadata.gid,
-        token: metadata.token,
-        hash: sha1,
-        source: 'sha1_archive'
-      };
-    }
-
+    console.log(`[SHA1] "${filename}" -> ❌ No SHA1 from archive matched in database`);
     return null;
   } catch (error) {
     console.error('SHA1 archive matching error:', error);
