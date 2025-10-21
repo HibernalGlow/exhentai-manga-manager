@@ -589,25 +589,27 @@ function matchByHash(book, hashIndex) {
  * @returns {Promise<Object|null>} 匹配结果或null
  */
 async function matchBySha1FromArchive(archivePath, filename, db) {
+  console.log(`[SHA1] 🎯 Starting SHA1 archive matching for "${filename}" using archive: ${path.basename(archivePath)}`)
+
   try {
     // 从压缩包中获取SHA1映射
     const sha1Map = await getSha1MapFromArchive(archivePath)
     if (sha1Map.size === 0) {
+      console.log(`[SHA1] ⚠️ No SHA1 records found in archive: ${path.basename(archivePath)}`)
       return null
     }
 
     // 根据文件名匹配SHA1
     const sha1 = matchSha1ByFilename(filename, sha1Map)
     if (!sha1) {
+      console.log(`[SHA1] ❌ No SHA1 match found for "${filename}" in archive: ${path.basename(archivePath)}`)
       return null
     }
-
-    console.log(`[SHA1] "${filename}" -> Found SHA1: ${sha1}`)
 
     // 使用SHA1在数据库中匹配
     const metadata = await matchBySha1InDatabase(sha1, db)
     if (metadata) {
-      console.log(`[SHA1] "${filename}" -> ✅ Database match found: gid=${metadata.gid}, token=${metadata.token}`)
+      console.log(`[SHA1] 🎉 Complete match success: "${filename}" -> SHA1: ${sha1} -> DB: gid=${metadata.gid}, token=${metadata.token}`)
       return {
         gid: metadata.gid,
         token: metadata.token,
@@ -616,9 +618,10 @@ async function matchBySha1FromArchive(archivePath, filename, db) {
       }
     }
 
+    console.log(`[SHA1] ⚠️ SHA1 found (${sha1}) but no database match for "${filename}"`)
     return null
   } catch (error) {
-    console.error('SHA1 archive matching error:', error)
+    console.error(`[SHA1] 💥 SHA1 archive matching failed for "${filename}":`, error.message)
     return null
   }
 }

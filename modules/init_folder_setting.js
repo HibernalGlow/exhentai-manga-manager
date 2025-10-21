@@ -127,29 +127,86 @@ const loadBlacklist = () => {
     
     if (fs.existsSync(blacklistPath)) {
       const data = JSON.parse(fs.readFileSync(blacklistPath, { encoding: 'utf-8' }))
-      const blacklistSet = new Set(data.blacklist || [])
-      console.log(`[黑名单加载] ✅ 加载成功! 黑名单数量: ${blacklistSet.size}`)
-      return blacklistSet
+      
+      // 版本兼容性检查
+      const version = data.version || '1.0'
+      console.log(`[黑名单加载] 文件版本: ${version}, 当前支持版本: 2.0`)
+      
+      let blacklistMap = new Map()
+      
+      if (version === '2.0') {
+        // 新格式：对象结构
+        const blacklistObj = data.blacklist || {}
+        for (const [bookId, item] of Object.entries(blacklistObj)) {
+          const key = `${bookId}|${item.filename}`
+          blacklistMap.set(key, {
+            reason: item.reason || '未知原因',
+            filename: item.filename,
+            fullPath: item.fullPath,
+            addedAt: data.lastUpdate || new Date().toISOString()
+          })
+        }
+      } else if (version === '1.1') {
+        // 1.1版本：数组结构
+        const blacklistArray = data.blacklist || []
+        blacklistArray.forEach(item => {
+          if (typeof item === 'object' && item.key) {
+            blacklistMap.set(item.key, {
+              reason: item.reason,
+              addedAt: item.addedAt
+            })
+          }
+        })
+      } else if (version === '1.0') {
+        // 旧版本：简单数组
+        const blacklistArray = data.blacklist || []
+        blacklistArray.forEach(item => {
+          if (typeof item === 'string') {
+            blacklistMap.set(item, {
+              reason: '自动添加',
+              addedAt: data.lastUpdate || new Date().toISOString()
+            })
+          }
+        })
+      }
+      
+      console.log(`[黑名单加载] ✅ 加载成功! 黑名单数量: ${blacklistMap.size}`)
+      return blacklistMap
     } else {
       console.log(`[黑名单加载] ℹ️ 文件不存在，返回空黑名单`)
     }
   } catch (e) {
     console.log('[黑名单加载] ❌ 加载失败:', e)
   }
-  return new Set()
+  return new Map()
 }
 
-const saveBlacklist = (blacklistSet) => {
+const saveBlacklist = (blacklistMap) => {
   try {
     const blacklistPath = getBlacklistPath()
     console.log(`[黑名单保存] STORE_PATH: ${STORE_PATH}`)
     console.log(`[黑名单保存] 保存路径: ${blacklistPath}`)
-    console.log(`[黑名单保存] 黑名单数量: ${blacklistSet.size}`)
+    console.log(`[黑名单保存] 黑名单数量: ${blacklistMap.size}`)
+    
+    // 转换为2.0版本的对象格式
+    const blacklistObj = {}
+    for (const [key, data] of blacklistMap.entries()) {
+      // 从key中解析bookId和filename，格式为 "bookId|filename"
+      const parts = key.split('|')
+      const bookId = parts[0]
+      const filename = parts.slice(1).join('|') // 处理文件名中可能包含|的情况
+      
+      blacklistObj[bookId] = {
+        filename: data.filename || filename,
+        fullPath: data.fullPath || '',
+        reason: data.reason || '未知原因'
+      }
+    }
     
     const data = {
-      version: '1.0',
+      version: '2.0',
       lastUpdate: new Date().toISOString(),
-      blacklist: Array.from(blacklistSet)
+      blacklist: blacklistObj
     }
     
     fs.writeFileSync(blacklistPath, JSON.stringify(data, null, 2), { encoding: 'utf-8' })

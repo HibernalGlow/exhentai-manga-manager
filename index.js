@@ -213,7 +213,9 @@ process
 
 const sendMessageToWebContents = (message) => {
   console.log(message)
-  mainWindow.webContents.send('send-message', message)
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('send-message', message)
+  }
 }
 
 let mainWindow
@@ -2609,7 +2611,12 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                   if (!metadata) {
                     // 匹配失败，加入黑名单
                     const bookKey = `${book.id}|${book.title}`
-                    blacklist.add(bookKey)
+                    blacklist.set(bookKey, {
+                      reason: '自动添加（匹配失败）',
+                      filename: book.title,
+                      fullPath: book.filepath,
+                      addedAt: new Date().toISOString()
+                    })
                     blacklisted++
                     
                     // 移除"标题过短跳过"的提示，所有未匹配的都显示相同消息
@@ -2636,7 +2643,12 @@ ipcMain.handle('import-sqlite', async (event, arg) => {
                   if (!metadata) {
                     // 匹配失败，加入黑名单
                     const bookKey = `${book.id}|${book.title}`
-                    blacklist.add(bookKey)
+                    blacklist.set(bookKey, {
+                      reason: '自动添加（匹配失败）',
+                      filename: book.title,
+                      fullPath: book.filepath,
+                      addedAt: new Date().toISOString()
+                    })
                     blacklisted++
                     sendMessageToWebContents(`❌ [SQL] 未匹配: "${filename}" (已加入黑名单)`);
                   } else {
@@ -2804,6 +2816,82 @@ ipcMain.handle('get-blacklist-stats', async (event, customPath) => {
     }
   } catch (e) {
     console.log('Get blacklist stats error:', e)
+    return { success: false, error: e.message }
+  }
+})
+
+// 手动添加项目到黑名单
+ipcMain.handle('add-to-blacklist', async (event, { book, reason = '手动添加' }) => {
+  try {
+    const blacklist = loadBlacklist()
+    const bookKey = `${book.id}|${book.title}`
+    
+    blacklist.set(bookKey, {
+      reason: reason,
+      filename: book.title,
+      fullPath: book.filepath,
+      addedAt: new Date().toISOString()
+    })
+    
+    const saved = saveBlacklist(blacklist)
+    if (saved) {
+      sendMessageToWebContents(`✅ 已将 "${book.title}" 添加到黑名单 (原因: ${reason})`)
+      return { success: true, key: bookKey }
+    } else {
+      sendMessageToWebContents(`❌ 添加黑名单失败`)
+      return { success: false, error: '保存失败' }
+    }
+  } catch (e) {
+    console.log('Add to blacklist error:', e)
+    sendMessageToWebContents(`❌ 添加黑名单失败: ${e.message}`)
+    return { success: false, error: e.message }
+  }
+})
+
+// 从黑名单中移除项目
+ipcMain.handle('remove-from-blacklist', async (event, bookKey) => {
+  try {
+    const blacklist = loadBlacklist()
+    
+    if (blacklist.has(bookKey)) {
+      blacklist.delete(bookKey)
+      const saved = saveBlacklist(blacklist)
+      if (saved) {
+        sendMessageToWebContents(`✅ 已从黑名单中移除项目: ${bookKey}`)
+        return { success: true }
+      } else {
+        sendMessageToWebContents(`❌ 移除黑名单项目失败`)
+        return { success: false, error: '保存失败' }
+      }
+    } else {
+      return { success: false, error: '项目不在黑名单中' }
+    }
+  } catch (e) {
+    console.log('Remove from blacklist error:', e)
+    sendMessageToWebContents(`❌ 移除黑名单项目失败: ${e.message}`)
+    return { success: false, error: e.message }
+  }
+})
+
+// 获取黑名单详情
+ipcMain.handle('get-blacklist-details', async (event) => {
+  try {
+    const blacklist = loadBlacklist()
+    const details = Array.from(blacklist.entries()).map(([key, data]) => ({
+      key,
+      reason: data.reason,
+      filename: data.filename,
+      fullPath: data.fullPath,
+      addedAt: data.addedAt
+    }))
+    
+    return {
+      success: true,
+      details: details,
+      count: blacklist.size
+    }
+  } catch (e) {
+    console.log('Get blacklist details error:', e)
     return { success: false, error: e.message }
   }
 })
@@ -3428,14 +3516,29 @@ let LANBrowsingInstance
 const enableLANBrowsing = () => {
   if (LANBrowsingInstance?.listening) {
     LANBrowsingInstance.close(() => {
-      LANBrowsingInstance = LANBrowsing.listen(port, '0.0.0.0', () => {
-        sendMessageToWebContents(`LAN browsing restart and listening at http://0.0.0.0:${port}`)
-      })
+      startLANBrowsingServer()
     })
   } else {
-    LANBrowsingInstance = LANBrowsing.listen(port, '0.0.0.0', () => {
-      sendMessageToWebContents(`LAN browsing listening at http://0.0.0.0:${port}`)
+    startLANBrowsingServer()
+  }
+}
+
+const startLANBrowsingServer = (retryPort = port) => {
+  try {
+    LANBrowsingInstance = LANBrowsing.listen(retryPort, '0.0.0.0', () => {
+      sendMessageToWebContents(`LAN browsing listening at http://0.0.0.0:${retryPort}`)
+    }).on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.log(`Port ${retryPort} is already in use, trying port ${retryPort + 1}`)
+        startLANBrowsingServer(retryPort + 1)
+      } else {
+        console.error('LAN browsing server error:', err)
+        sendMessageToWebContents(`LAN browsing failed to start: ${err.message}`)
+      }
     })
+  } catch (err) {
+    console.error('Failed to start LAN browsing server:', err)
+    sendMessageToWebContents(`LAN browsing failed to start: ${err.message}`)
   }
 }
 

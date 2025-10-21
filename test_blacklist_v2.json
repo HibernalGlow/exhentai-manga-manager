@@ -1,0 +1,16 @@
+{
+  "version": "2.0",
+  "lastUpdate": "2024-01-01T00:00:00.000Z",
+  "blacklist": {
+    "book_id_1": {
+      "filename": "example.zip",
+      "fullPath": "C:\\path\\to\\example.zip",
+      "reason": "手动添加"
+    },
+    "book_id_2": {
+      "filename": "auto_example.zip",
+      "fullPath": "C:\\path\\to\\auto_example.zip",
+      "reason": "自动添加"
+    }
+  }
+}
