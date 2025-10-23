@@ -512,6 +512,261 @@ function registerAllHandlers(deps) {
     event.returnValue = path.sep
   })
 
+  // ==================== 额外的handlers ====================
+  
+  // 注册元数据修补handlers
+  const { registerMetadataPatchHandlers } = require('./metadata_patch_handlers')
+  registerMetadataPatchHandlers({
+    Manga,
+    Metadata,
+    sendMessageToWebContents,
+    setProgressBar,
+    TEMP_PATH,
+    COVER_PATH,
+    loadBookListFromDatabase: dependencies.loadBookListFromDatabase,
+    saveBookToDatabase: dependencies.saveBookToDatabase,
+    clearFolder,
+    createLimiter,
+    setting,
+    createAbortableContext: dependencies.createAbortableContext,
+    pathExists: dependencies.pathExists,
+    coverAndHashInMem: dependencies.coverAndHashInMem,
+    geneCover: dependencies.geneCover,
+    geneCoverFromBuffer: dependencies.geneCoverFromBuffer,
+    makeShardedPath: dependencies.makeShardedPath
+  })
+  
+  // get-additional-folder-trees: 获取额外的文件夹树（artist/group/parody）
+  const { QueryTypes } = require('sequelize')
+  const { ensureAttachedTx } = require('../database_helpers')
+  
+  ipcMain.handle('get-additional-folder-trees', async (_event) => {
+    const metadataSqliteFile = dependencies.metadataSqliteFile
+    return await Manga.sequelize.transaction(async (t) => {
+      await ensureAttachedTx(Manga.sequelize, t, 'meta', metadataSqliteFile)
+
+      await Manga.sequelize.query(
+        `
+        CREATE TEMP TABLE _src AS
+        SELECT
+          m.id,
+          COALESCE(md.tags, m.tags) AS tags_json
+        FROM Mangas AS m
+        LEFT JOIN meta.Metadata AS md
+          ON md.hash = m.hash
+        WHERE m.exist = 1
+        `,
+        { transaction: t }
+      )
+
+      try {
+        const artistRows = await Manga.sequelize.query(
+          `
+          SELECT
+            LOWER(TRIM(a.value)) AS name,
+            COUNT(DISTINCT s.id) AS count
+          FROM _src AS s
+          JOIN json_each(s.tags_json, '$.artist') AS a
+          WHERE json_valid(s.tags_json)
+            AND a.value IS NOT NULL
+            AND TRIM(a.value) <> ''
+          GROUP BY name COLLATE NOCASE
+          ORDER BY name COLLATE NOCASE ASC
+          `,
+          { type: QueryTypes.SELECT, transaction: t }
+        )
+
+        const groupRows = await Manga.sequelize.query(
+          `
+          SELECT
+            LOWER(TRIM(g.value)) AS name,
+            COUNT(DISTINCT s.id) AS count
+          FROM _src AS s
+          JOIN json_each(s.tags_json, '$.group') AS g
+          WHERE json_valid(s.tags_json)
+            AND g.value IS NOT NULL
+            AND TRIM(g.value) <> ''
+          GROUP BY name COLLATE NOCASE
+          ORDER BY name COLLATE NOCASE ASC
+          `,
+          { type: QueryTypes.SELECT, transaction: t }
+        )
+
+        const parodyRows = await Manga.sequelize.query(
+          `
+          SELECT
+            LOWER(TRIM(p.value)) AS name,
+            COUNT(DISTINCT s.id) AS count
+          FROM _src AS s
+          JOIN json_each(s.tags_json, '$.parody') AS p
+          WHERE json_valid(s.tags_json)
+            AND p.value IS NOT NULL
+            AND TRIM(p.value) <> ''
+          GROUP BY name COLLATE NOCASE
+          ORDER BY name COLLATE NOCASE ASC
+          `,
+          { type: QueryTypes.SELECT, transaction: t }
+        )
+
+        return {
+          artistList: artistRows.map(r => ({ name: r.name, count: Number(r.count) })),
+          groupList:  groupRows.map(r => ({ name: r.name, count: Number(r.count) })),
+          parodyList: parodyRows.map(r => ({ name: r.name, count: Number(r.count) })),
+        }
+      } finally {
+        await Manga.sequelize.query(`DROP TABLE IF EXISTS _src`, { transaction: t })
+      }
+    })
+  })
+  
+  // select-file: 选择文件对话框
+  ipcMain.handle('select-file', async (event, title, filters) => {
+    const { dialog } = require('electron')
+    const result = await dialog.showOpenDialog({
+      title: title || 'Select File',
+      filters: filters || [],
+      properties: ['openFile']
+    })
+    if (result.canceled) {
+      return null
+    }
+    return result.filePaths[0]
+  })
+  
+  // sqlite-vacuum-estimate: SQLite数据库清理估算
+  ipcMain.handle('sqlite-vacuum-estimate', async () => {
+    try {
+      const [pageCountRow] = await Manga.sequelize.query(
+        "PRAGMA page_count;",
+        { type: QueryTypes.SELECT }
+      )
+      const [freePagesRow] = await Manga.sequelize.query(
+        "PRAGMA freelist_count;",
+        { type: QueryTypes.SELECT }
+      )
+      const [pageSizeRow] = await Manga.sequelize.query(
+        "PRAGMA page_size;",
+        { type: QueryTypes.SELECT }
+      )
+
+      const pageCount = pageCountRow.page_count || 0
+      const freePages = freePagesRow.freelist_count || 0
+      const pageSize = pageSizeRow.page_size || 4096
+
+      const currentSize = pageCount * pageSize
+      const reclaimable = freePages * pageSize
+      const afterSize = currentSize - reclaimable
+
+      return {
+        currentSize,
+        reclaimable,
+        afterSize,
+        freePages,
+        pageCount
+      }
+    } catch (e) {
+      console.error('Vacuum estimate error:', e)
+      return {
+        currentSize: 0,
+        reclaimable: 0,
+        afterSize: 0,
+        error: e.message
+      }
+    }
+  })
+  
+  // remove-missing-records: 删除缺失记录
+  ipcMain.handle('remove-missing-records', async (event, arg = {}) => {
+    const { vacuum = false } = arg
+    sendMessageToWebContents('正在检查缺失的记录...')
+
+    try {
+      const bookList = await Manga.findAll({ raw: true })
+      const missingBooks = []
+
+      for (const book of bookList) {
+        const exists = await dependencies.pathExists(book.filepath)
+        if (!exists) {
+          missingBooks.push(book.id)
+        }
+      }
+
+      if (missingBooks.length > 0) {
+        await Manga.destroy({
+          where: {
+            id: missingBooks
+          }
+        })
+        sendMessageToWebContents(`已删除 ${missingBooks.length} 条缺失记录`)
+      } else {
+        sendMessageToWebContents('没有发现缺失的记录')
+      }
+
+      if (vacuum) {
+        sendMessageToWebContents('正在清理数据库...')
+        await Manga.sequelize.query('VACUUM')
+        sendMessageToWebContents('数据库清理完成')
+      }
+
+      return {
+        removedCount: missingBooks.length,
+        vacuumed: vacuum
+      }
+    } catch (e) {
+      console.error('Remove missing records error:', e)
+      throw e
+    }
+  })
+  
+  // 一些辅助的clipboard和window handlers
+  ipcMain.handle('copy-image-to-clipboard', async (event, filepath) => {
+    const { nativeImage } = require('electron')
+    try {
+      const image = nativeImage.createFromPath(filepath)
+      clipboard.writeImage(image)
+      return true
+    } catch (e) {
+      console.error('Copy image error:', e)
+      return false
+    }
+  })
+  
+  ipcMain.handle('copy-text-to-clipboard', async (event, text) => {
+    clipboard.writeText(text)
+    return true
+  })
+  
+  ipcMain.handle('read-text-from-clipboard', async () => {
+    return clipboard.readText()
+  })
+  
+  ipcMain.handle('update-window-title', async (event, title) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setTitle(title || 'ExHentai Manga Manager')
+    }
+  })
+  
+  ipcMain.handle('switch-fullscreen', async (event, arg) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const isFullScreen = mainWindow.isFullScreen()
+      mainWindow.setFullScreen(!isFullScreen)
+      return !isFullScreen
+    }
+    return false
+  })
+  
+  ipcMain.handle('show-folder', async (event, folderpath) => {
+    shell.showItemInFolder(folderpath)
+  })
+  
+  ipcMain.handle('open-url', async (event, url) => {
+    shell.openExternal(url)
+  })
+  
+  ipcMain.handle('show-file', async (event, filepath) => {
+    shell.showItemInFolder(filepath)
+  })
+
   // 注册翻译IPC处理器
   if (initTranslationIPC) {
     initTranslationIPC(ipcMain, { Manga, Metadata, STORE_PATH })
