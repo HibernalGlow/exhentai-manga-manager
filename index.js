@@ -99,6 +99,7 @@ const {
 
 preparePath()
 
+// ==================== 初始化和配置 ====================
 // 检查STORE_PATH是否正确初始化
 console.log('🔍 检查STORE_PATH状态:')
 console.log('  STORE_PATH:', STORE_PATH)
@@ -190,6 +191,8 @@ process
       console.log(err, 'Uncaught Exception thrown')
       process.exit(1)
     })
+
+// ==================== 窗口和UI管理 ====================
 
 const sendMessageToWebContents = (message) => {
   console.log(message)
@@ -616,6 +619,7 @@ const clearFolder = async (Folder) => {
 }
 
 
+// ==================== 核心IPC处理器 - 库和元数据管理 ====================
 /**=========    library and metadata  ================*/
 // helpers for parallel scan
 // Small concurrency limiter (p-limit style) with zero deps
@@ -2089,6 +2093,8 @@ ipcMain.handle('select-file', async (event, title, filters) => {
   }
 })
 
+// ==================== 设置和配置管理 ====================
+
 ipcMain.handle('load-setting', async (event, arg) => {
   return setting
 })
@@ -2199,6 +2205,10 @@ ipcMain.handle('import-database', async (event, arg) => {
   }
 })
 
+// ==================== @CUSTOM: import-sqlite 处理器 (约430行) ====================
+// 这是一个大型自定义IPC处理器，负责从SQLite数据库导入元数据
+// 功能：Hash匹配、SHA1匹配、标题匹配、黑名单管理
+// 合并时需要保留此代码块
 ipcMain.handle('import-sqlite', async (event, arg) => {
   const { bookList, matchOptions } = arg
   
@@ -2988,6 +2998,8 @@ ipcMain.handle("remove-missing-records", async (event, arg = {}) => {
 ipcMain.handle('set-progress-bar', async (event, progress) => {
   setProgressBar(progress)
 })
+
+// ==================== 系统和剪贴板操作 ====================
 
 ipcMain.handle('get-locale', async (event, arg) => {
   return app.getLocale()
