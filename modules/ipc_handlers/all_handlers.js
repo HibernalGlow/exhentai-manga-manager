@@ -396,6 +396,54 @@ function registerAllHandlers(deps) {
     getBlacklistPath: dependencies.getBlacklistPath
   })
 
+  // ==================== 排除规则处理器 ====================
+  
+  // apply-exclude-rules: 应用排除规则到数据库
+  ipcMain.handle('apply-exclude-rules', async (event) => {
+    const pattern = (setting.excludeFile || '').trim()
+    
+    if (!pattern) {
+      return { success: false, message: 'excludeFile pattern is empty' }
+    }
+    
+    try {
+      // Validate regex pattern
+      const excludeRe = new RegExp(pattern)
+      
+      // Get all books from database
+      const allBooks = await Manga.findAll({
+        attributes: ['id', 'filepath'],
+        raw: true
+      })
+      
+      // Find books that match exclude pattern
+      const toRemove = []
+      for (const book of allBooks) {
+        if (excludeRe.test(book.filepath)) {
+          toRemove.push(book.id)
+        }
+      }
+      
+      if (toRemove.length === 0) {
+        return { success: true, removedCount: 0, message: 'No matching records found' }
+      }
+      
+      // Remove matching books from database (but not delete files)
+      await Manga.destroy({
+        where: {
+          id: toRemove
+        }
+      })
+      
+      sendMessageToWebContents(`已应用排除规则，移除了 ${toRemove.length} 条记录`)
+      
+      return { success: true, removedCount: toRemove.length }
+    } catch (e) {
+      console.error('Apply exclude rules error:', e)
+      return { success: false, message: e.message }
+    }
+  })
+
   // ==================== 网络请求处理器 ====================
   
   // get-ex-webpage: 获取ExHentai网页内容（支持代理和cookie）
