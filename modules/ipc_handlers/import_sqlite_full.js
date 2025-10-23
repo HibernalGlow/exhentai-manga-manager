@@ -32,6 +32,8 @@ function registerImportSqliteFullHandlers(dependencies) {
     sendMessageToWebContents,
     setProgressBar,
     setting,
+    Manga,
+    Metadata,
     saveBookToDatabase,
     createAbortableContext,
     // 辅助函数
@@ -364,7 +366,7 @@ function registerImportSqliteFullHandlers(dependencies) {
                   _.assign(book, _.pick(metadata, ['tags', 'title', 'title_jpn', 'filecount', 'rating', 'posted', 'filesize', 'category', 'url']), { status: 'tagged' });
                   
                   // 实时保存到数据库（Manga 表 + Metadata 表）
-                  await saveBookToDatabase(book);
+                  await saveBookToDatabase(Manga, Metadata, book);
                   
                   if (matchType === 'SQL' || matchType === 'FastSQL') {
                     // 使用完整的文件原名（包含扩展名前的完整部分）

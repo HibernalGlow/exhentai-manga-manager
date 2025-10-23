@@ -370,6 +370,8 @@ function registerAllHandlers(deps) {
     sendMessageToWebContents,
     setProgressBar,
     setting,
+    Manga,
+    Metadata,
     saveBookToDatabase: dependencies.saveBookToDatabase,
     createAbortableContext: dependencies.createAbortableContext,
     // 辅助函数
