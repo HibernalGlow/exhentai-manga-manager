@@ -15,8 +15,7 @@ const {
   refineMatchesWithJapaneseTitle,
   parseMetadataTags,
   matchByHash,
-  matchBySha1FromArchive,
-  matchBySha1Online
+  matchBySha1FromArchive
 } = require('./sqlite_import')
 
 // 标题索引缓存（2小时过期）
@@ -72,7 +71,6 @@ module.exports = {
   parseMetadataTags,
   matchByHash,
   matchBySha1FromArchive,
-  matchBySha1Online,
   
   // 缓存管理
   titleIndexCache

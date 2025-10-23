@@ -70,7 +70,6 @@ const {
   parseMetadataTags,
   matchByHash,
   matchBySha1FromArchive,
-  matchBySha1Online,
   titleIndexCache
 } = require('./modules/custom_sqlite_import')
 
@@ -424,7 +423,6 @@ app.whenReady().then(async () => {
     parseMetadataTags,
     matchByHash,
     matchBySha1FromArchive,
-    matchBySha1Online,
     titleIndexCache,
     // 从 custom_blacklist 导入的函数
     loadBlacklist,

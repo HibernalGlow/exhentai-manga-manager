@@ -363,37 +363,8 @@ function registerAllHandlers(deps) {
 
   // ==================== SQLite导入处理器 ====================
   
-  // 注册 import-sqlite（如果模块存在）
-  try {
-    const { registerImportSqliteHandler } = require('./import_sqlite_handler')
-    registerImportSqliteHandler({
-      Manga,
-      Metadata,
-      setting,
-      sendMessageToWebContents,
-      setProgressBar,
-      // 自定义功能模块（从dependencies获取）
-      normalizeString: dependencies.normalizeString,
-      calculateSimilarity: dependencies.calculateSimilarity,
-      generateVariants: dependencies.generateVariants,
-      buildTitleIndex: dependencies.buildTitleIndex,
-      findMatchesByTitle: dependencies.findMatchesByTitle,
-      refineMatchesWithJapaneseTitle: dependencies.refineMatchesWithJapaneseTitle,
-      parseMetadataTags: dependencies.parseMetadataTags,
-      matchByHash: dependencies.matchByHash,
-      matchBySha1FromArchive: dependencies.matchBySha1FromArchive,
-      matchBySha1Online: dependencies.matchBySha1Online,
-      titleIndexCache: dependencies.titleIndexCache,
-      loadBlacklist: dependencies.loadBlacklist,
-      saveBlacklist: dependencies.saveBlacklist,
-      clearBlacklist: dependencies.clearBlacklist,
-      getBlacklistPath: dependencies.getBlacklistPath,
-      isInBlacklist: dependencies.isInBlacklist,
-      addToBlacklist: dependencies.addToBlacklist
-    })
-  } catch (e) {
-    console.log('⚠️  import-sqlite handler not available:', e.message)
-  }
+  // import-sqlite 处理器保留在 index.js 中（太复杂，约2600行）
+  // 不在此处注册，避免重复
 
   // 注册翻译IPC处理器
   if (initTranslationIPC) {
