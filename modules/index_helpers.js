@@ -233,8 +233,19 @@ async function scanLibraryFilesWithExclude(libraries, excludePatterns = []) {
     ? (Array.isArray(libraries) ? libraries : [libraries])
     : (setting.libraries || [])
   
+  // 如果没有传入excludePatterns，尝试使用setting.excludeFile
+  let excludeList = excludePatterns
+  if (excludePatterns.length === 0 && setting.excludeFile) {
+    // setting.excludeFile 可能是glob模式字符串或正则表达式字符串
+    // 这里我们将其作为glob模式使用
+    excludeList = [setting.excludeFile]
+  }
+  
   console.log('[scanLibraryFilesWithExclude] 📁 扫描路径:', libPaths)
   console.log('[scanLibraryFilesWithExclude] ⚙️ allowFolderAsManga:', setting.allowFolderAsManga)
+  if (excludeList.length > 0) {
+    console.log('[scanLibraryFilesWithExclude] 🚫 排除规则:', excludeList)
+  }
   
   const allFiles = []
   
@@ -255,7 +266,7 @@ async function scanLibraryFilesWithExclude(libraries, excludePatterns = []) {
       cwd: libPath,
       absolute: true,
       nodir: true,
-      ignore: excludePatterns
+      ignore: excludeList
     })
     
     console.log(`[scanLibraryFilesWithExclude] 📦 找到 ${archives.length} 个压缩文件`)
@@ -265,7 +276,7 @@ async function scanLibraryFilesWithExclude(libraries, excludePatterns = []) {
       const folders = await glob.glob('**/', {
         cwd: libPath,
         absolute: true,
-        ignore: excludePatterns
+        ignore: excludeList
       })
       
       console.log(`[scanLibraryFilesWithExclude] 📁 找到 ${folders.length} 个文件夹`)
