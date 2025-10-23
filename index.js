@@ -404,7 +404,15 @@ app.whenReady().then(async () => {
     saveBookToDatabase,
     clearFolder,
     createLimiter,
-    initTranslationIPC
+    initTranslationIPC,
+    // 从 index_helpers 导入的函数
+    createAbortableContext,
+    pathExists,
+    coverAndHashInMem,
+    scanLibraryFilesWithExclude,
+    // 从 fileLoader/folder.js 导入的函数
+    findSameFile,
+    makeShardedPath
   })
 })
 app.on('activate', () => {

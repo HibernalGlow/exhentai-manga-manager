@@ -11,7 +11,9 @@ const { nanoid } = require('nanoid')
 /**
  * 注册所有IPC处理器
  */
-function registerAllHandlers(dependencies) {
+function registerAllHandlers(deps) {
+  const dependencies = deps // 保留完整的依赖对象
+  
   const {
     Manga,
     Metadata,
@@ -55,16 +57,8 @@ function registerAllHandlers(dependencies) {
     console.log('Setting saved')
   })
 
-  ipcMain.handle('get-api-config', async () => {
-    const configPath = path.join(STORE_PATH, 'api-config.json')
-    try {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
-      return config
-    } catch {
-      return {}
-    }
-  })
-
+  // get-api-config 已在 translation.js 中注册，不重复注册
+  
   ipcMain.handle('open-api-config-file', async () => {
     try {
       const configPath = path.join(STORE_PATH, 'api-config.json')
@@ -305,6 +299,45 @@ function registerAllHandlers(dependencies) {
 
   ipcMain.on('close-window', () => {
     mainWindow.close()
+  })
+
+  // ==================== 标签翻译 ====================
+  
+  let tagTranslation = undefined
+
+  ipcMain.handle('update-tag-translation', async (event, _tagTranslation) => {
+    tagTranslation = _tagTranslation
+  })
+
+  // ==================== LAN浏览 ====================
+  
+  ipcMain.handle('enable-LAN-browsing', async (event, arg) => {
+    // LAN浏览功能已提取到 lan_browsing.js
+    // 如需启用，请初始化 initLANBrowsing
+    console.log('LAN browsing requested but not initialized')
+    return { success: false, message: 'LAN browsing module not initialized' }
+  })
+
+  // ==================== 书籍列表处理器 ====================
+  
+  // 注册 load-book-list 和 force-gene-book-list
+  const { registerBookListHandlers } = require('./book_list_handlers')
+  registerBookListHandlers({
+    Manga,
+    setting,
+    sendMessageToWebContents,
+    setProgressBar,
+    createAbortableContext: dependencies.createAbortableContext,
+    createLimiter,
+    pathExists: dependencies.pathExists,
+    coverAndHashInMem: dependencies.coverAndHashInMem,
+    scanLibraryFilesWithExclude: dependencies.scanLibraryFilesWithExclude,
+    findSameFile: dependencies.findSameFile,
+    makeShardedPath: dependencies.makeShardedPath,
+    COVER_PATH,
+    isPortable,
+    loadBookListFromDatabase,
+    saveBookToDatabase
   })
 
   // 注册翻译IPC处理器
