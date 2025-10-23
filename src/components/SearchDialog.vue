@@ -19,8 +19,8 @@ import {ElMessage} from 'element-plus'
 
 import he from 'he'
 import SearchDialogBrowser from './SearchDialogBrowser.vue'
-import {fetchNhentaiMeta, fetchNhentaiPartialMeta} from '../scrapers/nhentai'
-import {fetchEhExPartialMeta} from '../scrapers/exeh'
+import {fetchNhentaiMeta, fetchNhentaiPartialMeta} from '../lib/scrapers/nhentai'
+import {fetchEhExPartialMeta} from '../lib/scrapers/exeh'
 import {storeToRefs} from 'pinia'
 import {useAppStore} from '../pinia.js'
 
