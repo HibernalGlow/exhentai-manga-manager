@@ -326,6 +326,11 @@ ${booksInfo}
           contents: prompt
         })
         
+        console.log('[Translation] Response type:', typeof response)
+        console.log('[Translation] Response keys:', response ? Object.keys(response) : 'null')
+        console.log('[Translation] Response.text type:', typeof response?.text)
+        console.log('[Translation] Full response:', JSON.stringify(response, null, 2).substring(0, 500))
+        
         if (response && response.text) {
           responseText = response.text.trim()
           console.log(`[Translation] Gemini API call succeeded on attempt ${attempt}`)
