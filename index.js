@@ -413,7 +413,26 @@ app.whenReady().then(async () => {
     scanLibraryFilesWithExclude,
     // 从 fileLoader/folder.js 导入的函数
     findSameFile,
-    makeShardedPath
+    makeShardedPath,
+    // 从 custom_sqlite_import 导入的函数
+    normalizeString,
+    calculateSimilarity,
+    generateVariants,
+    buildTitleIndex,
+    findMatchesByTitle,
+    refineMatchesWithJapaneseTitle,
+    parseMetadataTags,
+    matchByHash,
+    matchBySha1FromArchive,
+    matchBySha1Online,
+    titleIndexCache,
+    // 从 custom_blacklist 导入的函数
+    loadBlacklist,
+    saveBlacklist,
+    clearBlacklist,
+    getBlacklistPath,
+    isInBlacklist: require('./modules/custom_blacklist').isInBlacklist,
+    addToBlacklist: require('./modules/custom_blacklist').addToBlacklist
   })
 })
 app.on('activate', () => {

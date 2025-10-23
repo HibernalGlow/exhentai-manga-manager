@@ -318,6 +318,23 @@ function registerAllHandlers(deps) {
     return { success: false, message: 'LAN browsing module not initialized' }
   })
 
+  // ==================== 文件系统批量检查 ====================
+  
+  ipcMain.handle('fs:exists-batch', async (event, paths) => {
+    // 检查批量文件是否存在
+    // paths = [path1, path2, ...]
+    // 返回: [{path, exists}]
+    if (!paths || !paths.length) return []
+    return await Promise.all(paths.map(async p => {
+      try {
+        await fs.promises.access(p)
+        return { path: p, exists: true }
+      } catch {
+        return { path: p, exists: false }
+      }
+    }))
+  })
+
   // ==================== 书籍列表处理器 ====================
   
   // 注册 load-book-list 和 force-gene-book-list
@@ -343,6 +360,40 @@ function registerAllHandlers(deps) {
     metadataSqliteFile: dependencies.metadataSqliteFile,
     shell
   })
+
+  // ==================== SQLite导入处理器 ====================
+  
+  // 注册 import-sqlite（如果模块存在）
+  try {
+    const { registerImportSqliteHandler } = require('./import_sqlite_handler')
+    registerImportSqliteHandler({
+      Manga,
+      Metadata,
+      setting,
+      sendMessageToWebContents,
+      setProgressBar,
+      // 自定义功能模块（从dependencies获取）
+      normalizeString: dependencies.normalizeString,
+      calculateSimilarity: dependencies.calculateSimilarity,
+      generateVariants: dependencies.generateVariants,
+      buildTitleIndex: dependencies.buildTitleIndex,
+      findMatchesByTitle: dependencies.findMatchesByTitle,
+      refineMatchesWithJapaneseTitle: dependencies.refineMatchesWithJapaneseTitle,
+      parseMetadataTags: dependencies.parseMetadataTags,
+      matchByHash: dependencies.matchByHash,
+      matchBySha1FromArchive: dependencies.matchBySha1FromArchive,
+      matchBySha1Online: dependencies.matchBySha1Online,
+      titleIndexCache: dependencies.titleIndexCache,
+      loadBlacklist: dependencies.loadBlacklist,
+      saveBlacklist: dependencies.saveBlacklist,
+      clearBlacklist: dependencies.clearBlacklist,
+      getBlacklistPath: dependencies.getBlacklistPath,
+      isInBlacklist: dependencies.isInBlacklist,
+      addToBlacklist: dependencies.addToBlacklist
+    })
+  } catch (e) {
+    console.log('⚠️  import-sqlite handler not available:', e.message)
+  }
 
   // 注册翻译IPC处理器
   if (initTranslationIPC) {
