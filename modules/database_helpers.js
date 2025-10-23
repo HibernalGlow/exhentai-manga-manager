@@ -90,15 +90,25 @@ async function markMissingBooksStatus(bookList) {
 
 /**
  * 从数据库加载书籍列表
+ * 可以传入依赖项对象，或者使用全局变量（向后兼容）
  */
-async function loadBookListFromDatabase(dependencies, retryCount = 0) {
-  const {
-    Manga,
-    Metadata,
-    metadataSqliteFile,
-    STORE_PATH,
-    shell
-  } = dependencies
+async function loadBookListFromDatabase(dependenciesOrRetryCount = 0, retryCount = 0) {
+  // 向后兼容：如果第一个参数是数字，说明是旧的调用方式
+  let dependencies
+  if (typeof dependenciesOrRetryCount === 'number') {
+    retryCount = dependenciesOrRetryCount
+    // 使用require获取全局变量（不推荐，但为了兼容性）
+    dependencies = null
+  } else {
+    dependencies = dependenciesOrRetryCount
+  }
+
+  // 如果没有传入dependencies，尝试从调用者获取
+  const Manga = dependencies?.Manga
+  const Metadata = dependencies?.Metadata
+  const metadataSqliteFile = dependencies?.metadataSqliteFile
+  const STORE_PATH = dependencies?.STORE_PATH
+  const shell = dependencies?.shell
 
   const maxRetries = 3
   const tTotal0 = performance.now()

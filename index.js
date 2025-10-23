@@ -364,6 +364,48 @@ app.whenReady().then(async () => {
   const primaryDisplay = screen.getPrimaryDisplay()
   screenWidth = Math.floor(primaryDisplay.workAreaSize.width * primaryDisplay.scaleFactor)
   mainWindow = createWindow()
+  
+  // 注册所有IPC处理器
+  const { registerAllHandlers } = require('./modules/ipc_handlers/all_handlers')
+  
+  const setProgressBar = (progress) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setProgressBar(progress)
+      mainWindow.webContents.send('send-action', {
+        action: 'send-progress',
+        progress
+      })
+    }
+  }
+
+  registerAllHandlers({
+    Manga,
+    Metadata,
+    setting,
+    collectionList,
+    mainWindow,
+    sendMessageToWebContents,
+    setProgressBar,
+    STORE_PATH,
+    TEMP_PATH,
+    COVER_PATH,
+    VIEWER_PATH,
+    isPortable,
+    shell,
+    dialog,
+    clipboard,
+    exec,
+    geneCover,
+    geneCoverFromBuffer,
+    getBookFilelist,
+    getImageListByBook,
+    deleteImageFromBook,
+    loadBookListFromDatabase,
+    saveBookToDatabase,
+    clearFolder,
+    createLimiter,
+    initTranslationIPC
+  })
 })
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
@@ -442,7 +484,7 @@ const {
 
 // ==================== 所有IPC处理器 已提取到独立模块 ====================
 // 原代码约1182行，包括36个IPC处理器
-// 需要在应用启动时注册这些处理器
+// IPC处理器在 app.whenReady() 中注册（见上方第368-408行）
 
 
 

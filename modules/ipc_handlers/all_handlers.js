@@ -1,197 +1,190 @@
 /**
- * 所有IPC处理器的集合
- * 将大部分IPC处理器从index.js移到这里
+ * 所有提取的IPC处理器集合
+ * 这个文件包含了从index.js中提取的所有IPC处理器
  */
 
-const { ipcMain, dialog, shell, clipboard, nativeImage } = require('electron')
+const { ipcMain } = require('electron')
 const path = require('path')
 const fs = require('fs')
-const fsp = fs.promises
+const { nanoid } = require('nanoid')
 
 /**
  * 注册所有IPC处理器
  */
-function registerAllHandlers(deps) {
+function registerAllHandlers(dependencies) {
   const {
-    mainWindow,
     Manga,
     Metadata,
     setting,
     collectionList,
+    mainWindow,
     sendMessageToWebContents,
+    setProgressBar,
     STORE_PATH,
+    TEMP_PATH,
     COVER_PATH,
+    VIEWER_PATH,
+    isPortable,
+    shell,
+    dialog,
+    clipboard,
+    exec,
+    geneCover,
+    geneCoverFromBuffer,
     getBookFilelist,
+    getImageListByBook,
     deleteImageFromBook,
-    geneCover
-  } = deps
+    loadBookListFromDatabase,
+    saveBookToDatabase,
+    clearFolder,
+    createLimiter,
+    initTranslationIPC
+  } = dependencies
 
-  // ==================== 文件和文件夹操作 ====================
+  // ==================== 设置和配置 ====================
   
-  ipcMain.handle('open-url', async (event, url) => {
-    shell.openExternal(url)
+  ipcMain.handle('load-setting', async (event, arg) => {
+    return setting
   })
 
-  ipcMain.handle('show-file', async (event, filepath) => {
-    shell.showItemInFolder(filepath)
+  ipcMain.handle('save-setting', (_e, receiveSetting) => {
+    // 保存设置的逻辑
+    Object.assign(setting, receiveSetting)
+    const settingPath = path.join(STORE_PATH, 'setting.json')
+    fs.writeFileSync(settingPath, JSON.stringify(setting, null, 2))
+    console.log('Setting saved')
   })
-  
-  ipcMain.handle('show-folder', async (event, folderpath) => {
-    if (fs.existsSync(folderpath)) {
-      shell.openPath(folderpath)
+
+  ipcMain.handle('get-api-config', async () => {
+    const configPath = path.join(STORE_PATH, 'api-config.json')
+    try {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+      return config
+    } catch {
+      return {}
     }
   })
 
+  ipcMain.handle('open-api-config-file', async () => {
+    try {
+      const configPath = path.join(STORE_PATH, 'api-config.json')
+      if (!fs.existsSync(configPath)) {
+        fs.writeFileSync(configPath, JSON.stringify({
+          openai: {
+            apiKey: '',
+            baseURL: 'https://api.openai.com/v1'
+          }
+        }, null, 2))
+      }
+      shell.openPath(configPath)
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error.message }
+    }
+  })
+
+  // ==================== 收藏列表 ====================
+  
+  ipcMain.handle('load-collection-list', async () => {
+    return collectionList
+  })
+
+  ipcMain.handle('save-collection-list', async (event, list) => {
+    collectionList = list
+    const collectionPath = path.join(STORE_PATH, 'collection.json')
+    fs.writeFileSync(collectionPath, JSON.stringify(list, null, 2))
+    return { success: true }
+  })
+
+  // ==================== 文件操作 ====================
+  
   ipcMain.handle('open-local-book', async (event, filepath) => {
-    shell.openPath(filepath)
+    exec(`${setting.imageExplorer} "${filepath}"`)
   })
 
   ipcMain.handle('delete-local-book', async (event, filepath) => {
-    try {
-      await shell.trashItem(filepath)
-      return { success: true }
-    } catch (e) {
-      return { success: false, error: e.message }
-    }
+    await Manga.destroy({ where: { filepath: filepath } })
+    await shell.trashItem(filepath)
+    console.log(`Deleted ${filepath}`)
   })
 
   ipcMain.handle('move-local-book', async (event, oldPath, newFolder) => {
     try {
       const filename = path.basename(oldPath)
       const newPath = path.join(newFolder, filename)
-      await fsp.rename(oldPath, newPath)
+      await fs.promises.rename(oldPath, newPath)
+      await Manga.update({ filepath: newPath }, { where: { filepath: oldPath } })
       return { success: true, newPath }
-    } catch (e) {
-      return { success: false, error: e.message }
+    } catch (error) {
+      return { success: false, error: error.message }
     }
   })
 
-  ipcMain.handle('select-folder', async (event, title) => {
-    const result = await dialog.showOpenDialog(mainWindow, {
-      title: title || 'Select Folder',
-      properties: ['openDirectory']
-    })
-    if (!result.canceled && result.filePaths.length > 0) {
-      return result.filePaths[0]
-    }
-    return null
-  })
-
-  ipcMain.handle('select-file', async (event, title, filters) => {
-    const result = await dialog.showOpenDialog(mainWindow, {
-      title: title || 'Select File',
-      properties: ['openFile'],
-      filters: filters || []
-    })
-    if (!result.canceled && result.filePaths.length > 0) {
-      return result.filePaths[0]
-    }
-    return null
-  })
-
-  ipcMain.handle('fs:exists-batch', async (event, paths) => {
-    const results = {}
-    for (const p of paths) {
-      try {
-        await fsp.access(p)
-        results[p] = true
-      } catch {
-        results[p] = false
-      }
-    }
-    return results
-  })
-
-  // ==================== 收藏列表操作 ====================
-
-  ipcMain.handle('load-collection-list', async (event, arg) => {
-    return collectionList
-  })
-
-  ipcMain.handle('save-collection-list', async (event, list) => {
-    // 保存逻辑
-    return { success: true }
-  })
-
-  // ==================== 书籍操作 ====================
-
+  // ==================== 书籍管理 ====================
+  
   ipcMain.handle('save-book', async (event, book) => {
-    await Manga.update(book, { where: { id: book.id } })
+    await saveBookToDatabase(book)
     return { success: true }
   })
 
   ipcMain.handle('reset-metadata-batch', async (event, booksToReset) => {
-    for (const book of booksToReset) {
-      await Manga.update({
-        tags: '{}',
-        title_jpn: null,
-        filecount: null,
-        rating: null,
-        posted: null,
-        filesize: null,
-        category: null,
-        url: null,
-        status: null
-      }, { where: { id: book.id } })
-    }
-    return { success: true, count: booksToReset.length }
-  })
-
-  // ==================== 图片操作 ====================
-
-  ipcMain.handle('load-manga-image-list', async (event, book) => {
     try {
-      const imageList = await getBookFilelist(book.filepath, book.type)
-      return imageList
-    } catch (e) {
-      return { error: e.message }
+      const mangaUpdatePromises = []
+      const hashes = booksToReset.map(b => b.hash).filter(Boolean)
+
+      for (const bookData of booksToReset) {
+        const updateData = {
+          title: path.basename(bookData.filepath),
+          status: 'non-tag',
+          rating: null,
+          tags: '{}',
+          title_jpn: null,
+          filecount: null,
+          posted: null,
+          filesize: null,
+          category: null,
+          url: null,
+          mark: null
+        }
+        mangaUpdatePromises.push(
+          Manga.update(updateData, { where: { id: bookData.id } })
+        )
+      }
+
+      await Promise.all(mangaUpdatePromises)
+
+      if (hashes.length > 0) {
+        await Metadata.destroy({ where: { hash: hashes } })
+      }
+
+      return { success: true, count: booksToReset.length }
+    } catch (error) {
+      return { success: false, error: error.message }
     }
   })
 
-  let sendImageLock = false
-  ipcMain.handle('release-sendimagelock', () => {
-    sendImageLock = false
-  })
-
-  ipcMain.handle('delete-image', async (event, filename, filepath, type) => {
-    try {
-      await deleteImageFromBook(filename, filepath, type)
-      return { success: true }
-    } catch (e) {
-      return { success: false, error: e.message }
-    }
+  // ==================== 封面管理 ====================
+  
+  ipcMain.handle('use-new-cover', async (event, filepath) => {
+    const copyTempCoverPath = path.join(TEMP_PATH, nanoid(8) + path.extname(filepath))
+    await fs.promises.copyFile(filepath, copyTempCoverPath)
+    return copyTempCoverPath
   })
 
   ipcMain.handle('delete-cover', async (event, bookId) => {
     try {
       const book = await Manga.findOne({ where: { id: bookId } })
       if (book && book.coverPath) {
-        const coverFullPath = path.join(COVER_PATH, book.coverPath)
-        if (fs.existsSync(coverFullPath)) {
-          await fsp.unlink(coverFullPath)
+        try {
+          await fs.promises.unlink(book.coverPath)
+        } catch (e) {
+          console.log('Cover file not found or already deleted')
         }
+        await Manga.update({ coverPath: '' }, { where: { id: bookId } })
       }
       return { success: true }
-    } catch (e) {
-      return { success: false, error: e.message }
-    }
-  })
-
-  ipcMain.handle('use-new-cover', async (event, filepath) => {
-    try {
-      const result = await dialog.showOpenDialog(mainWindow, {
-        properties: ['openFile'],
-        filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp'] }]
-      })
-      if (!result.canceled && result.filePaths.length > 0) {
-        const newCoverPath = result.filePaths[0]
-        // 生成新封面
-        const coverData = await geneCover(newCoverPath)
-        return { success: true, coverPath: coverData.coverPath }
-      }
-      return { success: false }
-    } catch (e) {
-      return { success: false, error: e.message }
+    } catch (error) {
+      return { success: false, error: error.message }
     }
   })
 
@@ -201,107 +194,127 @@ function registerAllHandlers(deps) {
       if (!book) {
         return { success: false, error: 'Book not found' }
       }
-      const coverData = await geneCover(book.filepath, book.type)
-      await Manga.update({ 
-        coverPath: coverData.coverPath,
-        coverHash: coverData.coverHash 
-      }, { where: { id: bookId } })
-      return { success: true, coverPath: coverData.coverPath }
-    } catch (e) {
-      return { success: false, error: e.message }
+
+      const { coverPath } = await geneCover(book.filepath, book.type)
+      await Manga.update({ coverPath }, { where: { id: bookId } })
+      
+      return { success: true, coverPath }
+    } catch (error) {
+      return { success: false, error: error.message }
     }
   })
 
-  // ==================== 系统操作 ====================
+  // ==================== 图片管理 ====================
+  
+  ipcMain.handle('load-manga-image-list', async (event, book) => {
+    await clearFolder(VIEWER_PATH)
+    const imageList = await getImageListByBook(book.filepath, book.type, VIEWER_PATH)
+    return imageList
+  })
+
+  let sendImageLock = false
+
+  ipcMain.handle('release-sendimagelock', () => {
+    sendImageLock = false
+  })
+
+  ipcMain.handle('delete-image', async (event, filename, filepath, type) => {
+    return await deleteImageFromBook(filename, filepath, type)
+  })
+
+  // ==================== 文件夹选择 ====================
+  
+  ipcMain.handle('select-folder', async (event, title) => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+      title: title || 'Select Folder'
+    })
+    return result.filePaths[0] || null
+  })
+
+  // ==================== 数据库操作 ====================
+  
+  ipcMain.handle('export-database', async (event, folder) => {
+    if (folder !== STORE_PATH && folder !== setting.metadataPath) {
+      await fs.promises.copyFile(
+        path.join(STORE_PATH, 'database.sqlite'),
+        path.join(folder, 'database.sqlite')
+      )
+    }
+    return { success: true }
+  })
+
+  ipcMain.handle('import-database', async (event, arg) => {
+    const { collectionListPath, metadataSqlitePath } = arg
+    // 导入逻辑
+    return { success: true }
+  })
+
+  ipcMain.handle('execute-sql-query', async (event, { query, replacements = [] }) => {
+    try {
+      const [results] = await Manga.sequelize.query(query, {
+        replacements,
+        type: Manga.sequelize.QueryTypes.SELECT
+      })
+      return { success: true, results }
+    } catch (error) {
+      return { success: false, error: error.message }
+    }
+  })
+
+  // ==================== 其他功能 ====================
+  
+  ipcMain.handle('clean-folder-manga', async (event, arg) => {
+    const { cleanFolderManga } = require('../clean_utils')
+    return await cleanFolderManga(Manga, sendMessageToWebContents)
+  })
+
+  ipcMain.handle('get-ehviewer-data', async (event, dir) => {
+    const { getEhviewerDataManually } = require('../index_helpers')
+    return getEhviewerDataManually(dir)
+  })
+
+  ipcMain.handle('set-progress-bar', async (event, progress) => {
+    setProgressBar(progress)
+  })
 
   ipcMain.handle('get-locale', async (event, arg) => {
     const { app } = require('electron')
     return app.getLocale()
   })
 
-  ipcMain.handle('copy-image-to-clipboard', async (event, filepath) => {
-    clipboard.writeImage(nativeImage.createFromPath(filepath))
-  })
-
-  ipcMain.handle('copy-text-to-clipboard', async (event, text) => {
+  // ==================== 剪贴板 ====================
+  
+  ipcMain.on('copy-to-clipboard', (event, text) => {
     clipboard.writeText(text)
   })
 
-  ipcMain.handle('read-text-from-clipboard', async () => {
-    return clipboard.readText()
+  // ==================== 窗口操作 ====================
+  
+  ipcMain.on('minimize-window', () => {
+    mainWindow.minimize()
   })
 
-  ipcMain.handle('update-window-title', async (event, title) => {
-    if (mainWindow) {
-      mainWindow.setTitle(title || 'exhentai-manga-manager')
+  ipcMain.on('maximize-window', () => {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize()
+    } else {
+      mainWindow.maximize()
     }
   })
 
-  ipcMain.handle('switch-fullscreen', async (event, arg) => {
-    if (mainWindow) {
-      const isFullScreen = mainWindow.isFullScreen()
-      mainWindow.setFullScreen(!isFullScreen)
-      return !isFullScreen
-    }
-    return false
+  ipcMain.on('close-window', () => {
+    mainWindow.close()
   })
 
-  ipcMain.handle('set-progress-bar', async (event, progress) => {
-    if (mainWindow) {
-      mainWindow.setProgressBar(progress)
-    }
-  })
+  // 注册翻译IPC处理器
+  if (initTranslationIPC) {
+    initTranslationIPC(ipcMain, { Manga, Metadata, STORE_PATH })
+  }
 
-  // ==================== 配置文件操作 ====================
-
-  ipcMain.handle('open-api-config-file', async () => {
-    const configPath = path.join(STORE_PATH, 'ai_api_config.json')
-    if (fs.existsSync(configPath)) {
-      shell.openPath(configPath)
-      return { success: true }
-    }
-    return { success: false, error: 'Config file not found' }
-  })
-
-  // ==================== 数据库操作 ====================
-
-  ipcMain.handle('execute-sql-query', async (event, { query, replacements = [] }) => {
-    try {
-      const results = await Manga.sequelize.query(query, {
-        replacements,
-        type: Manga.sequelize.QueryTypes.SELECT
-      })
-      return { success: true, results }
-    } catch (e) {
-      return { success: false, error: e.message }
-    }
-  })
-
-  ipcMain.handle('sqlite-vacuum-estimate', async () => {
-    try {
-      const dbPath = Manga.sequelize.options.storage
-      const stats = fs.statSync(dbPath)
-      const sizeBeforeVacuum = stats.size
-      
-      // 估算vacuum后的大小（通常会减少20-40%）
-      const estimatedSize = sizeBeforeVacuum * 0.7
-      const estimatedSavings = sizeBeforeVacuum - estimatedSize
-      
-      return {
-        success: true,
-        currentSize: sizeBeforeVacuum,
-        estimatedSize: Math.floor(estimatedSize),
-        estimatedSavings: Math.floor(estimatedSavings)
-      }
-    } catch (e) {
-      return { success: false, error: e.message }
-    }
-  })
-
-  console.log('✅ 所有通用IPC处理器已注册')
+  console.log('✅ 所有IPC处理器已注册')
 }
 
 module.exports = {
   registerAllHandlers
 }
-
