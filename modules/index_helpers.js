@@ -248,10 +248,15 @@ const formatTags = (tags) => {
  */
 async function scanLibraryFilesWithExclude(libraries, excludePatterns = []) {
   const glob = require('glob')
-  const allFiles = []
+  const { prepareSetting } = require('./init_folder_setting')
+  const setting = prepareSetting()
   
-  // 确保libraries是数组
-  const libPaths = Array.isArray(libraries) ? libraries : [libraries]
+  // 如果没有传入libraries，使用setting.rootFolders
+  const libPaths = libraries 
+    ? (Array.isArray(libraries) ? libraries : [libraries])
+    : (setting.rootFolders || [])
+  
+  const allFiles = []
   
   for (const libPath of libPaths) {
     if (!libPath || !fs.existsSync(libPath)) continue
@@ -264,17 +269,23 @@ async function scanLibraryFilesWithExclude(libraries, excludePatterns = []) {
       ignore: excludePatterns
     })
     
-    // 扫描文件夹
-    const folders = await glob.glob('**/', {
-      cwd: libPath,
-      absolute: true,
-      ignore: excludePatterns
-    })
-    
-    allFiles.push(
-      ...archives.map(f => ({ filepath: f, type: 'archive' })),
-      ...folders.map(f => ({ filepath: f, type: 'folder' }))
-    )
+    // 扫描文件夹 (如果允许)
+    if (setting.allowFolderAsManga) {
+      const folders = await glob.glob('**/', {
+        cwd: libPath,
+        absolute: true,
+        ignore: excludePatterns
+      })
+      
+      allFiles.push(
+        ...archives.map(f => ({ filepath: f, type: 'archive' })),
+        ...folders.map(f => ({ filepath: f, type: 'folder' }))
+      )
+    } else {
+      allFiles.push(
+        ...archives.map(f => ({ filepath: f, type: 'archive' }))
+      )
+    }
   }
   
   return allFiles

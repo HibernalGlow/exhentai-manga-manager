@@ -7,6 +7,8 @@ const { ipcMain } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const { nanoid } = require('nanoid')
+const fetch = require('node-fetch')
+const { HttpsProxyAgent } = require('https-proxy-agent')
 
 /**
  * 注册所有IPC处理器
@@ -392,6 +394,66 @@ function registerAllHandlers(deps) {
     saveBlacklist: dependencies.saveBlacklist,
     clearBlacklist: dependencies.clearBlacklist,
     getBlacklistPath: dependencies.getBlacklistPath
+  })
+
+  // ==================== 网络请求处理器 ====================
+  
+  // get-ex-webpage: 获取ExHentai网页内容（支持代理和cookie）
+  ipcMain.handle('get-ex-webpage', async (event, { url, cookie }) => {
+    if (setting.proxy) {
+      return await fetch(url, {
+        headers: {
+          Cookie: cookie
+        },
+        agent: new HttpsProxyAgent(setting.proxy)
+      })
+      .then(async res => {
+        const result = await res.text()
+        if (!result) throw new Error('Empty response, maybe the cookie is expired')
+        return result
+      })
+    } else {
+      return await fetch(url, {
+        headers: {
+          Cookie: cookie
+        }
+      })
+      .then(async res => {
+        const result = await res.text()
+        if (!result) throw new Error('Empty response, maybe the cookie is expired')
+        return result
+      })
+    }
+  })
+
+  // post-data-ex: POST请求到ExHentai
+  ipcMain.handle('post-data-ex', async (event, { url, data }) => {
+    if (setting.proxy) {
+      return await fetch(url, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        agent: new HttpsProxyAgent(setting.proxy)
+      })
+      .then(res => res.text())
+      .catch(e => {
+        sendMessageToWebContents(`Get ex data failed because ${e}`)
+      })
+    } else {
+      return await fetch(url, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+      .then(res => res.text())
+      .catch(e => {
+        sendMessageToWebContents(`Get ex data failed because ${e}`)
+      })
+    }
   })
 
   // 注册翻译IPC处理器
