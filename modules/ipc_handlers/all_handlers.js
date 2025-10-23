@@ -363,8 +363,34 @@ function registerAllHandlers(deps) {
 
   // ==================== SQLite导入处理器 ====================
   
-  // import-sqlite 处理器保留在 index.js 中（太复杂，约2600行）
-  // 不在此处注册，避免重复
+  // 注册 import-sqlite 及相关的黑名单、缓存处理器
+  const { registerImportSqliteFullHandlers } = require('./import_sqlite_full')
+  registerImportSqliteFullHandlers({
+    mainWindow: dependencies.mainWindow,
+    sendMessageToWebContents,
+    setProgressBar,
+    setting,
+    saveBookToDatabase: dependencies.saveBookToDatabase,
+    createAbortableContext: dependencies.createAbortableContext,
+    // 辅助函数
+    findArchiveInFolder: dependencies.findArchiveInFolder,
+    getEhviewerDataManually: dependencies.getEhviewerDataManually,
+    // 自定义匹配模块
+    normalizeString: dependencies.normalizeString,
+    generateVariants: dependencies.generateVariants,
+    buildTitleIndex: dependencies.buildTitleIndex,
+    findMatchesByTitle: dependencies.findMatchesByTitle,
+    refineMatchesWithJapaneseTitle: dependencies.refineMatchesWithJapaneseTitle,
+    parseMetadataTags: dependencies.parseMetadataTags,
+    matchByHash: dependencies.matchByHash,
+    matchBySha1FromArchive: dependencies.matchBySha1FromArchive,
+    titleIndexCache: dependencies.titleIndexCache,
+    // 黑名单模块
+    loadBlacklist: dependencies.loadBlacklist,
+    saveBlacklist: dependencies.saveBlacklist,
+    clearBlacklist: dependencies.clearBlacklist,
+    getBlacklistPath: dependencies.getBlacklistPath
+  })
 
   // 注册翻译IPC处理器
   if (initTranslationIPC) {

@@ -410,6 +410,8 @@ app.whenReady().then(async () => {
     pathExists,
     coverAndHashInMem,
     scanLibraryFilesWithExclude,
+    findArchiveInFolder,
+    getEhviewerDataManually,
     // 从 fileLoader/folder.js 导入的函数
     findSameFile,
     makeShardedPath,
