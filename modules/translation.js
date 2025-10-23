@@ -321,17 +321,16 @@ ${booksInfo}
         // 使用Google GenAI SDK
         console.log('[Translation] Using Google GenAI SDK...')
         const genAI = new GoogleGenAI({ apiKey: API_CONFIG.apiKey })
-        const model = genAI.getGenerativeModel({ model: API_CONFIG.model })
-        
-        const result = await model.generateContent(prompt)
-        const response = await result.response
+        const response = await genAI.models.generateContent({
+          model: API_CONFIG.model,
+          contents: prompt
+        })
         
         if (response && response.text) {
-          responseText = await response.text()
+          responseText = response.text.trim()
           console.log(`[Translation] Gemini API call succeeded on attempt ${attempt}`)
         } else {
-          console.error('[Translation] Response or response.text is undefined')
-          console.error('[Translation] Response:', JSON.stringify(response, null, 2))
+          console.error('[Translation] Response.text is undefined')
           throw new Error('Response.text is undefined')
         }
       } else {
