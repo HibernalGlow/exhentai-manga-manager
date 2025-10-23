@@ -251,15 +251,27 @@ async function scanLibraryFilesWithExclude(libraries, excludePatterns = []) {
   const { prepareSetting } = require('./init_folder_setting')
   const setting = prepareSetting()
   
-  // 如果没有传入libraries，使用setting.rootFolders
+  // 如果没有传入libraries，使用setting.libraries
   const libPaths = libraries 
     ? (Array.isArray(libraries) ? libraries : [libraries])
-    : (setting.rootFolders || [])
+    : (setting.libraries || [])
+  
+  console.log('[scanLibraryFilesWithExclude] 📁 扫描路径:', libPaths)
+  console.log('[scanLibraryFilesWithExclude] ⚙️ allowFolderAsManga:', setting.allowFolderAsManga)
   
   const allFiles = []
   
   for (const libPath of libPaths) {
-    if (!libPath || !fs.existsSync(libPath)) continue
+    if (!libPath) {
+      console.log('[scanLibraryFilesWithExclude] ⚠️ 跳过空路径')
+      continue
+    }
+    if (!fs.existsSync(libPath)) {
+      console.log('[scanLibraryFilesWithExclude] ⚠️ 路径不存在:', libPath)
+      continue
+    }
+    
+    console.log('[scanLibraryFilesWithExclude] 🔍 正在扫描:', libPath)
     
     // 扫描压缩文件
     const archives = await glob.glob('**/*.{zip,7z,rar,cbz,cb7,cbr}', {
@@ -269,6 +281,8 @@ async function scanLibraryFilesWithExclude(libraries, excludePatterns = []) {
       ignore: excludePatterns
     })
     
+    console.log(`[scanLibraryFilesWithExclude] 📦 找到 ${archives.length} 个压缩文件`)
+    
     // 扫描文件夹 (如果允许)
     if (setting.allowFolderAsManga) {
       const folders = await glob.glob('**/', {
@@ -276,6 +290,8 @@ async function scanLibraryFilesWithExclude(libraries, excludePatterns = []) {
         absolute: true,
         ignore: excludePatterns
       })
+      
+      console.log(`[scanLibraryFilesWithExclude] 📁 找到 ${folders.length} 个文件夹`)
       
       allFiles.push(
         ...archives.map(f => ({ filepath: f, type: 'archive' })),
@@ -287,6 +303,8 @@ async function scanLibraryFilesWithExclude(libraries, excludePatterns = []) {
       )
     }
   }
+  
+  console.log(`[scanLibraryFilesWithExclude] ✅ 总共找到 ${allFiles.length} 个文件`)
   
   return allFiles
 }
