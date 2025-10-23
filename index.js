@@ -82,6 +82,19 @@ const {
 } = require('./modules/custom_blacklist')
 
 const { cleanFolderManga } = require('./modules/clean_utils')
+
+// 辅助函数模块
+const {
+  createAbortableContext,
+  createLimiter,
+  pathExists,
+  findArchiveInFolder,
+  getEhviewerDataManually,
+  coverAndHashInMem,
+  compareItems,
+  formatTags,
+  scanLibraryFilesWithExclude
+} = require('./modules/index_helpers')
 // ==================== 自定义功能模块结束 ====================
 
 preparePath()
@@ -606,135 +619,7 @@ const clearFolder = async (Folder) => {
 /**=========    library and metadata  ================*/
 // helpers for parallel scan
 // Small concurrency limiter (p-limit style) with zero deps
-function createLimiter(concurrency) {
-  let active = 0
-  const queue = []
-  const next = () => {
-    active--
-    if (queue.length > 0) queue.shift()()
-  }
-  return fn =>
-      new Promise((resolve, reject) => {
-        const run = () => {
-          active++
-          Promise.resolve()
-              .then(fn)
-              .then((v) => {
-                next();
-                resolve(v)
-              }, (e) => {
-                next();
-                reject(e)
-              })
-        }
-        if (active < concurrency) run()
-        else queue.push(run)
-      })
-}
-
-
-async function coverAndHashInMem(filepath, type,  opts={} ) {
-  const { hash, coverPath, pageCount, bundleSize, mtime, coverHash, coverSharp } = await geneCoverFromBuffer(filepath, type,  opts)
-  return { coverPath, pageCount, bundleSize, mtime, coverHash, hash, coverSharp }
-}
-
-// ----- additional helpers
-async function scanLibraryFilesWithExclude() {
-  // helper: normalize to array
-  const toArray = (v) => (Array.isArray(v) ? v.filter(Boolean) : v ? [v] : []);
-  // helper: dedupe by key
-  const uniqueBy = (arr, key) =>
-    Array.from(new Map(arr.map((x) => [x[key], x])).values());
-  // collapse paths
-  function isSubpath(parent, child, { includeSelf = false } = {}) {
-    // Normalize to absolute; keep case-insensitive compare on Windows
-    const from = path.resolve(parent);
-    const to = path.resolve(child);
-
-    const rel = path.relative(from, to);
-    if (rel === "") return !!includeSelf; // same path
-    return !rel.startsWith("..") && !path.isAbsolute(rel);
-  }
-  function collapseRoots(paths) {
-    const abs = [...new Set(paths.map((p) => path.resolve(p)))].sort();
-    const keep = [];
-    outer: for (const p of abs) {
-      for (const k of keep)
-        if (isSubpath(k, p, { includeSelf: false })) continue outer;
-      keep.push(p);
-    }
-    return keep;
-  }
-  let libraries = toArray(setting.libraries);
-  if (!libraries) return [];
-  libraries = collapseRoots(libraries)
-  // let list = await getBookFilelist(setting.library)
-  const lists = await Promise.all(libraries.map((lib) => getBookFilelist(lib)));
-  let list = lists.flat();
-
-  // optional: dedupe in case libraries overlap
-  list = uniqueBy(list, "filepath");
-
-  const pattern = (setting.excludeFile || "").trim();
-  if (pattern) {
-    try {
-      const excludeRe = new RegExp(pattern);
-      list = list.filter((item) => !excludeRe.test(item.filepath));
-    } catch (e) {
-      console.warn(
-        "Illegal regular expression in setting.excludeFile:",
-        e?.message,
-      );
-    }
-  }
-  return list;
-}
-
-// ----- Abortable context for parallel scan
-
-// Track one active scan
-let context = null
-function createAbortableContext(event) {
-  // Abort prior scan if any
-  if (context?.controller && !context.controller.signal.aborted) {
-    context.controller.abort()
-  }
-
-  const controller = new AbortController()
-  const children = new Set()     // track spawned child processes
-  const tempDirs = new Set()     // track temp dirs you create
-  const onAbort = () => {
-    // Kill children on abort
-    for (const cp of children) {
-      // Try a graceful kill first, then force if needed
-      if (!cp.killed) cp.kill('SIGTERM')
-      // In case SIGTERM isn't supported or process ignores it:
-      setTimeout(() => { try { if (!cp.killed) cp.kill('SIGKILL') } catch {} }, 5000)
-    }
-  }
-  controller.signal.addEventListener('abort', onAbort, { once: true })
-
-  // Abort if the window/renderer goes away
-  const sender = event?.sender
-  if (sender) {
-    const abortOnDestroyed = () => controller.abort()
-    sender.once('destroyed', abortOnDestroyed)
-    // Ensure we remove the listener on cleanup if not destroyed
-    controller.signal.addEventListener('abort', () => {
-      try { sender.removeListener?.('destroyed', abortOnDestroyed) } catch {}
-    }, { once: true })
-  }
-
-  // Abort on app quit
-  const abortOnQuit = () => controller.abort()
-  app.once('before-quit', abortOnQuit)
-  controller.signal.addEventListener('abort', () => {
-    try { app.removeListener('before-quit', abortOnQuit) } catch {}
-  }, { once: true })
-
-  context = { controller, children, tempDirs }
-  return context
-}
+// ==================== 辅助函数已移至 modules/index_helpers.js ====================
 
 
 // main function
@@ -1377,72 +1262,7 @@ ipcMain.handle('repair-missing-covers', async (event, arg) => {
 })
 
 // Function to find archive file in folder for SHA1 matching
-function findArchiveInFolder(filepath) {
-  try {
-    if (!fs.existsSync(filepath)) {
-      return null
-    }
-
-    const stat = fs.statSync(filepath)
-
-    // 如果是文件且是压缩包格式，直接返回
-    if (stat.isFile()) {
-      const ext = path.extname(filepath).toLowerCase()
-      if (ext === '.7z' || ext === '.zip' || ext === '.rar') {
-        return filepath
-      }
-      return null
-    }
-
-    // 如果是目录，查找其中的压缩包文件
-    if (stat.isDirectory()) {
-      const files = fs.readdirSync(filepath)
-      // 查找7z文件，优先选择包含sha1或hash的文件名
-      const archives = files.filter(file => {
-        const ext = path.extname(file).toLowerCase()
-        return ext === '.7z' || ext === '.zip' || ext === '.rar'
-      })
-
-      if (archives.length === 0) {
-        return null
-      }
-
-      // 优先选择包含sha1、hash、checksum等关键词的文件
-      const priorityArchives = archives.filter(archive => {
-        const name = archive.toLowerCase()
-        return name.includes('sha1') || name.includes('hash') || name.includes('checksum')
-      })
-
-      const selectedArchive = priorityArchives.length > 0 ? priorityArchives[0] : archives[0]
-      return path.join(filepath, selectedArchive)
-    }
-
-    return null
-  } catch (error) {
-    console.error('Failed to find archive in folder:', error)
-    return null
-  }
-}
-
-// Function to read the .ehviewer file
-function getEhviewerDataManually(dir) {
-  try {
-    const filePath = path.join(dir, '.ehviewer')
-    if (fs.existsSync(filePath)) {
-      const fileContent = fs.readFileSync(filePath, 'utf-8')
-      const lines = fileContent.split('\n')
-      if (lines.length >= 4) {
-        const gid = lines[2].trim()
-        const token = lines[3].trim()
-        return { gid, token }
-      }
-    }
-    return null
-  } catch (error) {
-    console.error('Failed to read .ehviewer file:', error)
-    return null
-  }
-}
+// ==================== findArchiveInFolder 和 getEhviewerDataManually 已移至 modules/index_helpers.js ====================
 
 ipcMain.handle('get-ehviewer-data', async (event, dir) => {
   return getEhviewerDataManually(dir)
@@ -3243,40 +3063,7 @@ LANBrowsing.use('/static', express.static(staticFilePath))
 let mangas = []
 let tagTranslation = undefined
 
-// sort
-function compareItems(a, b, sortKey, ascending = false) {
-  const sortConfig = sortkey_map[sortKey]
-  if (!sortConfig) {
-    throw new Error(`Invalid sort key: ${sortKey}`)
-  }
-
-  const { key, type } = sortConfig
-
-  let valA = a[key]
-  let valB = b[key]
-
-  if (type === "number") {
-    valA = Number(valA) || 0
-    valB = Number(valB) || 0
-  } else if (type === "date") {
-    valA = new Date(valA).getTime() || 0
-    valB = new Date(valB).getTime() || 0
-  } else {
-    valA = String(valA || "")
-    valB = String(valB || "")
-  }
-
-  if (valA < valB) return ascending ? -1 : 1
-  if (valA > valB) return ascending ? 1 : -1
-  return 0
-}
-
-// 格式化标签
-const formatTags = (tags) => {
-  return Object.entries(tags)
-    .map(([key, values]) => values.map(value => setting.showTranslation ? `${key}:${tagTranslation?.[value]?.name ?? value}` : `${key}:${value}`).join(', '))
-    .join(', ')
-}
+// ==================== compareItems 和 formatTags 已移至 modules/index_helpers.js ====================
 
 ipcMain.handle('update-tag-translation', async (event, _tagTranslation) => {
   tagTranslation = _tagTranslation
