@@ -145,59 +145,36 @@ function getEhviewerDataManually(dir) {
 
 /**
  * 在内存中生成封面和哈希
+ * 这个函数封装了 geneCoverFromBuffer，提供一致的接口
  */
 async function coverAndHashInMem(filepath, type, options = {}) {
-  const { signal, COVER_PATH } = options
+  const { signal } = options
   
   try {
-    // 获取文件列表
-    const { getBookFilelist } = require('../fileLoader/index.js')
-    const fileList = await getBookFilelist(filepath, type, { signal })
+    // 直接使用 geneCoverFromBuffer
+    const { geneCoverFromBuffer } = require('../fileLoader/index.js')
+    const result = await geneCoverFromBuffer(filepath, type, { signal })
     
-    if (!fileList || fileList.length === 0) {
-      throw new Error('No files found in archive')
+    // geneCoverFromBuffer 返回: { hash, coverPath, pageCount, bundleSize, mtime, coverHash, coverSharp }
+    // coverSharp 是一个 sharp 实例，我们需要转换成 Buffer
+    let coverSharpBuffer
+    if (result.coverSharp) {
+      if (Buffer.isBuffer(result.coverSharp)) {
+        coverSharpBuffer = result.coverSharp
+      } else if (typeof result.coverSharp.toBuffer === 'function') {
+        coverSharpBuffer = await result.coverSharp.toBuffer()
+      } else {
+        // coverSharp 已经是 sharp 实例，保持原样
+        coverSharpBuffer = result.coverSharp
+      }
     }
-    
-    // 获取第一个图片作为封面
-    const firstImage = fileList[0]
-    const imageBuffer = firstImage.buffer || firstImage.data
-    
-    if (!imageBuffer) {
-      throw new Error('No image buffer available')
-    }
-    
-    // 生成封面哈希
-    const coverHash = createHash('sha256').update(imageBuffer).digest('hex')
-    const coverPath = makeShardedPath(COVER_PATH, `${coverHash}.webp`)
-    
-    // 生成封面缩略图
-    const coverSharp = sharp(imageBuffer)
-      .resize(200, 283, { fit: 'cover' })
-      .webp({ quality: 80 })
-    
-    const coverBuffer = await coverSharp.toBuffer()
-    
-    // 计算文件哈希
-    const hash = createHash('sha256')
-    for (const file of fileList) {
-      const buf = file.buffer || file.data
-      if (buf) hash.update(buf)
-    }
-    const fileHash = hash.digest('hex')
-    
-    // 获取文件信息
-    const stats = fs.statSync(filepath)
     
     return {
-      coverPath,
-      coverHash,
-      hash: fileHash,
-      pageCount: fileList.length,
-      bundleSize: stats.size,
-      mtime: stats.mtimeMs,
-      coverSharp: coverBuffer
+      ...result,
+      coverSharp: coverSharpBuffer
     }
   } catch (error) {
+    console.error(`Error in coverAndHashInMem for ${filepath}:`, error.message)
     throw error
   }
 }
