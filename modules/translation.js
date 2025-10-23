@@ -326,16 +326,30 @@ ${booksInfo}
           contents: prompt
         })
         
-        console.log('[Translation] Response type:', typeof response)
-        console.log('[Translation] Response keys:', response ? Object.keys(response) : 'null')
-        console.log('[Translation] Response.text type:', typeof response?.text)
-        console.log('[Translation] Full response:', JSON.stringify(response, null, 2).substring(0, 500))
-        
-        if (response && response.text) {
+        // 尝试从不同位置获取文本
+        if (response && typeof response.text === 'function') {
+          // text 是一个方法
+          responseText = (await response.text()).trim()
+          console.log(`[Translation] Gemini API call succeeded (method) on attempt ${attempt}`)
+        } else if (response && response.text) {
+          // text 是一个属性
           responseText = response.text.trim()
-          console.log(`[Translation] Gemini API call succeeded on attempt ${attempt}`)
+          console.log(`[Translation] Gemini API call succeeded (property) on attempt ${attempt}`)
+        } else if (response && response.candidates && response.candidates[0]) {
+          // 标准的Gemini响应格式
+          const candidate = response.candidates[0]
+          if (candidate.content && candidate.content.parts && candidate.content.parts[0]) {
+            responseText = candidate.content.parts[0].text.trim()
+            console.log(`[Translation] Gemini API call succeeded (candidates) on attempt ${attempt}`)
+          } else {
+            console.error('[Translation] Cannot extract text from candidates')
+            console.error('[Translation] Candidates:', JSON.stringify(response.candidates).substring(0, 500))
+            throw new Error('Cannot extract text from response')
+          }
         } else {
-          console.error('[Translation] Response.text is undefined')
+          console.error('[Translation] Response structure unknown')
+          console.error('[Translation] Response keys:', response ? Object.keys(response) : 'null')
+          console.error('[Translation] Full response:', JSON.stringify(response, null, 2).substring(0, 1000))
           throw new Error('Response.text is undefined')
         }
       } else {
@@ -646,7 +660,7 @@ async function batchTranslateBooks(books, settings, onProgress) {
     
     // 跳过已有翻译的
     if (translations[book.hash]) {
-      console.log(`[Translation Backend] Skipped (already translated): ${book.filename}`)
+      // console.log(`[Translation Backend] Skipped (already translated): ${book.filename}`)
       results.skipped++
       continue
     }
