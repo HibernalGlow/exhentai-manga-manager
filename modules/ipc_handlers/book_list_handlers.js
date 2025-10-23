@@ -57,6 +57,23 @@ function registerBookListHandlers(dependencies) {
         const byId = new Map(bookList.map(b => [b.id, b]))
 
         let list = await scanLibraryFilesWithExclude()
+        
+        // 应用 excludeFile 正则过滤
+        if (setting.excludeFile && setting.excludeFile.trim()) {
+          try {
+            const excludeRe = new RegExp(setting.excludeFile)
+            const beforeFilter = list.length
+            list = list.filter(item => !excludeRe.test(item.filepath))
+            const filtered = beforeFilter - list.length
+            if (filtered > 0) {
+              sendMessageToWebContents(`🚫 排除规则过滤了 ${filtered} 个文件`)
+            }
+          } catch (e) {
+            console.error('Invalid excludeFile regex:', e)
+            sendMessageToWebContents(`⚠️ 排除规则正则表达式无效: ${e.message}`)
+          }
+        }
+        
         const listLength = list.length
         sendMessageToWebContents(`Load ${listLength} book from library`)
         
@@ -213,6 +230,23 @@ function registerBookListHandlers(dependencies) {
     
     try {
       let list = await scanLibraryFilesWithExclude()
+      
+      // 应用 excludeFile 正则过滤
+      if (setting.excludeFile && setting.excludeFile.trim()) {
+        try {
+          const excludeRe = new RegExp(setting.excludeFile)
+          const beforeFilter = list.length
+          list = list.filter(item => !excludeRe.test(item.filepath))
+          const filtered = beforeFilter - list.length
+          if (filtered > 0) {
+            sendMessageToWebContents(`🚫 排除规则过滤了 ${filtered} 个文件`)
+          }
+        } catch (e) {
+          console.error('Invalid excludeFile regex:', e)
+          sendMessageToWebContents(`⚠️ 排除规则正则表达式无效: ${e.message}`)
+        }
+      }
+      
       const listLength = list.length
       sendMessageToWebContents(`Found ${listLength} files`)
       

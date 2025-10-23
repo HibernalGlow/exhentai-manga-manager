@@ -233,18 +233,13 @@ async function scanLibraryFilesWithExclude(libraries, excludePatterns = []) {
     ? (Array.isArray(libraries) ? libraries : [libraries])
     : (setting.libraries || [])
   
-  // 如果没有传入excludePatterns，尝试使用setting.excludeFile
-  let excludeList = excludePatterns
-  if (excludePatterns.length === 0 && setting.excludeFile) {
-    // setting.excludeFile 可能是glob模式字符串或正则表达式字符串
-    // 这里我们将其作为glob模式使用
-    excludeList = [setting.excludeFile]
-  }
+  // excludePatterns 用于 glob 模式排除（不是 setting.excludeFile，那个是正则表达式）
+  const excludeList = excludePatterns
   
   console.log('[scanLibraryFilesWithExclude] 📁 扫描路径:', libPaths)
   console.log('[scanLibraryFilesWithExclude] ⚙️ allowFolderAsManga:', setting.allowFolderAsManga)
   if (excludeList.length > 0) {
-    console.log('[scanLibraryFilesWithExclude] 🚫 排除规则:', excludeList)
+    console.log('[scanLibraryFilesWithExclude] 🚫 Glob排除规则:', excludeList)
   }
   
   const allFiles = []
