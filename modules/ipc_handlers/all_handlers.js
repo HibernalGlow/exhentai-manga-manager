@@ -504,6 +504,14 @@ function registerAllHandlers(deps) {
     }
   })
 
+  // ==================== 同步IPC处理器 ====================
+  
+  // get-path-sep: 获取系统路径分隔符（同步）
+  const path = require('path')
+  ipcMain.on('get-path-sep', (event) => {
+    event.returnValue = path.sep
+  })
+
   // 注册翻译IPC处理器
   if (initTranslationIPC) {
     initTranslationIPC(ipcMain, { Manga, Metadata, STORE_PATH })
