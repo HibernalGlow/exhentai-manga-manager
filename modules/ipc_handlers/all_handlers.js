@@ -324,6 +324,7 @@ function registerAllHandlers(deps) {
   const { registerBookListHandlers } = require('./book_list_handlers')
   registerBookListHandlers({
     Manga,
+    Metadata,
     setting,
     sendMessageToWebContents,
     setProgressBar,
@@ -335,9 +336,12 @@ function registerAllHandlers(deps) {
     findSameFile: dependencies.findSameFile,
     makeShardedPath: dependencies.makeShardedPath,
     COVER_PATH,
+    STORE_PATH,
     isPortable,
     loadBookListFromDatabase,
-    saveBookToDatabase
+    saveBookToDatabase,
+    metadataSqliteFile: dependencies.metadataSqliteFile,
+    shell
   })
 
   // 注册翻译IPC处理器

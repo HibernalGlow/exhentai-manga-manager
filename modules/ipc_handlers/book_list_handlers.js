@@ -14,6 +14,7 @@ const _ = require('lodash')
 function registerBookListHandlers(dependencies) {
   const {
     Manga,
+    Metadata,
     setting,
     sendMessageToWebContents,
     setProgressBar,
@@ -25,10 +26,22 @@ function registerBookListHandlers(dependencies) {
     findSameFile,
     makeShardedPath,
     COVER_PATH,
+    STORE_PATH,
     isPortable,
     loadBookListFromDatabase,
-    saveBookToDatabase
+    saveBookToDatabase,
+    metadataSqliteFile,
+    shell
   } = dependencies
+  
+  // 准备 loadBookListFromDatabase 的依赖
+  const dbDependencies = {
+    Manga,
+    Metadata,
+    metadataSqliteFile,
+    STORE_PATH,
+    shell
+  }
 
   // ==================== load-book-list处理器 ====================
   ipcMain.handle('load-book-list', async (event, scan) => {
@@ -49,7 +62,7 @@ function registerBookListHandlers(dependencies) {
         
         if (listLength === 0) {
           setProgressBar(-1)
-          return await loadBookListFromDatabase()
+          return await loadBookListFromDatabase(dbDependencies)
         }
 
         const tTotal0 = performance.now()
@@ -165,19 +178,19 @@ function registerBookListHandlers(dependencies) {
           }
         }
 
-        const tTotal1 = performance.now()
-        sendMessageToWebContents(`Completed in : ${((tTotal1 - tTotal0) / 1000).toFixed(2)} s`)
-        setProgressBar(-1)
-        
-        return await loadBookListFromDatabase()
-      } catch (error) {
-        setProgressBar(-1)
-        sendMessageToWebContents(`Error: ${error.message}`)
-        throw error
-      }
-    } else {
-      return await loadBookListFromDatabase()
+      const tTotal1 = performance.now()
+      sendMessageToWebContents(`Completed in : ${((tTotal1 - tTotal0) / 1000).toFixed(2)} s`)
+      setProgressBar(-1)
+      
+      return await loadBookListFromDatabase(dbDependencies)
+    } catch (error) {
+      setProgressBar(-1)
+      sendMessageToWebContents(`Error: ${error.message}`)
+      throw error
     }
+  } else {
+    return await loadBookListFromDatabase(dbDependencies)
+  }
   })
 
   // ==================== force-gene-book-list处理器 ====================
@@ -194,7 +207,7 @@ function registerBookListHandlers(dependencies) {
       
       if (listLength === 0) {
         setProgressBar(-1)
-        return await loadBookListFromDatabase()
+        return await loadBookListFromDatabase(dbDependencies)
       }
 
       const tTotal0 = performance.now()
@@ -271,7 +284,7 @@ function registerBookListHandlers(dependencies) {
       sendMessageToWebContents(`Force rebuild completed in : ${((tTotal1 - tTotal0) / 1000).toFixed(2)} s`)
       setProgressBar(-1)
       
-      return await loadBookListFromDatabase()
+      return await loadBookListFromDatabase(dbDependencies)
     } catch (error) {
       setProgressBar(-1)
       sendMessageToWebContents(`Error: ${error.message}`)

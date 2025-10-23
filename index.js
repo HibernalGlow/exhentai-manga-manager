@@ -390,6 +390,7 @@ app.whenReady().then(async () => {
     TEMP_PATH,
     COVER_PATH,
     VIEWER_PATH,
+    metadataSqliteFile,
     isPortable,
     shell,
     dialog,
