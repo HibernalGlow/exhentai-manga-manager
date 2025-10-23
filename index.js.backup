@@ -1775,7 +1775,18 @@ ipcMain.handle('get-additional-folder-trees', async (_event) => {
 })
 
 
-// ==================== 收藏列表和书籍保存已移至 modules/ipc_handlers/all_handlers.js ====================
+ipcMain.handle('load-collection-list', async (event, arg) => {
+  return collectionList
+})
+
+ipcMain.handle('save-collection-list', async (event, list) => {
+  collectionList = list
+  return await fs.promises.writeFile(path.join(STORE_PATH, 'collectionList.json'), JSON.stringify(list, null, '  '), { encoding: 'utf-8' })
+})
+
+ipcMain.handle('save-book', async (event, book) => {
+  return await saveBookToDatabase(book)
+})
 
 ipcMain.handle('reset-metadata-batch', async (event, booksToReset) => {
     try {
@@ -1811,7 +1822,20 @@ ipcMain.handle('reset-metadata-batch', async (event, booksToReset) => {
     }
 });
 // detail
-// ==================== 文件和文件夹操作已移至 modules/ipc_handlers/all_handlers.js ====================
+ipcMain.handle('open-url', async (event, url) => {
+  shell.openExternal(url)
+})
+
+ipcMain.handle('show-file', async (event, filepath) => {
+  shell.showItemInFolder(filepath)
+})
+ipcMain.handle('show-folder', async (event, folderpath) => {
+  try{
+    await shell.openPath(folderpath)
+  }catch (e){
+    console.log(`Failed to open folder ${folderpath} because ${e}`)
+  }
+})
 ipcMain.handle('use-new-cover', async (event, filepath) => {
   const copyTempCoverPath = path.join(TEMP_PATH, nanoid(8) + path.extname(filepath))
 
@@ -2040,7 +2064,34 @@ ipcMain.handle('select-folder', async (event, title) => {
     return undefined
   }
 })
-// ==================== 文件选择和批量检查已移至 modules/ipc_handlers/all_handlers.js ====================
+ipcMain.handle('fs:exists-batch', async (event, paths) => {
+  //check a batch files existence
+  // paths =[path1, path2, ...]
+  // out: [{path, exists}]
+  if(!paths.length) return
+  return await Promise.all(paths.map(async p => {
+    try {
+      await fs.promises.access(p)
+      return { path: p, exists: true }
+    } catch {
+      return { path: p, exists: false }
+    }
+  }))
+})
+
+
+ipcMain.handle('select-file', async (event, title, filters) => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title,
+    properties: ['openFile'],
+    filters
+  })
+  if (!result.canceled) {
+    return result.filePaths[0]
+  } else {
+    return undefined
+  }
+})
 
 // ==================== 设置和配置管理 ====================
 
@@ -2954,7 +3005,31 @@ ipcMain.handle('get-locale', async (event, arg) => {
   return app.getLocale()
 })
 
-// ==================== 剪贴板和窗口操作已移至 modules/ipc_handlers/all_handlers.js ====================
+ipcMain.handle('copy-image-to-clipboard', async (event, filepath) => {
+  clipboard.writeImage(nativeImage.createFromPath(filepath))
+})
+
+ipcMain.handle('copy-text-to-clipboard', async (event, text) => {
+  clipboard.writeText(text)
+})
+
+ipcMain.handle('read-text-from-clipboard', async () => {
+  return clipboard.readText()
+})
+
+ipcMain.handle('update-window-title', async (event, title) => {
+  const name = require('./package.json').name
+  const version = require('./package.json').version
+  if (title) {
+    mainWindow.setTitle(name + ' ' + version + ' | ' + title)
+  } else {
+    mainWindow.setTitle(name + ' ' + version)
+  }
+})
+
+ipcMain.handle('switch-fullscreen', async (event, arg) => {
+  mainWindow.setFullScreen(!mainWindow.isFullScreen())
+})
 
 ipcMain.on('get-path-sep', async (event, arg) => {
   event.returnValue = path.sep
