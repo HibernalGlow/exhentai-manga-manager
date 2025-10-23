@@ -119,6 +119,17 @@ function registerBookListHandlers(dependencies) {
                 if (coverData.coverPath && coverData.hash) {
                   const { nanoid } = require('nanoid')
                   const id = nanoid()
+                  
+                  // 确保 mtime 是字符串格式
+                  let mtimeStr = coverData.mtime
+                  if (coverData.mtime instanceof Date) {
+                    mtimeStr = coverData.mtime.toJSON()
+                  } else if (typeof coverData.mtime === 'number') {
+                    mtimeStr = new Date(coverData.mtime).toJSON()
+                  } else if (typeof coverData.mtime !== 'string') {
+                    mtimeStr = String(coverData.mtime)
+                  }
+                  
                   const newBook = {
                     title: path.basename(filepath),
                     coverPath: coverData.coverPath,
@@ -128,7 +139,7 @@ function registerBookListHandlers(dependencies) {
                     id,
                     pageCount: coverData.pageCount,
                     bundleSize: coverData.bundleSize,
-                    mtime: coverData.mtime,
+                    mtime: mtimeStr,
                     coverHash: coverData.coverHash,
                     tags: '{}'
                   }
@@ -235,6 +246,17 @@ function registerBookListHandlers(dependencies) {
               if (coverData.coverPath && coverData.hash) {
                 const { nanoid } = require('nanoid')
                 const id = nanoid()
+                
+                // 确保 mtime 是字符串格式
+                let mtimeStr = coverData.mtime
+                if (coverData.mtime instanceof Date) {
+                  mtimeStr = coverData.mtime.toJSON()
+                } else if (typeof coverData.mtime === 'number') {
+                  mtimeStr = new Date(coverData.mtime).toJSON()
+                } else if (typeof coverData.mtime !== 'string') {
+                  mtimeStr = String(coverData.mtime)
+                }
+                
                 const newBook = {
                   title: path.basename(filepath),
                   coverPath: coverData.coverPath,
@@ -244,7 +266,7 @@ function registerBookListHandlers(dependencies) {
                   id,
                   pageCount: coverData.pageCount,
                   bundleSize: coverData.bundleSize,
-                  mtime: coverData.mtime,
+                  mtime: mtimeStr,
                   coverHash: coverData.coverHash,
                   tags: '{}'
                 }
