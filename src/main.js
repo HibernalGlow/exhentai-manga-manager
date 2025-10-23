@@ -12,6 +12,7 @@ import { createI18n } from 'vue-i18n'
 import zhCn from './locales/zh-CN.json'
 import zhTw from './locales/zh-TW.json'
 import enUs from './locales/en-US.json'
+
 const messages = {
   'zh-CN': zhCn,
   'zh-TW': zhTw,
@@ -67,6 +68,5 @@ app.directive('lazy', {
     delete el._lazyArg
   }
 })
-
 
 app.mount('#app')

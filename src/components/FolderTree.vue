@@ -89,6 +89,9 @@
               style="flex:1"
           />
           <el-select v-model="artistSortMode" style="width: 30%;" placeholder="Sort by" @change="rebuildArtist">
+            <template #prefix>
+              <span>⇅</span>
+            </template>
             <el-option label="En" value="alpha"/>
             <el-option label="譯" value="tr"/>
             <el-option label="#" value="count"/>
@@ -124,6 +127,9 @@
               style="flex:1"
           />
           <el-select v-model="groupSortMode" style="width: 30%;" placeholder="Sort by" @change="rebuildGroup">
+            <template #prefix>
+              <span>⇅</span>
+            </template>
             <el-option label="En" value="alpha"/>
             <el-option label="譯" value="tr"/>
             <el-option label="#" value="count"/>
@@ -159,6 +165,9 @@
               style="flex:1"
           />
           <el-select v-model="parodySortMode" style="width: 30%;" placeholder="Sort by" @change="rebuildParody">
+            <template #prefix>
+              <span>⇅</span>
+            </template>
             <el-option label="En" value="alpha"/>
             <el-option label="譯" value="tr"/>
             <el-option label="#" value="count"/>
@@ -187,15 +196,23 @@
 </template>
 
 <script setup>
-import { ArrowUp, CirclePlusFilled, RemoveFilled, Folder } from '@element-plus/icons-vue'
+// auto regenerated after scan/rebuid/patch
+// regenerated in pushAppCache, called in loadCollectionList, called in loadBookList (App.vue)
+import { ArrowUp, CirclePlusFilled, Folder, RemoveFilled } from '@element-plus/icons-vue'
 import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef, unref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useAppStore } from '../pinia.js'
 
 const appStore = useAppStore()
+const { translate } = appStore
+const { setting, bookList, } = storeToRefs(appStore)
 
-const { setting, bookList, folderTreeData, artistTreeData, groupTreeData, parodyTreeData } = storeToRefs(
-    appStore)
+// they are used in this component only, so no need to call from appStore
+const folderTreeData = shallowRef([])
+const artistTreeData = shallowRef([])
+const groupTreeData = shallowRef([])
+const parodyTreeData = shallowRef([])
+
 
 // default stays folder, or artist, group, parody
 const activeTreeTab = ref('folder')
@@ -212,9 +229,9 @@ const groupTreeNodes = ref([])
 const parodyTreeNodes = ref([])
 
 // const treeFolderRef = ref()
-const treeArtistRef = ref()
-const treeGroupRef = ref()
-const treeParodyRef = ref()
+const treeArtistRef = shallowRef()
+const treeGroupRef = shallowRef()
+const treeParodyRef = shallowRef()
 const emit = defineEmits(['chunkList', 'search'])
 
 const sideVisibleFolderTree = ref(false)
@@ -315,22 +332,26 @@ function buildFolderTree(bookPathList) {
 let dirIndex = { keys: [], idxs: [] } // precomputed directory index for fast lookup
 
 const geneFolderTree = async () => {
-  // build the folder tab
+  // always (re)build the folder tab;
   const filepaths = bookList.value.filter(b => !b.isCollection).map(b => b.filepath)
   folderTreeData.value = buildFolderTree(filepaths)
   const { keys, idxs } = buildDirIndex(bookList.value)
   dirIndex = { keys, idxs }
   // build the rest tabs
-  const { artistList, groupList, parodyList } = await ipcRenderer.invoke('get-additional-folder-trees')
-  artistTreeData.value = artistList
-  groupTreeData.value = groupList
-  parodyTreeData.value = parodyList
-  if (translationReady.value) {
-    const dict = translationDict?.value
-    artistTreeData.value = attachTranslation(artistList, dict?.artist)   // [{ name, jp, count }]
-    groupTreeData.value = attachTranslation(groupList, dict?.group)
-    parodyTreeData.value = attachTranslation(parodyList, dict?.parody)
-  }
+
+  artistTreeData.value = appStore.getTagsByCategoryWithTranslationCount('artist', {
+    translate: (name, cat) => translate(name, cat, { alwaysShow: true }),
+    alwaysShow: true
+  })
+  groupTreeData.value = appStore.getTagsByCategoryWithTranslationCount('group', {
+    translate: (name, cat) => translate(name, cat, { alwaysShow: true }),
+    alwaysShow: true
+  })
+  parodyTreeData.value = appStore.getTagsByCategoryWithTranslationCount('parody', {
+    translate: (name, cat) => translate(name, cat, { alwaysShow: true }),
+  })
+
+
   isFolderTreeInit.value = true
   rebuildArtist()
   rebuildGroup()
@@ -360,7 +381,7 @@ function loadTreeCache(cacheFolderTree) {
 
 
 async function geneSaveTreeCache() {
-  if(!isFolderTreeInit.value){
+  if (!isFolderTreeInit.value) {
     await geneFolderTree()
   }
 
@@ -474,24 +495,11 @@ function selectFolderTreeNode(selectNode) {
   emit('chunkList')
 }
 
-//
 
 onMounted(async () => {
-  const cached = localStorage.getItem('translationFolderDictCache')
-  if (cached) {
-    translationDict.value = JSON.parse(cached)
-    translationReady.value = true
-  }
-  // avoid blocking the ui
-  ;(async () => {
-    const fresh = await loadTranslationDict()
-    translationDict.value = fresh
-    translationReady.value = true
-    try { localStorage.setItem('translationFolderDictCache', JSON.stringify(fresh)) } catch {}
-  })()
-
   recomputeTreeHeight()
   window.addEventListener('resize', recomputeTreeHeight)
+
 })
 
 onBeforeUnmount(() => {
@@ -656,104 +664,38 @@ const handleSearch = (value) => {
   emit('search', value)
 }
 const onArtistNodeClick = async (selectNode) => {
-  handleSearch(`a:"${selectNode.rawName}"$`)
+  handleSearch(`a:"${selectNode.rawName}"`)
 }
 const onGroupNodeClick = async (selectNode) => {
-  handleSearch(`g:"${selectNode.rawName}"$`)
+  handleSearch(`g:"${selectNode.rawName}"`)
 }
 const onParodyNodeClick = async (selectNode) => {
-  handleSearch(`p:"${selectNode.rawName}"$`)
+  handleSearch(`p:"${selectNode.rawName}"`)
 }
 
 // Translation
-const translationDict = shallowRef({})
-const translationReady = ref(false)
 
-function attachTranslation(list, dict) {
-  const d = dict || {}
-  return (Array.isArray(list) ? list : []).map(({ name, count }) => ({
+function makeNameTranslator(section) {
+  const cache = new Map()
+  return (name) => {
+    const k = String(name || '')
+    if (cache.has(k)) return cache.get(k)
+    const out = (section && section[k]) || k
+    cache.set(k, out)
+    return out
+  }
+}
+
+//  Attach translation using a translator fn (fallback-safe)
+function attachTranslation(list, translator, category, type = 'name') {
+  const arr = Array.isArray(list) ? list : []
+  return arr.map(({ name, count }) => ({
     name,
-    jp: d?.[name] || name,     // translated display; fallback to raw
+    jp: translator(name, category, { type }),
     count: Number(count) || 0,
   }))
 }
 
-const TRAN_URL = 'https://github.com/EhTagTranslation/Database/releases/latest/download/db.text.json'
-const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000 // ~30 days
-
-function fetchWithTimeout(url, { timeout = 8000 } = {}) {
-  // default 8s timeout
-  const ctrl = new AbortController()
-  const t = setTimeout(() => ctrl.abort(new DOMException('Timeout', 'AbortError')), timeout)
-
-  return fetch(url).finally(() => clearTimeout(t))
-}
-
-function buildTagDicts(source) {
-  const out = { group: {}, artist: {}, parody: {} }
-
-  // Normalize to an iterable of { namespace, data }
-  const items = Array.isArray(source)
-      ? source
-      : Object.values(source || {}) // when json.data is an object
-
-  for (const item of items) {
-    const ns = item?.namespace
-    if (ns === 'group' || ns === 'artist' || ns === 'parody') {
-      const data = item?.data || {}
-      out[ns] = Object.fromEntries(
-          Object.entries(data).map(([k, v]) => [k, v?.name]),
-      )
-    }
-  }
-
-  return out // { group: {...}, artist: {...}, parody: {...} }
-}
-
-async function _loadTranslationDict() {
-  // read cache (supports both new {ts,data} and old flat-object shapes)
-  const raw = JSON.parse(localStorage.getItem('translationFolderDictCache') || 'null')
-  const cachedData = raw?.data
-  const isFresh = (Date.now() - raw?.ts) < ONE_MONTH_MS
-
-  // If cache exists and is fresh, return immediately
-  if (cachedData && isFresh) return cachedData
-
-  // Otherwise try to refresh (timeout handled by your fetchWithTimeout helper)
-  console.log('Downloading translation file...')
-  let resultObject = {}
-
-  try {
-    const res = await fetchWithTimeout(TRAN_URL, { timeout: 5000 }) // wait 5s
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-
-    const json = await res.json()
-
-    resultObject = buildTagDicts(json?.data)
-    // write new-shape cache
-    localStorage.setItem('translationFolderDictCache', JSON.stringify({ ts: Date.now(), data: resultObject }))
-    return resultObject // { group: {}, artist: {}, parody: {} }
-  } catch (err) {
-    console.warn('loadTranslationDict refresh failed:', err)
-    // fallback to any cached data (
-    if (cachedData) return cachedData
-    // otherwise fallback to bundled data
-    console.log('Using bundled translation data')
-    return buildTagDicts((await lazyLoadLocalBackupDict())?.data)
-  }
-}
-
-async function lazyLoadLocalBackupDict() {
-  // dynamic import returns a module object
-  const mod = await import('../../resources/extraResources/db.text.json')
-  return mod.default // parsed JSON object
-}
-
-// TODO: which version is better? local copy or fetch latest?
-async function loadTranslationDict() {
-  // read cache (supports both new {ts,data} and old flat-object shapes)
-  return buildTagDicts((await lazyLoadLocalBackupDict())?.data)
-}
 
 // dynamically adjust the virtual window in tabs
 // use rule of thumb; change the 200 if needed
