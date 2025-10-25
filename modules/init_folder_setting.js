@@ -62,48 +62,68 @@ const preparePath = () => {
 }
 
 const prepareSetting = () => {
+  // 默认设置
+  const defaultSetting = {
+    proxy: undefined,
+    library: [], // app.getPath('downloads')
+    metadataPath: undefined,
+    imageExplorer: '"C:\Windows\explorer.exe"',
+    pageSize: 42,
+    loadOnStart: false,
+    igneous: '',
+    ipb_pass_hash: '',
+    ipb_member_id: '',
+    star: '',
+    showComment: false,
+    requireGap: 3000,
+    thumbnailColumn: 10,
+    showTranslation: false,
+    theme: 'dark', //'light e-hentai',
+    widthLimit: undefined,
+    directEnter: 'detail',
+    language: 'default',
+    folderTreeWidth: '',
+    advancedSearch: true,
+    autoCheckUpdates: false,
+    customOptions: '',
+    defaultExpandTree: true,
+    hidePageNumber: false,
+    skipDeleteConfirm: false,
+    displayTitle: 'japaneseTitle',
+    keepReadingProgress: true,
+    concurrentScan: 4,
+    concurrentWrite: 2,
+    allowFolderAsManga: false, // 新增，默认关闭
+    // 元数据匹配选项
+    matchTitleOnly: false, // 仅用标题匹配
+    matchHash: false, // 启用 hash 匹配
+    matchSha1: true, // 启用 SHA1 压缩包匹配（默认开启）
+    fastMatch: true // 快速匹配模式（默认开启）
+  }
+  
   let setting
   try {
     setting = JSON.parse(fs.readFileSync(path.join(STORE_PATH, 'setting.json'), { encoding: 'utf-8' }))
-  } catch (e) {
-    setting = {
-      proxy: undefined,
-      library: [], // app.getPath('downloads')
-      metadataPath: undefined,
-      imageExplorer: '"C:\Windows\explorer.exe"',
-      pageSize: 42,
-      loadOnStart: false,
-      igneous: '',
-      ipb_pass_hash: '',
-      ipb_member_id: '',
-      star: '',
-      showComment: false,
-      requireGap: 3000,
-      thumbnailColumn: 10,
-      showTranslation: false,
-      theme: 'dark', //'light e-hentai',
-      widthLimit: undefined,
-      directEnter: 'detail',
-      language: 'default',
-      folderTreeWidth: '',
-      advancedSearch: true,
-      autoCheckUpdates: false,
-      customOptions: '',
-      defaultExpandTree: true,
-      hidePageNumber: false,
-      skipDeleteConfirm: false,
-      displayTitle: 'japaneseTitle',
-      keepReadingProgress: true,
-      concurrentScan: 4,
-      concurrentWrite: 2,
-      allowFolderAsManga: false, // 新增，默认关闭
-      // 元数据匹配选项
-      matchTitleOnly: false, // 仅用标题匹配
-      matchHash: false, // 启用 hash 匹配
-      matchSha1: true, // 启用 SHA1 压缩包匹配（默认开启）
-      fastMatch: true // 快速匹配模式（默认开启）
+    
+    // 合并默认值（只添加缺失的字段，不覆盖已有字段）
+    let needUpdate = false
+    for (const [key, value] of Object.entries(defaultSetting)) {
+      if (setting[key] === undefined) {
+        setting[key] = value
+        needUpdate = true
+      }
     }
+    
+    // 如果有新字段被添加，保存更新后的设置
+    if (needUpdate) {
+      fs.writeFileSync(path.join(STORE_PATH, 'setting.json'), JSON.stringify(setting, null, '  '), { encoding: 'utf-8' })
+      console.log('✅ 设置文件已更新，添加了缺失的默认字段')
+    }
+  } catch (e) {
+    // 文件不存在或损坏，使用默认设置
+    setting = defaultSetting
     fs.writeFileSync(path.join(STORE_PATH, 'setting.json'), JSON.stringify(setting, null, '  '), { encoding: 'utf-8' })
+    console.log('✅ 已创建新的设置文件')
   }
   return setting
 }

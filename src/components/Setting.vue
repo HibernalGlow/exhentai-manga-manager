@@ -651,16 +651,16 @@
               <div style="margin-bottom: 8px;">
                 <strong style="color: var(--el-text-color-primary); margin-bottom: 8px; display: block;">匹配策略</strong>
                 <div style="display: flex; flex-wrap: wrap; gap: 12px;">
-                  <el-checkbox v-model="setting.matchTitleOnly" style="margin-right: 0;">
+                  <el-checkbox v-model="setting.matchTitleOnly" @change="saveSetting" style="margin-right: 0;">
                     仅用标题匹配（title/title_jpn）
                   </el-checkbox>
-                  <el-checkbox v-model="setting.matchHash" style="margin-right: 0;">
+                  <el-checkbox v-model="setting.matchHash" @change="saveSetting" style="margin-right: 0;">
                     启用 hash 匹配
                   </el-checkbox>
-                  <el-checkbox v-model="setting.matchSha1" style="margin-right: 0;">
+                  <el-checkbox v-model="setting.matchSha1" @change="saveSetting" style="margin-right: 0;">
                     启用 SHA1 压缩包匹配
                   </el-checkbox>
-                  <el-checkbox v-model="setting.fastMatch" style="margin-right: 0;">
+                  <el-checkbox v-model="setting.fastMatch" @change="saveSetting" style="margin-right: 0;">
                     ⚡ 快速匹配模式
                   </el-checkbox>
                 </div>
