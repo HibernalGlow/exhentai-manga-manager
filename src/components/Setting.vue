@@ -1748,7 +1748,8 @@ const importMetadataFromSqlite = async () => {
   const untaggedBooks = bookList.value.filter(book => book.status !== 'tagged')
   const { success, matched, blacklisted, processed, skipped } = await ipcRenderer.invoke('import-sqlite', {
     bookList: _.cloneDeep(untaggedBooks),
-    matchOptions
+    matchOptions,
+    defaultSqlPath: setting.value.defaultSqlPath  // 传递默认SQL路径
   })
   if (success) {
     const skipMsg = skipped > 0 ? `, 跳过已标记:${skipped}` : ''

@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
   on: (channel, listener) => ipcRenderer.on(channel, listener),
   send: (channel, ...args) => ipcRenderer.send(channel, ...args),
   sendSync: (channel, ...args) => ipcRenderer.sendSync(channel, ...args),
+  removeListener: (channel, listener) => ipcRenderer.removeListener(channel, listener),
+  off: (channel, listener) => ipcRenderer.off(channel, listener),
   ipcOn: (channel, listener) => {
     ipcRenderer.on(channel, listener)
     return () => ipcRenderer.removeListener(channel, listener)

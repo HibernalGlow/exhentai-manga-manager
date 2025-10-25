@@ -64,23 +64,32 @@ function registerMetadataHandlers(dependencies) {
 
   // ==================== @CUSTOM: import-sqlite ====================
   ipcMain.handle('import-sqlite', async (event, arg) => {
-    const { bookList, matchOptions } = arg
+    const { bookList, matchOptions, defaultSqlPath } = arg
     
     const ctx = createAbortableContext(event)
     const { controller, signal } = ctx
     
-    const result = await dialog.showOpenDialog(mainWindow, {
-      properties: ['openFile'],
-      filters: [{ name: 'SQLite', extensions: ['sqlite'] }]
-    })
+    let dbPath
     
-    if (result.canceled || !result.filePaths.length) {
-      ctx.cleanup()
-      return { success: false, message: '用户取消操作' }
+    // 如果设置中有默认SQL路径且文件存在，直接使用
+    if (defaultSqlPath && fs.existsSync(defaultSqlPath)) {
+      dbPath = defaultSqlPath
+      sendMessageToWebContents(`📂 使用默认数据库: ${path.basename(dbPath)}`)
+    } else {
+      // 否则打开文件选择对话框
+      const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ['openFile'],
+        filters: [{ name: 'SQLite', extensions: ['sqlite'] }]
+      })
+      
+      if (result.canceled || !result.filePaths.length) {
+        ctx.cleanup()
+        return { success: false, message: '用户取消操作' }
+      }
+      
+      dbPath = result.filePaths[0]
+      sendMessageToWebContents(`📂 打开数据库: ${path.basename(dbPath)}`)
     }
-    
-    const dbPath = result.filePaths[0]
-    sendMessageToWebContents(`📂 打开数据库: ${path.basename(dbPath)}`)
     
     try {
       // 检查或构建标题索引
