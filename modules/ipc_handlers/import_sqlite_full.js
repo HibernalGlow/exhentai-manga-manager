@@ -18,6 +18,7 @@
 
 const { ipcMain, dialog } = require('electron')
 const path = require('path')
+const fs = require('fs')
 const _ = require('lodash')
 const sqlite3 = require('sqlite3')
 const { open } = require('sqlite')
@@ -105,8 +106,8 @@ function registerImportSqliteFullHandlers(dependencies) {
       sendMessageToWebContents(`📋 黑名单: 已加载 ${blacklist.size} 个项目 (路径: ${getBlacklistPath()})`)
       
       // 发送开始信息到前端
-      const dbPath = path.basename(result.filePaths[0])
-      sendMessageToWebContents(`🔄 开始从 ${dbPath} 导入元数据...`)
+      const dbFileName = path.basename(dbPath)
+      sendMessageToWebContents(`🔄 开始从 ${dbFileName} 导入元数据...`)
       sendMessageToWebContents(`📋 匹配选项: ${matchOptions?.matchTitleOnly ? '仅标题' : '全字段'}, 快速模式:${matchOptions?.fastMatch ? '是' : '否'}, 哈希:${matchOptions?.matchHash ? '是' : '否'}, SHA1:${matchOptions?.matchSha1 ? '是' : '否'}, 并发数:${setting.concurrentScan || 4}`)
       
       try {
@@ -117,10 +118,8 @@ function registerImportSqliteFullHandlers(dependencies) {
         // 快速匹配模式：先加载所有标题到内存
         let titleMap = null
         if (matchOptions?.fastMatch) {
-          const dbFilePath = result.filePaths[0]
-          
           // 检查缓存是否有效
-          if (titleIndexCache.isValid(dbFilePath)) {
+          if (titleIndexCache.isValid(dbPath)) {
             sendMessageToWebContents(`⚡ 快速模式：使用缓存的标题索引...`)
             const cached = titleIndexCache.get()
             titleMap = cached.titleMap
@@ -175,7 +174,7 @@ function registerImportSqliteFullHandlers(dependencies) {
             global.hashIndex = hashIndex
             
             // 保存到缓存
-            titleIndexCache.set(dbFilePath, {
+            titleIndexCache.set(dbPath, {
               titleMap,
               titleArray,
               hashIndex,

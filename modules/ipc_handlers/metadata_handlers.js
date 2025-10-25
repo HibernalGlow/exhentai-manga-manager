@@ -69,6 +69,9 @@ function registerMetadataHandlers(dependencies) {
     const ctx = createAbortableContext(event)
     const { controller, signal } = ctx
     
+    // 保存到全局变量以便停止
+    global.currentImportContext = ctx
+    
     let dbPath
     
     // 如果设置中有默认SQL路径且文件存在，直接使用
@@ -228,6 +231,22 @@ function registerMetadataHandlers(dependencies) {
   ipcMain.handle('clear-title-cache', async () => {
     titleIndexCache.clear()
     return { success: true, message: '标题索引缓存已清除' }
+  })
+  
+  // ==================== @CUSTOM: stop-import-sqlite ====================
+  ipcMain.handle('stop-import-sqlite', async () => {
+    try {
+      // 中止当前的导入操作（通过全局上下文）
+      if (global.currentImportContext && global.currentImportContext.controller) {
+        global.currentImportContext.controller.abort()
+        sendMessageToWebContents('⏹️ 用户请求停止导入')
+        return { success: true, message: '导入已停止' }
+      }
+      return { success: false, message: '没有正在进行的导入操作' }
+    } catch (e) {
+      console.error('[stop-import-sqlite] Error:', e)
+      return { success: false, error: e.message }
+    }
   })
 }
 

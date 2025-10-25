@@ -78,7 +78,7 @@
 </template>
 
 <script setup>
-import { ref, watchEffect, inject, onMounted } from 'vue'
+import { ref, watchEffect, inject, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 // import { ElMessageBox } from 'element-plus'
 import { BookmarkTwotone } from '@vicons/material'
@@ -134,16 +134,24 @@ const loadBookTranslation = async () => {
   }
 }
 
-// 监听翻译更新事件
-ipcRenderer.on('translation-updated', (event, bookHash) => {
+// 翻译更新处理器
+const handleTranslationUpdate = (event, bookHash) => {
   if ((props.book.hash || props.book.id) === bookHash) {
     loadBookTranslation()
   }
-})
+}
+
+// 监听翻译更新事件
+ipcRenderer.on('translation-updated', handleTranslationUpdate)
 
 // 组件挂载时加载翻译
 onMounted(() => {
   loadBookTranslation()
+})
+
+// 组件卸载时移除监听器
+onBeforeUnmount(() => {
+  ipcRenderer.removeListener('translation-updated', handleTranslationUpdate)
 })
 
 const filterCollectTag = (tagObject) => {

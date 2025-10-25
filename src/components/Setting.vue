@@ -665,10 +665,26 @@
                   </el-checkbox>
                 </div>
               </div>
-              <div style="margin-top: 12px;">
-                <el-button class="function-button" type="primary" plain @click="importMetadataFromSqlite">{{
-                    $t('m.importMetadataFromSqlite')
-                  }}
+              <div style="margin-top: 12px; display: flex; gap: 8px;">
+                <el-button 
+                  class="function-button" 
+                  type="primary" 
+                  plain 
+                  @click="importMetadataFromSqlite"
+                  :disabled="importingMetadata"
+                  :loading="importingMetadata"
+                  style="flex: 1"
+                >
+                  {{ importingMetadata ? $t('m.importing') || '导入中...' : $t('m.importMetadataFromSqlite') }}
+                </el-button>
+                <el-button 
+                  type="danger" 
+                  plain
+                  @click="stopImportMetadata"
+                  :disabled="!importingMetadata"
+                  v-if="importingMetadata"
+                >
+                  {{ $t('m.stopImport') || '停止导入' }}
                 </el-button>
               </div>
             </div>
@@ -1141,6 +1157,9 @@ const collectTagSearch = ref('')
 const testingApi = ref(false)
 const batchTranslating = ref(false)
 const batchProgress = ref({ current: 0, total: 0 })
+
+// Import metadata state
+const importingMetadata = ref(false)
 
 // API Config from JSON
 const apiConfig = ref(null)
@@ -1737,26 +1756,47 @@ const importDatabase = async () => {
 }
 
 const importMetadataFromSqlite = async () => {
-  const matchOptions = {
-    matchTitleOnly: setting.value.matchTitleOnly,
-    matchHash: setting.value.matchHash,
-    matchSha1: setting.value.matchSha1,
-    fastMatch: setting.value.fastMatch,
-    trimTitleRegExp: setting.value.trimTitleRegExp  // 传递裁剪标题正则表达式
+  try {
+    importingMetadata.value = true
+    const matchOptions = {
+      matchTitleOnly: setting.value.matchTitleOnly,
+      matchHash: setting.value.matchHash,
+      matchSha1: setting.value.matchSha1,
+      fastMatch: setting.value.fastMatch,
+      trimTitleRegExp: setting.value.trimTitleRegExp  // 传递裁剪标题正则表达式
+    }
+    // 只传递未标记的书籍，避免不必要的遍历
+    const untaggedBooks = bookList.value.filter(book => book.status !== 'tagged')
+    const { success, matched, blacklisted, processed, skipped } = await ipcRenderer.invoke('import-sqlite', {
+      bookList: _.cloneDeep(untaggedBooks),
+      matchOptions,
+      defaultSqlPath: setting.value.defaultSqlPath  // 传递默认SQL路径
+    })
+    if (success) {
+      const skipMsg = skipped > 0 ? `, 跳过已标记:${skipped}` : ''
+      printMessage('success', t('c.importMessage') + ` (匹配:${matched}, 新增黑名单:${blacklisted}, 处理:${processed}${skipMsg})`)
+      emit('loadBookList')
+    } else {
+      printMessage('info', t('c.canceled'))
+    }
+  } catch (e) {
+    console.error('[Import] Error:', e)
+    if (e.message && e.message.includes('aborted')) {
+      printMessage('warning', t('m.importStopped') || '导入已停止')
+    } else {
+      printMessage('error', t('c.importFailed') || '导入失败')
+    }
+  } finally {
+    importingMetadata.value = false
   }
-  // 只传递未标记的书籍，避免不必要的遍历
-  const untaggedBooks = bookList.value.filter(book => book.status !== 'tagged')
-  const { success, matched, blacklisted, processed, skipped } = await ipcRenderer.invoke('import-sqlite', {
-    bookList: _.cloneDeep(untaggedBooks),
-    matchOptions,
-    defaultSqlPath: setting.value.defaultSqlPath  // 传递默认SQL路径
-  })
-  if (success) {
-    const skipMsg = skipped > 0 ? `, 跳过已标记:${skipped}` : ''
-    printMessage('success', t('c.importMessage') + ` (匹配:${matched}, 新增黑名单:${blacklisted}, 处理:${processed}${skipMsg})`)
-    emit('loadBookList')
-  } else {
-    printMessage('info', t('c.canceled'))
+}
+
+const stopImportMetadata = async () => {
+  try {
+    await ipcRenderer.invoke('stop-import-sqlite')
+    printMessage('warning', t('m.importStopped') || '导入已停止')
+  } catch (e) {
+    console.error('[Import] Stop error:', e)
   }
 }
 

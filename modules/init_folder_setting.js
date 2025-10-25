@@ -96,7 +96,12 @@ const prepareSetting = () => {
       keepReadingProgress: true,
       concurrentScan: 4,
       concurrentWrite: 2,
-      allowFolderAsManga: false // 新增，默认关闭
+      allowFolderAsManga: false, // 新增，默认关闭
+      // 元数据匹配选项
+      matchTitleOnly: false, // 仅用标题匹配
+      matchHash: false, // 启用 hash 匹配
+      matchSha1: true, // 启用 SHA1 压缩包匹配（默认开启）
+      fastMatch: true // 快速匹配模式（默认开启）
     }
     fs.writeFileSync(path.join(STORE_PATH, 'setting.json'), JSON.stringify(setting, null, '  '), { encoding: 'utf-8' })
   }
