@@ -25,17 +25,20 @@
       "zh-TW"
     ],
     "directories": {
-      "output": "out"
+      "output": "build-output"
     },
     "npmRebuild": false,
     "buildDependenciesFromSource": false,
+    "asarUnpack": [
+      "modules/**/*"
+    ],
     "files": [
       "dist/index.html",
       "dist/assets/*",
       "dist/icon.png",
       "fileLoader/*",
       "public/*",
-      "modules/*",
+      "modules/**/*",
       "src/lib/**",
       "src/services/**",
       "index.js",

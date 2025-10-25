@@ -11,9 +11,11 @@ node_modules
 dist
 dist-ssr
 out
+build-output
 *.local
 data
 secret_key.json
+test-portable
 
 # Editor directories and files
 .vscode/*

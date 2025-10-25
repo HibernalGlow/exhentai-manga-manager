@@ -94,6 +94,10 @@ const {
   formatTags,
   scanLibraryFilesWithExclude
 } = require('./modules/index_helpers')
+
+// IPC 处理器注册模块 - 需要在顶部导入以确保打包后正确加载
+const { registerAllHandlers } = require('./modules/ipc_handlers/all_handlers')
+
 // ==================== 自定义功能模块结束 ====================
 
 preparePath()
@@ -143,29 +147,36 @@ const getColumns = async (sequelize, tableName) => {
       const [results] = await sequelize.query(query)
       return results.map(column => column.name)
     }
-;(async () => {
 
-  await Manga.sequelize.query(`PRAGMA journal_mode=WAL;`)
-  await Metadata.sequelize.query(`PRAGMA journal_mode=WAL;`)
+// 数据库初始化 Promise - 确保在使用前完成初始化
+const databaseInitPromise = (async () => {
+  try {
+    console.log('🔄 开始数据库初始化...')
+    
+    await Manga.sequelize.query(`PRAGMA journal_mode=WAL;`)
+    await Metadata.sequelize.query(`PRAGMA journal_mode=WAL;`)
 
-  const columns = await getColumns(Manga.sequelize, 'Mangas')
-  if (['hiddenBook', 'readCount'].some(c => !columns.includes(c))) {
-    await Manga.sync({ alter: true })
-  } else {
-    await Manga.sync()
+    const columns = await getColumns(Manga.sequelize, 'Mangas')
+    if (['hiddenBook', 'readCount'].some(c => !columns.includes(c))) {
+      await Manga.sync({ alter: true })
+    } else {
+      await Manga.sync()
+    }
+    await Metadata.sync()
+    await Manga.sequelize.query(`CREATE INDEX IF NOT EXISTS manga_hash_index ON Mangas (hash)`)
+
+    // add meta table for cache
+    await ensureMetaTable(Manga.sequelize)
+    await installRevTriggers(Manga.sequelize, 'Mangas', 'mm')
+
+    await ensureMetaTable(Metadata.sequelize)
+    await installRevTriggers(Metadata.sequelize, 'Metadata', 'mm')
+
+    console.log('✅ 数据库初始化完成')
+  } catch (error) {
+    console.error('❌ 数据库初始化失败:', error)
+    throw error
   }
-  await Metadata.sync()
-  await Manga.sequelize.query(`CREATE INDEX IF NOT EXISTS manga_hash_index ON Mangas (hash)`)
-
-  // add meta table for cache
-  await ensureMetaTable(Manga.sequelize)
-  await installRevTriggers(Manga.sequelize, 'Mangas', 'mm')
-
-  await ensureMetaTable(Metadata.sequelize)
-  await installRevTriggers(Metadata.sequelize, 'Metadata', 'mm')
-
-
-
 })()
 
 const logFile = fs.createWriteStream(path.join(STORE_PATH, 'log.txt'), { flags: 'w' })
@@ -359,81 +370,95 @@ async function setupAdblockAndGuards() {
 }
 
 app.whenReady().then(async () => {
-  // await setupAdblockAndGuards()
-  const primaryDisplay = screen.getPrimaryDisplay()
-  screenWidth = Math.floor(primaryDisplay.workAreaSize.width * primaryDisplay.scaleFactor)
-  mainWindow = createWindow()
-  
-  // 注册所有IPC处理器
-  const { registerAllHandlers } = require('./modules/ipc_handlers/all_handlers')
-  
-  const setProgressBar = (progress) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.setProgressBar(progress)
-      mainWindow.webContents.send('send-action', {
-        action: 'send-progress',
-        progress
-      })
+  try {
+    console.log('🚀 应用启动中...')
+    
+    // 1. 首先等待数据库初始化完成
+    console.log('⏳ 等待数据库初始化完成...')
+    await databaseInitPromise
+    
+    // 2. 然后注册所有IPC处理器（在创建窗口之前）
+    console.log('📝 注册IPC处理器...')
+    const setProgressBar = (progress) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.setProgressBar(progress)
+        mainWindow.webContents.send('send-action', {
+          action: 'send-progress',
+          progress
+        })
+      }
     }
-  }
 
-  registerAllHandlers({
-    Manga,
-    Metadata,
-    setting,
-    collectionList,
-    mainWindow,
-    sendMessageToWebContents,
-    setProgressBar,
-    STORE_PATH,
-    TEMP_PATH,
-    COVER_PATH,
-    VIEWER_PATH,
-    metadataSqliteFile,
-    isPortable,
-    shell,
-    dialog,
-    clipboard,
-    exec,
-    geneCover,
-    geneCoverFromBuffer,
-    getBookFilelist,
-    getImageListByBook,
-    deleteImageFromBook,
-    loadBookListFromDatabase,
-    saveBookToDatabase,
-    clearFolder,
-    createLimiter,
-    initTranslationIPC,
-    // 从 index_helpers 导入的函数
-    createAbortableContext,
-    pathExists,
-    coverAndHashInMem,
-    scanLibraryFilesWithExclude,
-    findArchiveInFolder,
-    getEhviewerDataManually,
-    // 从 fileLoader/folder.js 导入的函数
-    findSameFile,
-    makeShardedPath,
-    // 从 custom_sqlite_import 导入的函数
-    normalizeString,
-    calculateSimilarity,
-    generateVariants,
-    buildTitleIndex,
-    findMatchesByTitle,
-    refineMatchesWithJapaneseTitle,
-    parseMetadataTags,
-    matchByHash,
-    matchBySha1FromArchive,
-    titleIndexCache,
-    // 从 custom_blacklist 导入的函数
-    loadBlacklist,
-    saveBlacklist,
-    clearBlacklist,
-    getBlacklistPath,
-    isInBlacklist: require('./modules/custom_blacklist').isInBlacklist,
-    addToBlacklist: require('./modules/custom_blacklist').addToBlacklist
-  })
+    registerAllHandlers({
+      Manga,
+      Metadata,
+      setting,
+      collectionList,
+      mainWindow,
+      sendMessageToWebContents,
+      setProgressBar,
+      STORE_PATH,
+      TEMP_PATH,
+      COVER_PATH,
+      VIEWER_PATH,
+      metadataSqliteFile,
+      isPortable,
+      shell,
+      dialog,
+      clipboard,
+      exec,
+      geneCover,
+      geneCoverFromBuffer,
+      getBookFilelist,
+      getImageListByBook,
+      deleteImageFromBook,
+      loadBookListFromDatabase,
+      saveBookToDatabase,
+      clearFolder,
+      createLimiter,
+      initTranslationIPC,
+      // 从 index_helpers 导入的函数
+      createAbortableContext,
+      pathExists,
+      coverAndHashInMem,
+      scanLibraryFilesWithExclude,
+      findArchiveInFolder,
+      getEhviewerDataManually,
+      // 从 fileLoader/folder.js 导入的函数
+      findSameFile,
+      makeShardedPath,
+      // 从 custom_sqlite_import 导入的函数
+      normalizeString,
+      calculateSimilarity,
+      generateVariants,
+      buildTitleIndex,
+      findMatchesByTitle,
+      refineMatchesWithJapaneseTitle,
+      parseMetadataTags,
+      matchByHash,
+      matchBySha1FromArchive,
+      titleIndexCache,
+      // 从 custom_blacklist 导入的函数
+      loadBlacklist,
+      saveBlacklist,
+      clearBlacklist,
+      getBlacklistPath,
+      isInBlacklist: require('./modules/custom_blacklist').isInBlacklist,
+      addToBlacklist: require('./modules/custom_blacklist').addToBlacklist
+    })
+    
+    // 3. 最后创建窗口
+    console.log('🪟 创建主窗口...')
+    // await setupAdblockAndGuards()
+    const primaryDisplay = screen.getPrimaryDisplay()
+    screenWidth = Math.floor(primaryDisplay.workAreaSize.width * primaryDisplay.scaleFactor)
+    mainWindow = createWindow()
+    
+    console.log('✅ 应用启动完成')
+  } catch (error) {
+    console.error('❌ 应用启动失败:', error)
+    app.quit()
+  }
 })
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
