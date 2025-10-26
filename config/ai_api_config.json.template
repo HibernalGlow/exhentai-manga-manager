@@ -1,7 +1,10 @@
 {
+  "enabled": false,
   "apiUrl": "https://api.openai.com/v1/chat/completions",
   "apiKey": "your-api-key-here",
   "model": "gpt-3.5-turbo",
-  "enabled": false,
-  "comment": "支持 OpenAI 兼容的 API，如 DeepSeek、Qwen、Gemini 等"
+  "maxTokens": 500,
+  "temperature": 0.3,
+  "minTagCount": 3,
+  "comment": "支持 OpenAI 兼容的 API。DeepSeek: https://api.deepseek.com/v1/chat/completions, Qwen: https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
 }

@@ -1064,6 +1064,183 @@
           </el-col>
         </el-row>
       </el-tab-pane>
+      <el-tab-pane label="AI 标签" name="ai-tags">
+        <el-row :gutter="8">
+          <!-- AI API 配置 -->
+          <el-col :span="24">
+            <el-alert
+                title="AI 自动标签推断"
+                type="info"
+                :closable="false"
+                show-icon
+                style="margin-bottom: 16px;"
+            >
+              <template #default>
+                <p>通过 AI 根据书籍标题自动推断标签（原作、角色、画师、社团等）</p>
+                <p>支持 OpenAI、DeepSeek、Qwen、Gemini 等兼容 API</p>
+              </template>
+            </el-alert>
+          </el-col>
+
+          <!-- API 配置文件 -->
+          <el-col :span="24">
+            <div class="setting-line">
+              <el-input
+                  v-model="aiApiConfigPath"
+                  readonly
+                  placeholder="config/ai_api_config.json"
+              >
+                <template #prepend><span class="setting-label">配置文件</span></template>
+                <template #append>
+                  <el-button @click="openAiApiConfigFile">编辑配置</el-button>
+                </template>
+              </el-input>
+            </div>
+          </el-col>
+
+          <!-- 显示当前配置 -->
+          <el-col :span="24" v-if="aiApiConfig">
+            <el-descriptions :column="2" border size="small" style="margin: 16px 0;">
+              <el-descriptions-item label="API URL">{{ aiApiConfig.apiUrl }}</el-descriptions-item>
+              <el-descriptions-item label="Model">{{ aiApiConfig.model }}</el-descriptions-item>
+              <el-descriptions-item label="状态">
+                <el-tag :type="aiApiConfig.enabled ? 'success' : 'info'">
+                  {{ aiApiConfig.enabled ? '已启用' : '未启用' }}
+                </el-tag>
+              </el-descriptions-item>
+            </el-descriptions>
+          </el-col>
+
+          <!-- 测试 API -->
+          <el-col :span="12">
+            <div class="setting-line">
+              <el-button
+                  type="primary"
+                  @click="testAiApiConnection"
+                  :loading="testingAiApi"
+                  :disabled="!aiApiConfig || !aiApiConfig.enabled"
+                  style="width: 100%"
+              >
+                {{ testingAiApi ? '测试中...' : '测试 API 连接' }}
+              </el-button>
+            </div>
+          </el-col>
+
+          <!-- 查看标签统计 -->
+          <el-col :span="12">
+            <div class="setting-line">
+              <el-button
+                  @click="showTagStatistics"
+                  style="width: 100%"
+              >
+                查看标签统计
+              </el-button>
+            </div>
+          </el-col>
+
+          <!-- 批量推断设置 -->
+          <el-col :span="12">
+            <div class="setting-line">
+              <el-input-number
+                  v-model="aiTagBatchSize"
+                  :min="1"
+                  :max="50"
+                  :step="1"
+                  style="width: 100%"
+              >
+                <template #prepend>
+                  <span class="setting-label">批量推断数量</span>
+                </template>
+              </el-input-number>
+            </div>
+          </el-col>
+
+          <!-- 推断间隔 -->
+          <el-col :span="12">
+            <div class="setting-line">
+              <el-input-number
+                  v-model="aiTagDelay"
+                  :min="500"
+                  :max="5000"
+                  :step="100"
+                  style="width: 100%"
+              >
+                <template #prepend>
+                  <span class="setting-label">请求间隔(ms)</span>
+                </template>
+              </el-input-number>
+            </div>
+          </el-col>
+
+          <!-- 批量推断按钮 -->
+          <el-col :span="12">
+            <div class="setting-line">
+              <el-button
+                  type="success"
+                  @click="batchInferTags"
+                  :loading="batchInferring"
+                  :disabled="!aiApiConfig || !aiApiConfig.enabled"
+                  style="width: 100%"
+              >
+                {{ batchInferring ? `推断中 ${aiInferProgress.current}/${aiInferProgress.total}` : '批量推断标签' }}
+              </el-button>
+            </div>
+          </el-col>
+
+          <!-- 停止推断 -->
+          <el-col :span="12">
+            <div class="setting-line">
+              <el-button
+                  type="danger"
+                  @click="stopBatchInfer"
+                  :disabled="!batchInferring"
+                  style="width: 100%"
+              >
+                停止推断
+              </el-button>
+            </div>
+          </el-col>
+
+          <!-- 进度显示 -->
+          <el-col :span="24" v-if="batchInferring">
+            <el-progress
+                :percentage="Math.round((aiInferProgress.current / aiInferProgress.total) * 100)"
+                :status="aiInferProgress.current === aiInferProgress.total ? 'success' : undefined"
+            >
+              <span>{{ aiInferProgress.current }} / {{ aiInferProgress.total }}</span>
+            </el-progress>
+          </el-col>
+
+          <!-- 帮助信息 -->
+          <el-col :span="24">
+            <el-alert
+                title="使用说明"
+                type="warning"
+                :closable="false"
+                show-icon
+                style="margin-top: 16px;"
+            >
+              <template #default>
+                <p><strong>配置步骤：</strong></p>
+                <ol>
+                  <li>点击"编辑配置"按钮，填写 API URL、API Key 和 Model</li>
+                  <li>设置 "enabled": true 启用功能</li>
+                  <li>保存配置文件</li>
+                  <li>点击"测试 API 连接"验证配置</li>
+                </ol>
+                <p><strong>注意事项：</strong></p>
+                <ul>
+                  <li>只推断状态为 "non-tag" 或 "tag-failed" 的书籍</li>
+                  <li>AI 会参考数据库中已有的常用标签</li>
+                  <li>批量推断会自动限流，避免 API 限制</li>
+                  <li>推断结果建议人工复核</li>
+                  <li>成本估算：GPT-3.5 约 $0.003/本，DeepSeek 约 ¥0.001/本</li>
+                </ul>
+              </template>
+            </el-alert>
+          </el-col>
+        </el-row>
+      </el-tab-pane>
       <el-tab-pane :label="$t('m.accelerator')" name="accelerator">
         <el-descriptions
             :column="2" size="small" style="margin-top: 16px;"
@@ -1158,6 +1335,15 @@ const testingApi = ref(false)
 const batchTranslating = ref(false)
 const batchProgress = ref({ current: 0, total: 0 })
 
+// AI Tag inference state
+const testingAiApi = ref(false)
+const batchInferring = ref(false)
+const aiInferProgress = ref({ current: 0, total: 0 })
+const aiApiConfig = ref(null)
+const aiApiConfigPath = ref('config/ai_api_config.json')
+const aiTagBatchSize = ref(10)
+const aiTagDelay = ref(1000)
+
 // Import metadata state
 const importingMetadata = ref(false)
 
@@ -1211,6 +1397,191 @@ const stopBatchTranslation = async () => {
     console.error('Stop translation error:', e)
   }
 }
+
+// ========== AI Tag Inference Functions ==========
+
+// Load AI API config
+const loadAiApiConfig = async () => {
+  try {
+    const result = await ipcRenderer.invoke('load-ai-api-config')
+    if (result.success && result.config) {
+      aiApiConfig.value = result.config
+    }
+  } catch (e) {
+    console.error('Load AI API config error:', e)
+  }
+}
+
+// Open AI API config file
+const openAiApiConfigFile = async () => {
+  try {
+    const result = await ipcRenderer.invoke('open-ai-api-config-file')
+    if (result.success) {
+      ElMessage.success('配置文件已打开，编辑后请重新加载')
+      // 延迟重新加载配置
+      setTimeout(loadAiApiConfig, 1000)
+    } else {
+      ElMessage.error('打开配置文件失败: ' + result.message)
+    }
+  } catch (e) {
+    console.error('Open AI API config error:', e)
+    ElMessage.error('打开配置文件失败: ' + e.message)
+  }
+}
+
+// Test AI API connection
+const testAiApiConnection = async () => {
+  try {
+    testingAiApi.value = true
+    
+    // 重新加载配置
+    await loadAiApiConfig()
+    
+    if (!aiApiConfig.value || !aiApiConfig.value.enabled) {
+      ElMessage.warning('请先启用 AI API 配置')
+      return
+    }
+    
+    // 测试标题
+    const testTitle = '(C96) [サークル名 (作者名)] テスト本 (オリジナル)'
+    
+    const result = await ipcRenderer.invoke('ai-infer-tags', {
+      bookId: 'test',
+      title: testTitle,
+      apiConfig: aiApiConfig.value
+    })
+    
+    if (result.success) {
+      ElMessage.success('API 测试成功！推断标签: ' + JSON.stringify(result.tags))
+    } else {
+      ElMessage.error('API 测试失败: ' + result.message)
+    }
+  } catch (e) {
+    console.error('Test AI API error:', e)
+    ElMessage.error('测试失败: ' + e.message)
+  } finally {
+    testingAiApi.value = false
+  }
+}
+
+// Show tag statistics
+const showTagStatistics = async () => {
+  try {
+    const result = await ipcRenderer.invoke('get-existing-tags')
+    
+    if (result.success) {
+      let message = '数据库标签统计：\n\n'
+      for (const [category, count] of Object.entries(result.counts)) {
+        message += `${category}: ${count} 个\n`
+      }
+      
+      ElMessageBox.alert(message, '标签统计', {
+        confirmButtonText: '确定',
+        type: 'info'
+      })
+    } else {
+      ElMessage.error('获取标签统计失败: ' + result.message)
+    }
+  } catch (e) {
+    console.error('Show tag statistics error:', e)
+    ElMessage.error('获取标签统计失败: ' + e.message)
+  }
+}
+
+// Batch infer tags
+const batchInferTags = async () => {
+  try {
+    batchInferring.value = true
+    aiInferProgress.value = { current: 0, total: 0 }
+    
+    // 重新加载配置
+    await loadAiApiConfig()
+    
+    if (!aiApiConfig.value || !aiApiConfig.value.enabled) {
+      ElMessage.warning('请先启用 AI API 配置')
+      batchInferring.value = false
+      return
+    }
+    
+    // 获取需要推断的书籍（non-tag 或 tag-failed）
+    const booksToInfer = bookList.value.filter(book => 
+      book.status === 'non-tag' || book.status === 'tag-failed'
+    )
+    
+    if (booksToInfer.length === 0) {
+      ElMessage.info('没有需要推断标签的书籍')
+      batchInferring.value = false
+      return
+    }
+    
+    // 限制数量
+    const booksToProcess = booksToInfer.slice(0, aiTagBatchSize.value)
+    const bookIds = booksToProcess.map(b => b.id)
+    
+    ElMessage.info(`开始推断 ${bookIds.length} 本书籍的标签...`)
+    
+    aiInferProgress.value = { current: 0, total: bookIds.length }
+    
+    // 逐个推断（避免并发过多）
+    for (let i = 0; i < bookIds.length; i++) {
+      if (!batchInferring.value) break // 用户停止
+      
+      const book = booksToProcess[i]
+      
+      try {
+        const result = await ipcRenderer.invoke('ai-infer-tags', {
+          bookId: book.id,
+          title: book.title,
+          apiConfig: aiApiConfig.value
+        })
+        
+        if (result.success) {
+          ElMessage.success({
+            message: `✅ [${i + 1}/${bookIds.length}] ${book.title}`,
+            duration: 2000
+          })
+        } else {
+          ElMessage.warning({
+            message: `⚠️ [${i + 1}/${bookIds.length}] ${book.title}: ${result.message}`,
+            duration: 2000
+          })
+        }
+      } catch (e) {
+        console.error(`Infer tags error for ${book.id}:`, e)
+        ElMessage.error({
+          message: `❌ [${i + 1}/${bookIds.length}] ${book.title}: ${e.message}`,
+          duration: 2000
+        })
+      }
+      
+      aiInferProgress.value.current = i + 1
+      
+      // 延迟避免 API 限流
+      if (i < bookIds.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, aiTagDelay.value))
+      }
+    }
+    
+    ElMessage.success(`批量推断完成！共处理 ${aiInferProgress.value.current} 本书籍`)
+    
+    // 刷新书籍列表
+    emit('loadBookList')
+    
+  } catch (e) {
+    console.error('Batch infer tags error:', e)
+    ElMessage.error('批量推断失败: ' + e.message)
+  } finally {
+    batchInferring.value = false
+  }
+}
+
+// Stop batch infer
+const stopBatchInfer = () => {
+  batchInferring.value = false
+  ElMessage.warning('已停止批量推断')
+}
+
+// ========== End AI Tag Inference Functions ==========
 
 // Open API config file for editing
 const openApiConfigFile = async () => {
@@ -1391,6 +1762,8 @@ const normalizeConcurrency = (v, fallback) => {
 onMounted(() => {
   // Load API config from JSON
   loadApiConfig()
+  // Load AI API config
+  loadAiApiConfig()
   
   ipcRenderer.invoke('load-setting').then(async (res) => {
     setting.value = res

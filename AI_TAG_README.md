@@ -12,6 +12,17 @@
 
 ## 配置
 
+### 方法 1：通过设置界面（推荐）
+
+1. 启动应用，打开设置对话框
+2. 切换到「翻译」tab 旁边的「AI 标签」tab
+3. 点击「编辑配置」按钮
+4. 在打开的配置文件中填写你的 API 信息
+5. 保存配置文件
+6. 点击「测试 API 连接」验证配置
+
+### 方法 2：手动配置
+
 1. 复制配置模板：
 ```bash
 cp config/ai_api_config.json.template config/ai_api_config.json
@@ -20,10 +31,13 @@ cp config/ai_api_config.json.template config/ai_api_config.json
 2. 编辑 `config/ai_api_config.json`：
 ```json
 {
+  "enabled": true,
   "apiUrl": "https://api.openai.com/v1/chat/completions",
   "apiKey": "your-api-key-here",
   "model": "gpt-3.5-turbo",
-  "enabled": true
+  "maxTokens": 500,
+  "temperature": 0.3,
+  "minTagCount": 3
 }
 ```
 
@@ -101,10 +115,30 @@ AI 返回的标签会与数据库现有标签进行模糊匹配：
 
 ## 使用方法
 
-### 测试标签提取
+### 1. 在设置界面使用
 
+#### 查看标签统计
+1. 打开设置 → AI 标签 tab
+2. 点击「查看标签统计」按钮
+3. 查看数据库中各类别标签数量
+
+#### 测试 API 连接
+1. 配置好 API 信息
+2. 点击「测试 API 连接」按钮
+3. 系统会用测试标题验证 API 是否正常
+
+#### 批量推断标签
+1. 设置「批量推断数量」（建议 10-20）
+2. 设置「请求间隔」（建议 1000ms，避免 API 限流）
+3. 点击「批量推断标签」按钮
+4. 系统会自动处理状态为 `non-tag` 或 `tag-failed` 的书籍
+5. 可以随时点击「停止推断」中断处理
+
+### 2. 命令行测试
+
+#### 测试标签提取
 ```bash
-node tests/test_ai_tag.js
+node tests/test_ai_tag_full.js
 ```
 
 这会显示：

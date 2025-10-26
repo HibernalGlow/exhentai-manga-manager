@@ -3,12 +3,52 @@
  * 通过 AI API 根据标题推断标签
  */
 
-const { ipcMain } = require('electron')
+const { ipcMain, shell } = require('electron')
+const fetch = require('node-fetch')
+const fs = require('fs')
+const path = require('path')
 
 function registerAiTagHandlers(dependencies) {
-  const { db } = dependencies
+  const { Manga: db } = dependencies
   
   console.log('🤖 注册 AI 标签处理器...')
+  
+  // 加载 AI API 配置
+  ipcMain.handle('load-ai-api-config', async () => {
+    try {
+      const configPath = path.join(process.cwd(), 'config', 'ai_api_config.json')
+      
+      if (fs.existsSync(configPath)) {
+        const content = fs.readFileSync(configPath, 'utf-8')
+        const config = JSON.parse(content)
+        return { success: true, config }
+      }
+      
+      return { success: true, config: null }
+    } catch (error) {
+      console.error('❌ 加载 AI API 配置失败:', error)
+      return { success: false, message: error.message }
+    }
+  })
+  
+  // 打开 AI API 配置文件
+  ipcMain.handle('open-ai-api-config-file', async () => {
+    try {
+      const configPath = path.join(process.cwd(), 'config', 'ai_api_config.json')
+      const templatePath = path.join(process.cwd(), 'config', 'ai_api_config.json.template')
+      
+      // 如果配置文件不存在，从模板创建
+      if (!fs.existsSync(configPath) && fs.existsSync(templatePath)) {
+        fs.copyFileSync(templatePath, configPath)
+      }
+      
+      await shell.openPath(configPath)
+      return { success: true }
+    } catch (error) {
+      console.error('❌ 打开 AI API 配置文件失败:', error)
+      return { success: false, message: error.message }
+    }
+  })
   
   // 获取数据库中现有的标签列表（用于 AI 参考）
   ipcMain.handle('get-existing-tags', async (event, category) => {
@@ -97,6 +137,24 @@ function registerAiTagHandlers(dependencies) {
       const normalizedTags = await matchAndNormalizeTags(db, inferredTags)
       
       console.log(`✅ 推断结果:`, normalizedTags)
+      
+      // 如果不是测试，更新数据库
+      if (bookId !== 'test') {
+        const book = await db.findByPk(bookId, {
+          attributes: ['id', 'tags'],
+          raw: true
+        })
+        
+        if (book) {
+          const currentTags = typeof book.tags === 'string' ? JSON.parse(book.tags) : (book.tags || {})
+          const mergedTags = mergeTags(currentTags, normalizedTags)
+          
+          await db.update(
+            { tags: JSON.stringify(mergedTags), status: 'tagged' },
+            { where: { id: bookId } }
+          )
+        }
+      }
       
       return {
         success: true,
