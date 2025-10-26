@@ -1,0 +1,43 @@
+{
+  "providers": [
+    {
+      "name": "DeepSeek",
+      "provider": "openai",
+      "baseUrl": "https://api.deepseek.com/v1/chat/completions",
+      "apiKey": "your-deepseek-api-key-here",
+      "model": "deepseek-chat",
+      "temperature": 0.3,
+      "maxTokens": 500
+    },
+    {
+      "name": "OpenAI",
+      "provider": "openai", 
+      "baseUrl": "https://api.openai.com/v1/chat/completions",
+      "apiKey": "your-openai-api-key-here",
+      "model": "gpt-3.5-turbo",
+      "temperature": 0.3,
+      "maxTokens": 500
+    },
+    {
+      "name": "Qwen",
+      "provider": "openai",
+      "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+      "apiKey": "your-qwen-api-key-here", 
+      "model": "qwen-turbo",
+      "temperature": 0.3,
+      "maxTokens": 500
+    },
+    {
+      "name": "Ollama (本地)",
+      "provider": "openai",
+      "baseUrl": "http://localhost:11434/v1/chat/completions",
+      "apiKey": "ollama",
+      "model": "qwen2.5:7b",
+      "temperature": 0.3,
+      "maxTokens": 500
+    }
+  ],
+  "activeIndex": 0,
+  "comment": "翻译和 AI 标签推断的 API 配置。请填写正确的 API Key 并设置 activeIndex 选择要使用的提供商。"
+}
+

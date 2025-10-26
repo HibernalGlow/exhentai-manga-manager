@@ -63,7 +63,7 @@ function registerAllHandlers(deps) {
   
   ipcMain.handle('open-api-config-file', async () => {
     try {
-      const configPath = path.join(STORE_PATH, 'api-config.json')
+      const configPath = path.join(STORE_PATH, 'ai_api_config.json')
       if (!fs.existsSync(configPath)) {
         fs.writeFileSync(configPath, JSON.stringify({
           openai: {

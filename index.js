@@ -98,6 +98,7 @@ const {
 // IPC 处理器注册模块 - 需要在顶部导入以确保打包后正确加载
 const { registerAllHandlers } = require('./modules/ipc_handlers/all_handlers')
 const { registerFolderBatchHandlers } = require('./modules/ipc_handlers/folder_batch_handlers')
+const { registerAiTagHandlers } = require('./modules/ipc_handlers/ai_tag_handlers')
 
 // ==================== 自定义功能模块结束 ====================
 
@@ -453,6 +454,17 @@ app.whenReady().then(async () => {
       db: Manga,
       mainWindow,
       saveBookToDatabase: (book) => saveBookToDatabase(Manga, Metadata, book)
+    })
+    
+    // 注册 AI 标签处理器
+    registerAiTagHandlers({
+      Manga,
+      Metadata,
+      setting,
+      collectionList,
+      mainWindow,
+      sendMessageToWebContents,
+      STORE_PATH
     })
     
     // 3. 最后创建窗口

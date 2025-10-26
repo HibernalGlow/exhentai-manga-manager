@@ -1088,9 +1088,9 @@
               <el-input
                   v-model="aiApiConfigPath"
                   readonly
-                  placeholder="config/ai_api_config.json"
+                  placeholder="使用翻译 API 配置"
               >
-                <template #prepend><span class="setting-label">配置文件</span></template>
+                <template #prepend><span class="setting-label">API 配置</span></template>
                 <template #append>
                   <el-button @click="openAiApiConfigFile">编辑配置</el-button>
                 </template>
@@ -1099,14 +1099,13 @@
           </el-col>
 
           <!-- 显示当前配置 -->
-          <el-col :span="24" v-if="aiApiConfig">
+          <el-col :span="24" v-if="activeProvider">
             <el-descriptions :column="2" border size="small" style="margin: 16px 0;">
-              <el-descriptions-item label="API URL">{{ aiApiConfig.apiUrl }}</el-descriptions-item>
-              <el-descriptions-item label="Model">{{ aiApiConfig.model }}</el-descriptions-item>
+              <el-descriptions-item label="提供商">{{ activeProvider.name }}</el-descriptions-item>
+              <el-descriptions-item label="API URL">{{ activeProvider.baseUrl }}</el-descriptions-item>
+              <el-descriptions-item label="模型">{{ activeProvider.model }}</el-descriptions-item>
               <el-descriptions-item label="状态">
-                <el-tag :type="aiApiConfig.enabled ? 'success' : 'info'">
-                  {{ aiApiConfig.enabled ? '已启用' : '未启用' }}
-                </el-tag>
+                <el-tag type="success">已启用</el-tag>
               </el-descriptions-item>
             </el-descriptions>
           </el-col>
@@ -1118,7 +1117,7 @@
                   type="primary"
                   @click="testAiApiConnection"
                   :loading="testingAiApi"
-                  :disabled="!aiApiConfig || !aiApiConfig.enabled"
+                  :disabled="!activeProvider"
                   style="width: 100%"
               >
                 {{ testingAiApi ? '测试中...' : '测试 API 连接' }}
@@ -1179,7 +1178,7 @@
                   type="success"
                   @click="batchInferTags"
                   :loading="batchInferring"
-                  :disabled="!aiApiConfig || !aiApiConfig.enabled"
+                  :disabled="!activeProvider"
                   style="width: 100%"
               >
                 {{ batchInferring ? `推断中 ${aiInferProgress.current}/${aiInferProgress.total}` : '批量推断标签' }}
@@ -1204,7 +1203,7 @@
           <!-- 进度显示 -->
           <el-col :span="24" v-if="batchInferring">
             <el-progress
-                :percentage="Math.round((aiInferProgress.current / aiInferProgress.total) * 100)"
+                :percentage="aiInferProgress.total > 0 ? Math.round((aiInferProgress.current / aiInferProgress.total) * 100) : 0"
                 :status="aiInferProgress.current === aiInferProgress.total ? 'success' : undefined"
             >
               <span>{{ aiInferProgress.current }} / {{ aiInferProgress.total }}</span>
@@ -1223,13 +1222,14 @@
               <template #default>
                 <p><strong>配置步骤：</strong></p>
                 <ol>
-                  <li>点击"编辑配置"按钮，填写 API URL、API Key 和 Model</li>
-                  <li>设置 "enabled": true 启用功能</li>
-                  <li>保存配置文件</li>
+                  <li>先在「翻译」tab 中配置 API（添加提供商、填写 API Key）</li>
+                  <li>切换到「AI 标签」tab，系统会自动使用翻译的 API 配置</li>
                   <li>点击"测试 API 连接"验证配置</li>
+                  <li>设置批量数量和间隔，开始推断</li>
                 </ol>
                 <p><strong>注意事项：</strong></p>
                 <ul>
+                  <li>使用翻译 tab 中的 API 配置，无需重复配置</li>
                   <li>只推断状态为 "non-tag" 或 "tag-failed" 的书籍</li>
                   <li>AI 会参考数据库中已有的常用标签</li>
                   <li>批量推断会自动限流，避免 API 限制</li>
@@ -1403,9 +1403,19 @@ const stopBatchTranslation = async () => {
 // Load AI API config
 const loadAiApiConfig = async () => {
   try {
-    const result = await ipcRenderer.invoke('load-ai-api-config')
-    if (result.success && result.config) {
-      aiApiConfig.value = result.config
+    // 直接使用翻译的配置，不需要单独的 AI 配置
+    if (activeProvider.value) {
+      aiApiConfig.value = {
+        enabled: true,
+        apiUrl: activeProvider.value.baseUrl,
+        apiKey: activeProvider.value.apiKey,
+        model: activeProvider.value.model,
+        maxTokens: activeProvider.value.maxTokens || 500,
+        temperature: activeProvider.value.temperature || 0.3,
+        minTagCount: 3
+      }
+    } else {
+      aiApiConfig.value = null
     }
   } catch (e) {
     console.error('Load AI API config error:', e)
@@ -1415,13 +1425,17 @@ const loadAiApiConfig = async () => {
 // Open AI API config file
 const openAiApiConfigFile = async () => {
   try {
-    const result = await ipcRenderer.invoke('open-ai-api-config-file')
+    // 直接使用翻译的配置打开功能
+    const result = await ipcRenderer.invoke('open-api-config-file')
     if (result.success) {
-      ElMessage.success('配置文件已打开，编辑后请重新加载')
+      ElMessage.success('API配置文件已打开，编辑后请刷新配置')
       // 延迟重新加载配置
-      setTimeout(loadAiApiConfig, 1000)
+      setTimeout(() => {
+        loadApiConfig()
+        loadAiApiConfig()
+      }, 1000)
     } else {
-      ElMessage.error('打开配置文件失败: ' + result.message)
+      ElMessage.error('打开配置文件失败: ' + result.error)
     }
   } catch (e) {
     console.error('Open AI API config error:', e)
@@ -1435,10 +1449,11 @@ const testAiApiConnection = async () => {
     testingAiApi.value = true
     
     // 重新加载配置
+    await loadApiConfig()
     await loadAiApiConfig()
     
-    if (!aiApiConfig.value || !aiApiConfig.value.enabled) {
-      ElMessage.warning('请先启用 AI API 配置')
+    if (!activeProvider.value) {
+      ElMessage.warning('请先在翻译 tab 中配置 API')
       return
     }
     
@@ -1448,7 +1463,7 @@ const testAiApiConnection = async () => {
     const result = await ipcRenderer.invoke('ai-infer-tags', {
       bookId: 'test',
       title: testTitle,
-      apiConfig: aiApiConfig.value
+      apiConfig: JSON.parse(JSON.stringify(aiApiConfig.value)) // 深拷贝避免克隆问题
     })
     
     if (result.success) {
@@ -1495,10 +1510,11 @@ const batchInferTags = async () => {
     aiInferProgress.value = { current: 0, total: 0 }
     
     // 重新加载配置
+    await loadApiConfig()
     await loadAiApiConfig()
     
-    if (!aiApiConfig.value || !aiApiConfig.value.enabled) {
-      ElMessage.warning('请先启用 AI API 配置')
+    if (!activeProvider.value) {
+      ElMessage.warning('请先在翻译 tab 中配置 API')
       batchInferring.value = false
       return
     }
@@ -1532,7 +1548,7 @@ const batchInferTags = async () => {
         const result = await ipcRenderer.invoke('ai-infer-tags', {
           bookId: book.id,
           title: book.title,
-          apiConfig: aiApiConfig.value
+          apiConfig: JSON.parse(JSON.stringify(aiApiConfig.value)) // 深拷贝避免克隆问题
         })
         
         if (result.success) {

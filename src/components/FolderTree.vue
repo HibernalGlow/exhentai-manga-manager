@@ -383,17 +383,19 @@ const geneFolderTree = async () => {
   dirIndex = { keys, idxs }
   // build the rest tabs
 
-  artistTreeData.value = appStore.getTagsByCategoryWithTranslationCount('artist', {
-    translate: (name, cat) => translate(name, cat, { alwaysShow: true }),
-    alwaysShow: true
-  })
-  groupTreeData.value = appStore.getTagsByCategoryWithTranslationCount('group', {
-    translate: (name, cat) => translate(name, cat, { alwaysShow: true }),
-    alwaysShow: true
-  })
-  parodyTreeData.value = appStore.getTagsByCategoryWithTranslationCount('parody', {
-    translate: (name, cat) => translate(name, cat, { alwaysShow: true }),
-  })
+  // 使用现有的 tagListRaw 计算属性来构建标签树
+  const buildTagTree = (category) => {
+    const tags = tagListRaw.value.filter(tag => tag.id.startsWith(category + ':'))
+    return tags.map(tag => ({
+      id: tag.id,
+      label: tag.label,
+      children: []
+    }))
+  }
+
+  artistTreeData.value = buildTagTree('artist')
+  groupTreeData.value = buildTagTree('group')
+  parodyTreeData.value = buildTagTree('parody')
 
 
   isFolderTreeInit.value = true

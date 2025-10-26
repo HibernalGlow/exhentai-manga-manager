@@ -2,46 +2,49 @@
 
 ## 5 分钟快速上手
 
-### 第 1 步：打开设置
+### 第 1 步：配置翻译 API
 
 1. 启动应用
 2. 点击设置按钮
-3. 找到「翻译」tab 旁边的「AI 标签」tab
-
-### 第 2 步：配置 API
+3. 切换到「翻译」tab
+4. 点击「编辑配置」按钮
+5. **如果配置文件不存在，会从模板创建**
 
 #### 使用 DeepSeek（推荐，最便宜）
 
-1. 点击「编辑配置」按钮
-2. 在打开的文件中填写：
+在打开的 `config/api_config.json` 文件中：
+
+1. **填写 API Key**：将 `your-deepseek-api-key-here` 替换为你的真实 API Key
+2. **确认配置**：确保 `activeIndex` 为 `0`（使用第一个提供商）
+3. **保存文件**
 
 ```json
 {
-  "enabled": true,
-  "apiUrl": "https://api.deepseek.com/v1/chat/completions",
-  "apiKey": "你的-deepseek-api-key",
-  "model": "deepseek-chat",
-  "maxTokens": 500,
-  "temperature": 0.3,
-  "minTagCount": 3
+  "providers": [
+    {
+      "name": "DeepSeek",
+      "provider": "openai",
+      "baseUrl": "https://api.deepseek.com/v1/chat/completions",
+      "apiKey": "sk-your-real-api-key-here",
+      "model": "deepseek-chat",
+      "temperature": 0.3,
+      "maxTokens": 500
+    }
+  ],
+  "activeIndex": 0
 }
 ```
 
-3. 保存文件
+### 第 2 步：切换到 AI 标签 tab
 
-#### 获取 DeepSeek API Key
-
-1. 访问 https://platform.deepseek.com/
-2. 注册/登录账号
-3. 进入 API Keys 页面
-4. 创建新的 API Key
-5. 复制 API Key 到配置文件
+1. 在设置界面，切换到「AI 标签」tab
+2. 系统会自动显示翻译 tab 中的 API 配置
+3. 确认配置信息正确
 
 ### 第 3 步：测试连接
 
-1. 回到设置界面
-2. 点击「测试 API 连接」按钮
-3. 看到「API 测试成功」提示即可
+1. 点击「测试 API 连接」按钮
+2. 看到「API 测试成功」提示即可
 
 ### 第 4 步：查看标签统计（可选）
 
@@ -62,6 +65,14 @@
 - 推断结果会实时显示在消息提示中
 
 ## 常见问题
+
+### Q: 如何配置 API？
+
+A: 
+1. **先在翻译 tab 配置**：打开设置 → 翻译 tab → 编辑配置
+2. **添加提供商**：在配置文件中添加 API 提供商信息
+3. **切换到 AI 标签 tab**：系统会自动使用翻译的配置
+4. **无需重复配置**：AI 标签功能直接使用翻译的 API 设置
 
 ### Q: 为什么推荐 DeepSeek？
 
@@ -109,16 +120,16 @@ A:
 A: 
 1. 安装 Ollama：https://ollama.ai/
 2. 下载模型：`ollama pull qwen2.5:7b`
-3. 配置文件改为：
+3. 在翻译 tab 的配置中添加：
 ```json
 {
-  "enabled": true,
-  "apiUrl": "http://localhost:11434/v1/chat/completions",
+  "name": "Ollama",
+  "provider": "openai",
+  "baseUrl": "http://localhost:11434/v1/chat/completions",
   "apiKey": "ollama",
   "model": "qwen2.5:7b",
-  "maxTokens": 500,
   "temperature": 0.3,
-  "minTagCount": 3
+  "maxTokens": 500
 }
 ```
 
@@ -126,10 +137,11 @@ A:
 
 A: 
 检查以下几点：
-1. API Key 是否正确
-2. 网络连接是否正常
-3. API 额度是否用完
-4. 请求间隔是否太短（被限流）
+1. 翻译 tab 中是否已配置 API
+2. API Key 是否正确
+3. 网络连接是否正常
+4. API 额度是否用完
+5. 请求间隔是否太短（被限流）
 
 查看控制台日志获取详细错误信息。
 
@@ -137,40 +149,51 @@ A:
 
 ### 1. 首次使用
 
-- 先用 10 本书测试
-- 检查推断结果质量
-- 调整批量数量和间隔
+- **先配置翻译 API**：在翻译 tab 中配置好 API
+- **小批量测试**：先用 10 本书测试
+- **检查推断结果**：确认质量满意
+- **调整参数**：根据结果调整批量数量和间隔
 
 ### 2. 大批量处理
 
-- 批量数量：10-20
-- 请求间隔：1000-2000ms
-- 分批处理，避免一次性处理太多
+- **批量数量**：10-20
+- **请求间隔**：1000-2000ms
+- **分批处理**：避免一次性处理太多
+- **监控进度**：随时可以停止
 
 ### 3. 成本控制
 
-- 优先使用 DeepSeek（最便宜）
-- 或使用本地 Ollama（免费）
-- 避免重复推断（系统会自动跳过已标记的）
+- **优先使用 DeepSeek**（最便宜）
+- **或使用本地 Ollama**（免费）
+- **避免重复推断**（系统会自动跳过已标记的）
 
 ### 4. 质量保证
 
-- 定期人工复核推断结果
-- 对于重要作品，手动编辑标签
-- 利用标签统计功能了解标签分布
+- **定期人工复核**：推断结果
+- **重要作品手动编辑**：标签
+- **利用标签统计**：了解标签分布
 
 ## 下一步
 
-- 阅读完整文档：`AI_TAG_README.md`
-- 查看实现总结：`AI_TAG_FEATURE_SUMMARY.md`
-- 运行测试脚本：`node tests/test_ai_tag_full.js`
+- **阅读完整文档**：`AI_TAG_README.md`
+- **查看实现总结**：`AI_TAG_FEATURE_SUMMARY.md`
+- **运行测试脚本**：`node tests/test_ai_tag_full.js`
 
 ## 技术支持
 
 如有问题，请查看：
-1. 控制台日志（F12 开发者工具）
-2. 完整文档（`AI_TAG_README.md`）
-3. GitHub Issues
+1. **控制台日志**（F12 开发者工具）
+2. **完整文档**（`AI_TAG_README.md`）
+3. **GitHub Issues**
+
+## 总结
+
+现在 AI 标签推断功能已经完美集成到翻译配置中：
+
+✅ **无需重复配置** - 直接使用翻译的 API 设置  
+✅ **统一管理** - 所有 AI 功能使用同一套配置  
+✅ **简化流程** - 配置一次，多处使用  
+✅ **降低成本** - 避免重复的 API 调用  
 
 祝使用愉快！🎉
 

@@ -1717,7 +1717,7 @@ export default defineComponent({
       })
       this.handleSortChange(this.sortValue, this.bookList)
       // keep a cache mirror
-      await this.pushAppCache()
+      // await this.pushAppCache() // 函数不存在，暂时注释
     },
     openCollection(collection) {
       this.drawerVisibleCollection = true
