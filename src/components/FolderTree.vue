@@ -768,13 +768,21 @@ async function batchUpdateArtistGroup(folders) {
   const { ElMessageBox, ElLoading } = await import('element-plus')
   
   try {
+    // 将文件夹路径数组转换为纯字符串数组（避免对象克隆问题）
+    const folderPaths = Array.isArray(folders) ? [...folders] : []
+    
+    if (folderPaths.length === 0) {
+      appStore.printMessage('warning', '请先选择文件夹')
+      return
+    }
+    
     // 显示确认对话框
     await ElMessageBox.confirm(
-      `将会修改 ${folders.length} 个文件夹下的书籍画师/社团标签：
+      `将会修改 ${folderPaths.length} 个文件夹下的书籍画师/社团标签：
       
-• 只处理状态为 "non-tag" 或 "tag-failed" 的书籍
-• 只修改没有画师/社团标签的书籍
-• 统一为该文件夹中出现最多的标签
+• 统计文件夹中所有书籍的标签（包括已标记的）
+• 找出出现最多的画师/社团标签
+• 只修改状态为 "non-tag" 或 "tag-failed" 且没有该标签的书籍
 • 此操作不可撤销
 
 是否继续？`,
@@ -795,7 +803,7 @@ async function batchUpdateArtistGroup(folders) {
     })
     
     try {
-      const result = await ipcRenderer.invoke('batch-update-artist-group-tags', folders)
+      const result = await ipcRenderer.invoke('batch-update-artist-group-tags', folderPaths)
       loading.close()
       
       if (result.success) {
@@ -825,13 +833,21 @@ async function batchUpdateCoser(folders) {
   const { ElMessageBox, ElLoading } = await import('element-plus')
   
   try {
+    // 将文件夹路径数组转换为纯字符串数组（避免对象克隆问题）
+    const folderPaths = Array.isArray(folders) ? [...folders] : []
+    
+    if (folderPaths.length === 0) {
+      appStore.printMessage('warning', '请先选择文件夹')
+      return
+    }
+    
     // 显示确认对话框
     await ElMessageBox.confirm(
-      `将会修改 ${folders.length} 个文件夹下的书籍Coser标签：
+      `将会修改 ${folderPaths.length} 个文件夹下的书籍Coser标签：
       
-• 只处理状态为 "non-tag" 或 "tag-failed" 的书籍
-• 只修改没有Coser标签的书籍
-• 统一为该文件夹中出现最多的标签
+• 统计文件夹中所有书籍的标签（包括已标记的）
+• 找出出现最多的Coser标签
+• 只修改状态为 "non-tag" 或 "tag-failed" 且没有该标签的书籍
 • 此操作不可撤销
 
 是否继续？`,
@@ -852,7 +868,7 @@ async function batchUpdateCoser(folders) {
     })
     
     try {
-      const result = await ipcRenderer.invoke('batch-update-coser-tags', folders)
+      const result = await ipcRenderer.invoke('batch-update-coser-tags', folderPaths)
       loading.close()
       
       if (result.success) {
