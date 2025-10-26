@@ -97,6 +97,7 @@ const {
 
 // IPC 处理器注册模块 - 需要在顶部导入以确保打包后正确加载
 const { registerAllHandlers } = require('./modules/ipc_handlers/all_handlers')
+const { registerFolderBatchHandlers } = require('./modules/ipc_handlers/folder_batch_handlers')
 
 // ==================== 自定义功能模块结束 ====================
 
@@ -445,6 +446,12 @@ app.whenReady().then(async () => {
       getBlacklistPath,
       isInBlacklist: require('./modules/custom_blacklist').isInBlacklist,
       addToBlacklist: require('./modules/custom_blacklist').addToBlacklist
+    })
+    
+    // 注册文件夹批量操作处理器
+    registerFolderBatchHandlers({
+      db: Manga,
+      mainWindow
     })
     
     // 3. 最后创建窗口

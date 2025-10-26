@@ -10,40 +10,74 @@
       <!-- Folder -->
       <el-tab-pane label="Folder" name="folder">
         <div ref="folderToolbarRef" class="folder-toolbar"
-             style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
-          <!--  Search bar        -->
-          <el-input
-              class="folder-search"
-              v-model="treeFilterText"
-              placeholder='Search folder'
-              clearable
-              size="default"
-              @input="() => treeRef?.filter?.(treeFilterText)"
-              style="flex:1"
-          ></el-input>
-          <!-- Side buttons -->
-          <div class="icon-group">
-            <!--    Expand all /   -->
-            <el-tooltip content="Expand all" placement="top">
-              <el-button
-                  size="default"
-                  circle
-                  :icon="CirclePlusFilled"
-                  aria-label="Expand all"
-                  @click="expandAll"
-              />
-            </el-tooltip>
-            <!-- Collapse all -->
-            <el-tooltip content="Collapse all" placement="top">
-              <el-button
-                  size="default"
-                  circle
-                  :icon="RemoveFilled"
-                  aria-label="Collapse all"
-                  @click="collapseAll"
-              />
-            </el-tooltip>
+             style="display:flex; flex-direction:column; gap:8px; margin-bottom:8px;">
+          <!-- 第一行：搜索和展开/折叠按钮 -->
+          <div style="display:flex; gap:8px; align-items:center;">
+            <!--  Search bar        -->
+            <el-input
+                class="folder-search"
+                v-model="treeFilterText"
+                placeholder='Search folder'
+                clearable
+                size="default"
+                @input="() => treeRef?.filter?.(treeFilterText)"
+                style="flex:1"
+            ></el-input>
+            <!-- Side buttons -->
+            <div class="icon-group">
+              <!--    Expand all /   -->
+              <el-tooltip content="Expand all" placement="top">
+                <el-button
+                    size="default"
+                    circle
+                    :icon="CirclePlusFilled"
+                    aria-label="Expand all"
+                    @click="expandAll"
+                />
+              </el-tooltip>
+              <!-- Collapse all -->
+              <el-tooltip content="Collapse all" placement="top">
+                <el-button
+                    size="default"
+                    circle
+                    :icon="RemoveFilled"
+                    aria-label="Collapse all"
+                    @click="collapseAll"
+                />
+              </el-tooltip>
+            </div>
           </div>
+          
+          <!-- 第二行：批量操作按钮组（可折叠） -->
+          <el-collapse v-model="batchActionsExpanded" style="border:none;">
+            <el-collapse-item name="batch" style="border:none;">
+              <template #title>
+                <span style="font-size:12px; color:var(--el-text-color-secondary);">
+                  批量操作 ({{ checkedNodes.length }} 个文件夹已选)
+                </span>
+              </template>
+              <div class="batch-actions-buttons" style="display:flex; flex-direction:column; gap:4px; padding:4px 0;">
+                <el-button 
+                  size="small" 
+                  type="primary"
+                  :disabled="checkedNodes.length === 0"
+                  @click="batchUpdateArtistGroup(checkedNodes)"
+                  style="width:100%;"
+                >
+                  🎨 批量修改画师/社团标签
+                </el-button>
+                <el-button 
+                  size="small" 
+                  type="primary"
+                  :disabled="checkedNodes.length === 0"
+                  @click="batchUpdateCoser(checkedNodes)"
+                  style="width:100%;"
+                >
+                  📸 批量修改Coser标签
+                </el-button>
+              </div>
+            </el-collapse-item>
+          </el-collapse>
         </div>
         <!--  Show all row    -->
         <button
@@ -58,18 +92,23 @@
           <span class="fake-tree-row__label">All</span>
         </button>
         <!--        :filter-node-method="filterTreeNode"-->
-        <el-tree-v2
-            ref="treeRef"
-            :data="folderTreeData"
-            node-key="folderPath"
-            :props="{ value: 'folderPath', label: 'label', children: 'children' }"
-            :expand-on-click-node="false"
-            :expanded-keys="expandedKeys"
-            :filter-method="filterTreeNode"
-            @current-change="selectFolderTreeNode"
-            :height="treeHeight"
-            :item-size="28"
-        ></el-tree-v2>
+        <div class="folder-tree-container">
+          <el-tree-v2
+              ref="treeRef"
+              :data="folderTreeData"
+              node-key="folderPath"
+              :props="{ value: 'folderPath', label: 'label', children: 'children' }"
+              :expand-on-click-node="false"
+              :expanded-keys="expandedKeys"
+              :filter-method="filterTreeNode"
+              @current-change="selectFolderTreeNode"
+              :height="treeHeight"
+              :item-size="28"
+              show-checkbox
+              :check-strictly="false"
+              @check="handleCheckChange"
+          ></el-tree-v2>
+        </div>
         <el-button class="tree-backtop" circle @click="treeRef.scrollTo(0)" title="Back to top">
           <el-icon>
             <ArrowUp/>
@@ -236,6 +275,11 @@ const emit = defineEmits(['chunkList', 'search'])
 
 const sideVisibleFolderTree = ref(false)
 const isFolderTreeInit = ref(false)
+
+// 多选相关状态
+const checkedNodes = ref([])
+const lastClickedNode = ref(null)
+const batchActionsExpanded = ref(['batch']) // 默认展开批量操作面板
 
 function openFolderTree() {
   sideVisibleFolderTree.value = true
@@ -479,6 +523,7 @@ function computeRange(keys, folderPath) {
 // 3) Click handler with per-node cache (_range = [lo, hi])
 
 function selectFolderTreeNode(selectNode) {
+  console.log('selectFolderTreeNode 被调用:', selectNode)
   if (!selectNode?.folderPath) return
   // reset visibility first
   bookList.value.forEach(b => { b.folderHide = true })
@@ -499,11 +544,16 @@ function selectFolderTreeNode(selectNode) {
 onMounted(async () => {
   recomputeTreeHeight()
   window.addEventListener('resize', recomputeTreeHeight)
-
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', recomputeTreeHeight)
+  
+  // 清理可能的事件监听器
+  if (window.ipcRenderer && window.ipcRenderer.removeAllListeners) {
+    // 注意：不要移除所有监听器，只移除我们添加的
+    // 这里暂时不做处理，因为我们没有添加任何持久的监听器
+  }
 })
 
 const treeFilterText = ref('')
@@ -699,10 +749,131 @@ function attachTranslation(list, translator, category, type = 'name') {
 
 // dynamically adjust the virtual window in tabs
 // use rule of thumb; change the 200 if needed
-const treeHeight = ref(Math.max(120, window.innerHeight - 200))
+// 增加高度偏移量以适应新的批量操作面板
+const treeHeight = ref(Math.max(120, window.innerHeight - 280))
 
 function recomputeTreeHeight() {
-  treeHeight.value = Math.max(120, window.innerHeight - 200)
+  treeHeight.value = Math.max(120, window.innerHeight - 280)
+}
+
+// 处理勾选变化
+function handleCheckChange(data, checked) {
+  checkedNodes.value = treeRef.value?.getCheckedKeys() || []
+  console.log('选中的文件夹数量:', checkedNodes.value.length)
+}
+
+// 批量更新画师/社团标签
+async function batchUpdateArtistGroup(folders) {
+  const ipcRenderer = window.ipcRenderer
+  const { ElMessageBox, ElLoading } = await import('element-plus')
+  
+  try {
+    // 显示确认对话框
+    await ElMessageBox.confirm(
+      `将会修改 ${folders.length} 个文件夹下的书籍画师/社团标签：
+      
+• 只处理状态为 "non-tag" 或 "tag-failed" 的书籍
+• 只修改没有画师/社团标签的书籍
+• 统一为该文件夹中出现最多的标签
+• 此操作不可撤销
+
+是否继续？`,
+      '批量修改确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+        dangerouslyUseHTMLString: false
+      }
+    )
+    
+    // 显示加载提示
+    const loading = ElLoading.service({
+      lock: true,
+      text: '正在批量更新标签...',
+      background: 'rgba(0, 0, 0, 0.7)'
+    })
+    
+    try {
+      const result = await ipcRenderer.invoke('batch-update-artist-group-tags', folders)
+      loading.close()
+      
+      if (result.success) {
+        appStore.printMessage('success', `成功更新 ${result.updatedCount} 个文件`)
+        // 刷新书籍列表
+        emit('chunkList')
+      } else {
+        appStore.printMessage('error', result.message || '更新失败')
+      }
+    } catch (error) {
+      loading.close()
+      throw error
+    }
+  } catch (error) {
+    if (error === 'cancel') {
+      // 用户取消操作
+      return
+    }
+    console.error('批量更新画师/社团标签失败:', error)
+    appStore.printMessage('error', '更新失败: ' + error.message)
+  }
+}
+
+// 批量更新Coser标签
+async function batchUpdateCoser(folders) {
+  const ipcRenderer = window.ipcRenderer
+  const { ElMessageBox, ElLoading } = await import('element-plus')
+  
+  try {
+    // 显示确认对话框
+    await ElMessageBox.confirm(
+      `将会修改 ${folders.length} 个文件夹下的书籍Coser标签：
+      
+• 只处理状态为 "non-tag" 或 "tag-failed" 的书籍
+• 只修改没有Coser标签的书籍
+• 统一为该文件夹中出现最多的标签
+• 此操作不可撤销
+
+是否继续？`,
+      '批量修改确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+        dangerouslyUseHTMLString: false
+      }
+    )
+    
+    // 显示加载提示
+    const loading = ElLoading.service({
+      lock: true,
+      text: '正在批量更新标签...',
+      background: 'rgba(0, 0, 0, 0.7)'
+    })
+    
+    try {
+      const result = await ipcRenderer.invoke('batch-update-coser-tags', folders)
+      loading.close()
+      
+      if (result.success) {
+        appStore.printMessage('success', `成功更新 ${result.updatedCount} 个文件`)
+        // 刷新书籍列表
+        emit('chunkList')
+      } else {
+        appStore.printMessage('error', result.message || '更新失败')
+      }
+    } catch (error) {
+      loading.close()
+      throw error
+    }
+  } catch (error) {
+    if (error === 'cancel') {
+      // 用户取消操作
+      return
+    }
+    console.error('批量更新Coser标签失败:', error)
+    appStore.printMessage('error', '更新失败: ' + error.message)
+  }
 }
 
 defineExpose({
@@ -799,5 +970,10 @@ defineExpose({
 
 .fake-tree-row__label {
   font-size: 14px;
+}
+
+.folder-tree-container {
+  position: relative;
+  width: 100%;
 }
 </style>

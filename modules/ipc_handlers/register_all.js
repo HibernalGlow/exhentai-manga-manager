@@ -6,6 +6,7 @@
 const { registerAllHandlers } = require('./all_handlers')
 const { registerMetadataHandlers } = require('./metadata_handlers')
 const { registerBlacklistHandlers } = require('./blacklist_handlers')
+const { registerFolderBatchHandlers } = require('./folder_batch_handlers')
 
 /**
  * 注册所有IPC处理器
@@ -23,6 +24,9 @@ function registerAllIpcHandlers(dependencies) {
     
     // 注册黑名单处理器
     registerBlacklistHandlers(dependencies)
+    
+    // 注册文件夹批量操作处理器
+    registerFolderBatchHandlers(dependencies)
     
     console.log('✅ 所有IPC处理器注册完成')
     return true
