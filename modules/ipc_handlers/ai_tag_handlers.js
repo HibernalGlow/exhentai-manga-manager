@@ -174,6 +174,13 @@ function registerAiTagHandlers(dependencies) {
   
     return `You are a professional manga tag classification assistant. For each manga in the JSON array below, infer its tags based on the title.
 
+**Instructions:**
+1.  **Deeply analyze the title**: Don't just identify the artist and group in brackets. Infer the work's theme, plot, character relationships, and content features from the core title content.
+2.  **Enrich content tags**: For 'female' and 'male' categories, be bold in your inferences. For example, if the title implies actions or relationships (like 'chikan', 'pure love', 'NTR'), add them as tags. If it mentions body parts or clothing (like 'big breasts', 'uniform'), add those too.
+3.  **Prioritize the optional list**: Try to choose from the provided "Available tag examples" to maintain tag consistency.
+4.  **Allow new tags**: If you are sure about a tag but it's not in the list, you can add it directly.
+5.  **Use original language**: Please use the original Japanese/English for tag names.
+
 Available tag examples (try to use these):
 ${JSON.stringify(tagExamples, null, 2)}
 
@@ -545,11 +552,12 @@ function buildPrompt(title, existingTags) {
 ${JSON.stringify(tagExamples, null, 2)}
 
 要求：
-1. 返回 JSON 格式：{ "parody": [...], "character": [...], "artist": [...], "group": [...], "female": [...], "male": [...] }
-2. 尽量从提供的标签列表中选择
-3. 如果确定某个标签但列表中没有，可以添加新标签
-4. 不确定的类别可以返回空数组
-5. 标签名使用原文（日文/英文）
+1. **深入分析标题**: 不仅仅是识别括号里的作者和社团名。要从标题的核心内容推断出作品的题材、情节、角色关系和内容特征。
+2. **丰富内容标签**: 对于 'female' 和 'male' 类别，请大胆推断。例如，如果标题暗示了某种行为或关系（如 '痴汉', '純愛', 'NTR'），请将它们作为标签。如果标题中有身体部位或服装（如 '巨乳', '制服'），也请添加。
+3. **返回 JSON 格式**: { "parody": [...], "character": [...], "artist": [...], "group": [...], "female": [...], "male": [...] }
+4. **优先使用可选列表**: 尽量从提供的“可选标签列表”中选择，这有助于保持标签一致性。
+5. **允许新标签**: 如果你很确定某个标签，但它不在可选列表中，可以直接添加。
+6. **使用原文**: 标签名请使用日文/英文原文。
 
 示例：
 标题：(C96) [サークル名 (作者名)] キャラ名本 (原作名)
