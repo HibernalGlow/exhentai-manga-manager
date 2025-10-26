@@ -184,12 +184,15 @@ function registerAiTagHandlers(dependencies) {
 Available tag examples (try to use these):
 ${JSON.stringify(tagExamples, null, 2)}
 
+My Favorite Tags (Prioritize these if the title content is relevant):
+${JSON.stringify((setting.collectTag || []).map(t => t.tag))}
+
 Manga list:
 [
 ${bookPrompts}
 ]
 
-Your response MUST be a valid JSON array, where each object contains the original "id" and the inferred "tags". The "tags" object should follow this structure: { "parody": [], "character": [], "artist": [], "group": [], "female": [], "male": [] }. Do not include items that are not in the original manga list. Ensure your response is a single, valid JSON array.
+Your response MUST be a valid JSON array. Ensure your response contains an object for every single item in the input "Manga list", each with its original "id" and the inferred "tags". The "tags" object should follow this structure: { "parody": [], "character": [], "artist": [], "group": [], "female": [], "male": [] }.
 
 Example Response:
 [
@@ -286,43 +289,44 @@ Example Response:
           if (booksInChunk.length === 0) continue;
 
           const inferredTagsArray = await callAiApiBatch(booksInChunk, existingTags, apiConfig);
+          const resultMap = new Map((inferredTagsArray || []).map(item => [item.id, item.tags]));
 
-          for (const result of inferredTagsArray) {
-            const bookId = result.id;
-            const inferredTags = result.tags;
-            const book = booksInChunk.find(b => b.id === bookId);
+          for (const book of booksInChunk) {
+            const inferredTags = resultMap.get(book.id);
 
-            if (book && inferredTags) {
-              const normalizedTags = await matchAndNormalizeTags(db, inferredTags, apiConfig.keepUnknownTags);
-              const currentTags = typeof book.tags === 'string' ? JSON.parse(book.tags) : (book.tags || {});
-              const mergedTags = mergeTags(currentTags, normalizedTags);
-              
-              // Create object for saving, ensuring title is present for logging
-              const bookToSave = {
-                id: bookId,
-                hash: book.hash,
-                title: book.title, 
-                tags: JSON.stringify(mergedTags),
-                status: 'tagged'
-              };
-              await saveBookToDatabase(bookToSave);
+            if (inferredTags) {
+              try {
+                const normalizedTags = await matchAndNormalizeTags(db, inferredTags, apiConfig.keepUnknownTags);
+                const currentTags = typeof book.tags === 'string' ? JSON.parse(book.tags) : (book.tags || {});
+                const mergedTags = mergeTags(currentTags, normalizedTags);
+                
+                const bookToSave = {
+                  id: book.id,
+                  hash: book.hash,
+                  title: book.title, 
+                  tags: JSON.stringify(mergedTags),
+                  status: 'tagged'
+                };
+                await saveBookToDatabase(bookToSave);
 
-              // Log the saved tags for user feedback
-              console.log(`  🏷️  Saved Tags: ${JSON.stringify(mergedTags)}`);
+                console.log(`  🏷️  Saved Tags: ${JSON.stringify(mergedTags)}`);
 
-              // For the return value, use the parsed tags object
-              const updatedBookForResult = { ...book, tags: mergedTags, status: 'tagged' };
-              results.push(updatedBookForResult);
-
-              console.log(`[${processedCount + 1}/${bookIds.length}] ✅ ${book.title}`);
+                const updatedBookForResult = { ...book, tags: mergedTags, status: 'tagged' };
+                results.push(updatedBookForResult);
+                console.log(`[${processedCount + 1}/${bookIds.length}] ✅ ${book.title}`);
+              } catch (e) {
+                console.error(`❌ Error processing book ${book.id} (${book.title}):`, e);
+                errors.push({ bookId: book.id, error: e.message });
+              }
             } else {
-              throw new Error(`批处理返回结果中缺少 book ID ${bookId} 的数据`);
+              console.error(`❌ AI response did not include tags for book ID ${book.id}`);
+              errors.push({ bookId: book.id, error: 'AI did not return tags for this book in the batch.' });
             }
             processedCount++;
             event.sender.send('ai-batch-progress', { current: processedCount, total: bookIds.length });
           }
         } catch (error) {
-          console.error(`❌ 批次 ${Math.floor(i / batchSize) + 1} 处理失败:`, error);
+          console.error(`❌ Batch ${Math.floor(i / batchSize) + 1} failed:`, error);
           for (const bookId of chunkBookIds) {
             if (!results.some(r => r.id === bookId) && !errors.some(e => e.bookId === bookId)) {
               errors.push({ bookId, error: error.message });
@@ -551,9 +555,12 @@ function buildPrompt(title, existingTags) {
 可选标签列表（请尽量从这些标签中选择）：
 ${JSON.stringify(tagExamples, null, 2)}
 
+我的收藏标签（如果标题内容相关，请优先使用这些标签）：
+${JSON.stringify((setting.collectTag || []).map(t => t.tag))}
+
 要求：
 1. **深入分析标题**: 不仅仅是识别括号里的作者和社团名。要从标题的核心内容推断出作品的题材、情节、角色关系和内容特征。
-2. **丰富内容标签**: 对于 'female' 和 'male' 类别，请大胆推断。例如，如果标题暗示了某种行为或关系（如 '痴汉', '純愛', 'NTR'），请将它们作为标签。如果标题中有身体部位或服装（如 '巨乳', '制服'），也请添加。
+2. **丰富内容标签**: 对于 'female' 和 'male' 类别，请大胆推断。例如，如果标题暗示了某种行为或关系（如  '純愛', 'NTR'），请将它们作为标签。如果标题中有身体部位或服装（如  '制服'），也请添加。
 3. **返回 JSON 格式**: { "parody": [...], "character": [...], "artist": [...], "group": [...], "female": [...], "male": [...] }
 4. **优先使用可选列表**: 尽量从提供的“可选标签列表”中选择，这有助于保持标签一致性。
 5. **允许新标签**: 如果你很确定某个标签，但它不在可选列表中，可以直接添加。
