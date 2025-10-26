@@ -132,18 +132,21 @@ function registerAiTagHandlers(dependencies) {
       // 如果不是测试，更新数据库
       if (bookId !== 'test') {
         const book = await db.findByPk(bookId, {
-          attributes: ['id', 'tags'],
+          attributes: ['id', 'tags', 'hash'], // Add hash
           raw: true
-        })
+        });
         
         if (book) {
-          const currentTags = typeof book.tags === 'string' ? JSON.parse(book.tags) : (book.tags || {})
-          const mergedTags = mergeTags(currentTags, normalizedTags)
+          const currentTags = typeof book.tags === 'string' ? JSON.parse(book.tags) : (book.tags || {});
+          const mergedTags = mergeTags(currentTags, normalizedTags);
           
-          await db.update(
-            { tags: JSON.stringify(mergedTags), status: 'tagged' },
-            { where: { id: bookId } }
-          )
+          await saveBookToDatabase({ // Use saveBookToDatabase
+            id: bookId,
+            hash: book.hash, // Pass hash
+            title: book.title, // Pass title for logging
+            tags: JSON.stringify(mergedTags),
+            status: 'tagged'
+          });
         }
       }
       
@@ -269,7 +272,7 @@ Example Response:
         try {
           const booksInChunk = await db.findAll({
             where: { id: chunkBookIds },
-            attributes: ['id', 'title', 'tags'],
+            attributes: ['id', 'title', 'tags', 'hash'],
             raw: true
           });
 
@@ -287,13 +290,23 @@ Example Response:
               const currentTags = typeof book.tags === 'string' ? JSON.parse(book.tags) : (book.tags || {});
               const mergedTags = mergeTags(currentTags, normalizedTags);
               
-              await saveBookToDatabase({
+              // Create object for saving, ensuring title is present for logging
+              const bookToSave = {
                 id: bookId,
+                hash: book.hash,
+                title: book.title, 
                 tags: JSON.stringify(mergedTags),
                 status: 'tagged'
-              });
+              };
+              await saveBookToDatabase(bookToSave);
 
-              results.push({ bookId, title: book.title, tags: normalizedTags });
+              // Log the saved tags for user feedback
+              console.log(`  🏷️  Saved Tags: ${JSON.stringify(mergedTags)}`);
+
+              // For the return value, use the parsed tags object
+              const updatedBookForResult = { ...book, tags: mergedTags, status: 'tagged' };
+              results.push(updatedBookForResult);
+
               console.log(`[${processedCount + 1}/${bookIds.length}] ✅ ${book.title}`);
             } else {
               throw new Error(`批处理返回结果中缺少 book ID ${bookId} 的数据`);
@@ -303,16 +316,17 @@ Example Response:
           }
         } catch (error) {
           console.error(`❌ 批次 ${Math.floor(i / batchSize) + 1} 处理失败:`, error);
-          // Mark all books in this chunk as failed
           for (const bookId of chunkBookIds) {
-            errors.push({ bookId, error: error.message });
-            processedCount++;
-            event.sender.send('ai-batch-progress', { current: processedCount, total: bookIds.length });
+            if (!results.some(r => r.id === bookId) && !errors.some(e => e.bookId === bookId)) {
+              errors.push({ bookId, error: error.message });
+              processedCount++;
+              event.sender.send('ai-batch-progress', { current: processedCount, total: bookIds.length });
+            }
           }
         }
 
         if (i + batchSize < bookIds.length) {
-          await sleep(setting.aiTagDelay || 1000); // Use configurable delay
+          await sleep(setting.aiTagDelay || 1000);
         }
       }
       

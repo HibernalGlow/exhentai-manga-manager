@@ -1572,6 +1572,20 @@ const batchInferTags = async () => {
 
     if (result.success) {
       ElMessage.success(`批量推断完成！成功: ${result.successCount}, 失败: ${result.errorCount}`);
+
+      // Manually update the store to ensure reactivity
+      console.log(`🔄 正在更新 ${result.results.length} 本书的前台数据...`);
+      for (const updatedBook of result.results) {
+        const bookIndex = bookList.value.findIndex(b => b.id === updatedBook.id);
+        if (bookIndex !== -1) {
+          bookList.value[bookIndex] = updatedBook;
+        }
+        // Also update bookDetail if it's the same book
+        if (bookDetail.value && bookDetail.value.id === updatedBook.id) {
+          bookDetail.value = updatedBook;
+        }
+      }
+
     } else {
       ElMessage.error('批量推断失败: ' + result.message);
     }
@@ -1579,8 +1593,6 @@ const batchInferTags = async () => {
     if (result.errors && result.errors.length > 0) {
       console.error('批量推断中的错误:', result.errors);
     }
-
-    emit('loadBookList');
 
   } catch (e) {
     console.error('Batch infer tags error:', e);

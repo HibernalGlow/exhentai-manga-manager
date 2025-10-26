@@ -244,7 +244,7 @@ import { useAppStore } from '../pinia.js'
 
 const appStore = useAppStore()
 const { translate } = appStore
-const { setting, bookList, } = storeToRefs(appStore)
+const { setting, bookList, tagListRaw } = storeToRefs(appStore)
 
 // they are used in this component only, so no need to call from appStore
 const folderTreeData = shallowRef([])
@@ -375,7 +375,7 @@ function buildFolderTree(bookPathList) {
 
 let dirIndex = { keys: [], idxs: [] } // precomputed directory index for fast lookup
 
-const geneFolderTree = async () => {
+const geneFolderTree = async (tagListRaw) => {
   // always (re)build the folder tab;
   const filepaths = bookList.value.filter(b => !b.isCollection).map(b => b.filepath)
   folderTreeData.value = buildFolderTree(filepaths)
@@ -385,7 +385,7 @@ const geneFolderTree = async () => {
 
   // 使用现有的 tagListRaw 计算属性来构建标签树
   const buildTagTree = (category) => {
-    const tags = tagListRaw.value.filter(tag => tag.id.startsWith(category + ':'))
+    const tags = (tagListRaw || []).filter(tag => tag.id.startsWith(category + ':'))
     return tags.map(tag => ({
       id: tag.id,
       label: tag.label,
