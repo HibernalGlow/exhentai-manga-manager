@@ -273,53 +273,121 @@ async function getExistingTagsForAI(db) {
  * 调用 AI API 推断标签
  */
 async function callAiApi(title, existingTags, apiConfig) {
-  const { apiUrl, apiKey, model } = apiConfig
-  
+  const { apiUrl, apiKey, model } = apiConfig;
+
   console.log('🤖 AI API 配置:', {
     apiUrl,
     model,
     hasApiKey: !!apiKey,
-    apiKeyLength: apiKey ? apiKey.length : 0
-  })
-  
+    apiKeyLength: apiKey ? apiKey.length : 0,
+  });
+
   // 构建提示词
-  const prompt = buildPrompt(title, existingTags)
-  
-  console.log('📝 发送请求到:', apiUrl)
-  
-  // 调用 API（支持 OpenAI 兼容接口）
-  const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: model || 'gpt-3.5-turbo',
-      messages: [
-        {
-          role: 'system',
-          content: '你是一个专业的漫画标签分类助手。根据标题推断标签，只返回 JSON 格式。'
-        },
+  const prompt = buildPrompt(title, existingTags);
+
+  const isGoogleApi = apiUrl.includes('googleapis.com');
+
+  if (isGoogleApi) {
+    // Logic for Google Gemini API
+    const fullUrl = `${apiUrl}/v1beta/models/${model}:generateContent`;
+    console.log('📝 发送请求到 (Google API):', fullUrl);
+
+    const systemPrompt = '你是一个专业的漫画标签分类助手。根据标题推断标签，只返回 JSON 格式。';
+    const combinedPrompt = `${systemPrompt}\n\n${prompt}`;
+
+    const requestBody = {
+      contents: [
         {
           role: 'user',
-          content: prompt
-        }
+          parts: [{ text: combinedPrompt }],
+        },
       ],
-      temperature: 0.3,
-      response_format: { type: 'json_object' }
-    })
-  })
-  
-  if (!response.ok) {
-    throw new Error(`API 请求失败: ${response.status} ${response.statusText}`)
+      generationConfig: {
+        response_mime_type: 'application/json',
+        temperature: 0.3,
+      },
+      safetySettings: [
+        {
+          category: 'HARM_CATEGORY_HARASSMENT',
+          threshold: 'BLOCK_NONE',
+        },
+        {
+          category: 'HARM_CATEGORY_HATE_SPEECH',
+          threshold: 'BLOCK_NONE',
+        },
+        {
+          category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+          threshold: 'BLOCK_NONE',
+        },
+        {
+          category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
+          threshold: 'BLOCK_NONE',
+        },
+      ],
+    };
+
+    const response = await fetch(fullUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`API 请求失败: ${response.status} ${response.statusText} - ${errorBody}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data.candidates || data.candidates.length === 0 || data.candidates[0].finishReason === 'SAFETY') {
+      const safetyRatings = data.candidates?.[0]?.safetyRatings;
+      throw new Error(`AI 因为安全原因返回了空响应。Safety Ratings: ${JSON.stringify(safetyRatings)}`);
+    }
+    
+    if (!data.candidates[0].content || !data.candidates[0].content.parts || data.candidates[0].content.parts.length === 0) {
+      throw new Error('AI 返回了空的内容。');
+    }
+
+    const content = data.candidates[0].content.parts[0].text;
+    return JSON.parse(content);
+  } else {
+    // Existing OpenAI-compatible logic
+    console.log('📝 发送请求到:', apiUrl);
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: model || 'gpt-3.5-turbo',
+        messages: [
+          {
+            role: 'system',
+            content: '你是一个专业的漫画标签分类助手。根据标题推断标签，只返回 JSON 格式。',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: 0.3,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`API 请求失败: ${response.status} ${response.statusText} - ${errorBody}`);
+    }
+
+    const data = await response.json();
+    const content = data.choices[0].message.content;
+    return JSON.parse(content);
   }
-  
-  const data = await response.json()
-  const content = data.choices[0].message.content
-  
-  // 解析 JSON
-  return JSON.parse(content)
 }
 
 /**
