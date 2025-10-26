@@ -1,3 +1,26 @@
+let reverseTranslationMap = null;
+
+function buildReverseTranslationMap(translationData) {
+  if (!translationData) return null;
+  
+  const reverseMap = {};
+  for (const category in translationData) {
+    reverseMap[category] = {};
+    const bucket = translationData[category];
+    for (const englishKey in bucket) {
+      const translation = bucket[englishKey];
+      if (translation && translation.name) {
+        const normalizedTranslation = translation.name.trim().toLowerCase();
+        if (normalizedTranslation) {
+          reverseMap[category][normalizedTranslation] = englishKey;
+        }
+      }
+    }
+  }
+  console.log('✅ 反向翻译地图构建完成。');
+  return reverseMap;
+}
+
 /**
  * AI 自动标签功能
  * 通过 AI API 根据标题推断标签
@@ -9,8 +32,13 @@ const fs = require('fs')
 const path = require('path')
 
 function registerAiTagHandlers(dependencies) {
-  const { Manga: db } = dependencies
+  const { Manga: db, translationData, setting } = dependencies
   
+  if (translationData && !reverseTranslationMap) {
+    console.log('🤖 AI 处理器正在构建反向翻译地图...');
+    reverseTranslationMap = buildReverseTranslationMap(translationData);
+  }
+
   console.log('🤖 注册 AI 标签处理器...')
   
   // 获取数据库中现有的标签列表（用于 AI 参考）
@@ -97,7 +125,7 @@ function registerAiTagHandlers(dependencies) {
       const inferredTags = await callAiApi(title, existingTags, apiConfig)
       
       // 匹配和规范化标签
-      const normalizedTags = await matchAndNormalizeTags(db, inferredTags)
+      const normalizedTags = await matchAndNormalizeTags(db, inferredTags, apiConfig.keepUnknownTags)
       
       console.log(`✅ 推断结果:`, normalizedTags)
       
@@ -134,68 +162,67 @@ function registerAiTagHandlers(dependencies) {
   })
   
   // 批量 AI 推断标签
-  ipcMain.handle('ai-batch-infer-tags', async (event, { bookIds, apiConfig, onProgress }) => {
+  ipcMain.handle('ai-batch-infer-tags', async (event, { bookIds, apiConfig }) => {
     try {
-      console.log(`🤖 批量 AI 推断，共 ${bookIds.length} 本书`)
+      const concurrency = setting.batchTranslationSize || 10;
+      console.log(`🤖 批量 AI 推断，共 ${bookIds.length} 本书，并发数: ${concurrency}`);
       
-      const results = []
-      const errors = []
+      const results = [];
+      const errors = [];
       
       // 获取现有标签列表（只获取一次）
-      const existingTags = await getExistingTagsForAI(db)
-      
-      for (let i = 0; i < bookIds.length; i++) {
-        const bookId = bookIds[i]
+      const existingTags = await getExistingTagsForAI(db);
+      let processedCount = 0;
+
+      for (let i = 0; i < bookIds.length; i += concurrency) {
+        const chunk = bookIds.slice(i, i + concurrency);
+        console.log(`🔄 处理批次: ${Math.floor(i / concurrency) + 1}, 书籍数量: ${chunk.length}`);
+
+        const promises = chunk.map(async (bookId) => {
+          try {
+            const book = await db.findByPk(bookId, { attributes: ['id', 'title', 'tags'], raw: true });
+            if (!book) throw new Error('书籍不存在');
+            
+            const inferredTags = await callAiApi(book.title, existingTags, apiConfig);
+            const normalizedTags = await matchAndNormalizeTags(db, inferredTags, apiConfig.keepUnknownTags);
+            
+            const currentTags = typeof book.tags === 'string' ? JSON.parse(book.tags) : (book.tags || {});
+            const mergedTags = mergeTags(currentTags, normalizedTags);
+            
+            await db.update(
+              { tags: JSON.stringify(mergedTags), status: 'tagged' },
+              { where: { id: bookId } }
+            );
+            
+            return { bookId, title: book.title, tags: normalizedTags };
+          } catch (error) {
+            console.error(`❌ 处理书籍 ${bookId} 失败:`, error);
+            throw { bookId, error: error.message };
+          }
+        });
+
+        const chunkResults = await Promise.allSettled(promises);
         
-        try {
-          // 获取书籍信息
-          const book = await db.findByPk(bookId, {
-            attributes: ['id', 'title', 'tags'],
-            raw: true
-          })
-          
-          if (!book) {
-            errors.push({ bookId, error: '书籍不存在' })
-            continue
+        chunkResults.forEach(res => {
+          processedCount++;
+          if (res.status === 'fulfilled') {
+            results.push(res.value);
+            console.log(`[${processedCount}/${bookIds.length}] ✅ ${res.value.title}`);
+          } else {
+            errors.push(res.reason);
+            console.log(`[${processedCount}/${bookIds.length}] ❌ Book ID: ${res.reason.bookId}`);
           }
-          
-          // 调用 AI API
-          const inferredTags = await callAiApi(book.title, existingTags, apiConfig)
-          
-          // 匹配和规范化标签
-          const normalizedTags = await matchAndNormalizeTags(db, inferredTags)
-          
-          // 更新数据库
-          const currentTags = typeof book.tags === 'string' ? JSON.parse(book.tags) : (book.tags || {})
-          const mergedTags = mergeTags(currentTags, normalizedTags)
-          
-          await db.update(
-            { tags: mergedTags },
-            { where: { id: bookId } }
-          )
-          
-          results.push({
-            bookId,
-            title: book.title,
-            tags: normalizedTags
-          })
-          
-          console.log(`✅ [${i + 1}/${bookIds.length}] ${book.title}`)
-          
-          // 进度回调
-          if (onProgress) {
-            onProgress({ current: i + 1, total: bookIds.length })
-          }
-          
-          // 避免 API 限流
-          await sleep(1000)
-          
-        } catch (error) {
-          console.error(`❌ 处理书籍 ${bookId} 失败:`, error)
-          errors.push({ bookId, error: error.message })
+          event.sender.send('ai-batch-progress', { current: processedCount, total: bookIds.length });
+        });
+
+        // Delay between chunks to avoid rate limiting
+        if (i + concurrency < bookIds.length) {
+          await sleep(1000); // 1 second delay
         }
       }
       
+      console.log('✅ 批量 AI 推断完成。');
+
       return {
         success: true,
         results,
@@ -203,15 +230,15 @@ function registerAiTagHandlers(dependencies) {
         total: bookIds.length,
         successCount: results.length,
         errorCount: errors.length
-      }
+      };
     } catch (error) {
-      console.error('❌ 批量推断失败:', error)
+      console.error('❌ 批量推断失败:', error);
       return {
         success: false,
         message: error.message
-      }
+      };
     }
-  })
+  });
   
   console.log('✅ AI 标签处理器注册完成')
 }
@@ -431,12 +458,13 @@ ${JSON.stringify(tagExamples, null, 2)}
  * 匹配和规范化标签
  * 将 AI 返回的标签与数据库现有标签进行模糊匹配
  */
-async function matchAndNormalizeTags(db, inferredTags) {
+async function matchAndNormalizeTags(db, inferredTags, keepUnknownTags = true) {
   // 获取数据库中的所有标签
   const existingTags = await getExistingTagsForAI(db)
   
   const normalized = {}
-  
+  console.log('🔄 开始匹配和规范化 AI 标签...');
+
   for (const [category, tags] of Object.entries(inferredTags)) {
     if (!Array.isArray(tags)) continue
     
@@ -450,9 +478,19 @@ async function matchAndNormalizeTags(db, inferredTags) {
       
       // 尝试在现有标签中找到匹配
       const existingList = existingTags[category] || []
-      const matched = findBestMatch(trimmed, existingList)
+      const matched = findBestMatch(trimmed, existingList, category)
       
-      normalized[category].push(matched || trimmed)
+      if (matched) {
+        if (matched !== trimmed) {
+          console.log(`  [匹配] AI 标签 "${trimmed}" 规范化为 "${matched}"`);
+        }
+        normalized[category].push(matched)
+      } else if (keepUnknownTags) {
+        console.log(`  [新增] 保留未匹配到的 AI 标签 "${trimmed}"`);
+        normalized[category].push(trimmed)
+      } else {
+        console.log(`  [跳过] 丢弃未匹配到的 AI 标签 "${trimmed}"`);
+      }
     }
   }
   
@@ -462,7 +500,7 @@ async function matchAndNormalizeTags(db, inferredTags) {
 /**
  * 模糊匹配标签
  */
-function findBestMatch(tag, existingTags) {
+function findBestMatch(tag, existingTags, category) {
   const tagLower = tag.toLowerCase()
   
   // 1. 精确匹配（不区分大小写）
@@ -472,14 +510,32 @@ function findBestMatch(tag, existingTags) {
     }
   }
   
-  // 2. 包含匹配
+  // 2. 翻译匹配
+  if (reverseTranslationMap && reverseTranslationMap[category] && reverseTranslationMap[category][tagLower]) {
+    const originalTag = reverseTranslationMap[category][tagLower];
+    const originalTagLower = originalTag.toLowerCase();
+    
+    // 优先返回用户数据库中已存在的、与翻译结果匹配的标签（用于大小写规范化）
+    for (const existing of existingTags) {
+      if (existing.toLowerCase() === originalTagLower) {
+        console.log(`  [翻译匹配] AI 标签 "${tag}" -> 翻译库: "${originalTag}" -> 本地库: "${existing}"`);
+        return existing;
+      }
+    }
+    
+    // 如果本地库不存在，则返回翻译库中的原始标签
+    console.log(`  [翻译匹配] AI 标签 "${tag}" -> 翻译库: "${originalTag}" (本地库中无此标签)`);
+    return originalTag;
+  }
+
+  // 3. 包含匹配
   for (const existing of existingTags) {
     if (existing.toLowerCase().includes(tagLower) || tagLower.includes(existing.toLowerCase())) {
       return existing
     }
   }
   
-  // 3. 没有匹配，返回原标签
+  // 4. 没有匹配
   return null
 }
 

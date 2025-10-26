@@ -457,6 +457,16 @@ app.whenReady().then(async () => {
     })
     
     // 注册 AI 标签处理器
+    // Load translations for AI tagger
+    const { initTranslations } = require('./src/services/translationLoader.js')
+    console.log('🔄 加载标签翻译数据以增强AI匹配...');
+    const translationPayload = await initTranslations(STORE_PATH);
+    if (translationPayload && translationPayload.data) {
+      console.log(`✅ 成功加载 ${Object.keys(translationPayload.data).length} 个分类的翻译数据。`);
+    } else {
+      console.warn('⚠️ 未能加载标签翻译数据，AI标签匹配将仅基于现有标签。');
+    }
+
     registerAiTagHandlers({
       Manga,
       Metadata,
@@ -464,7 +474,8 @@ app.whenReady().then(async () => {
       collectionList,
       mainWindow,
       sendMessageToWebContents,
-      STORE_PATH
+      STORE_PATH,
+      translationData: translationPayload ? translationPayload.data : null
     })
     
     // 3. 最后创建窗口
