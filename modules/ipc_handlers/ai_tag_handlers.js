@@ -139,7 +139,15 @@ function registerAiTagHandlers(dependencies) {
         if (book) {
           const currentTags = typeof book.tags === 'string' ? JSON.parse(book.tags) : (book.tags || {});
           const mergedTags = mergeTags(currentTags, normalizedTags);
-          
+
+          // Add the 'ai-matched' tag for traceability
+          if (!mergedTags.other) {
+            mergedTags.other = [];
+          }
+          if (!mergedTags.other.includes('ai-matched')) {
+            mergedTags.other.push('ai-matched');
+          }
+
           await saveBookToDatabase({ // Use saveBookToDatabase
             id: bookId,
             hash: book.hash, // Pass hash
@@ -329,7 +337,15 @@ function registerAiTagHandlers(dependencies) {
                 const normalizedTags = await matchAndNormalizeTags(db, inferredTags, apiConfig.keepUnknownTags);
                 const currentTags = typeof book.tags === 'string' ? JSON.parse(book.tags) : (book.tags || {});
                 const mergedTags = mergeTags(currentTags, normalizedTags);
-                
+
+                // Add the 'ai-matched' tag for traceability
+                if (!mergedTags.other) {
+                  mergedTags.other = [];
+                }
+                if (!mergedTags.other.includes('ai-matched')) {
+                  mergedTags.other.push('ai-matched');
+                }
+
                 const bookToSave = {
                   id: book.id,
                   hash: book.hash,

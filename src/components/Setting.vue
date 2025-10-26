@@ -1233,6 +1233,13 @@
 
           <!-- 帮助信息 -->
           <el-col :span="24">
+            <el-alert type="success" :closable="false" show-icon style="margin-top: 16px;">
+              <template #default>
+                <p><b>提示：</b>批量推断将以主界面的<b>当前排序顺序</b>，处理<b>当前显示</b>的书籍（会尊重文件夹筛选）。</p>
+              </template>
+            </el-alert>
+          </el-col>
+          <el-col :span="24">
             <el-alert
                 title="使用说明"
                 type="warning"
@@ -1336,7 +1343,7 @@ import { storeToRefs } from 'pinia'
 import { useAppStore } from '../pinia.js'
 
 const appStore = useAppStore()
-const { searchTypeList, setting, bookList, resolvedTranslation, localeFile, tagListRaw } = storeToRefs(appStore)
+const { searchTypeList, setting, bookList, displayBookList, resolvedTranslation, localeFile, tagListRaw } = storeToRefs(appStore)
 const { printMessage } = appStore
 
 const { t, locale } = useI18n()
@@ -1540,8 +1547,8 @@ const batchInferTags = async () => {
       return;
     }
 
-    const booksToInfer = bookList.value.filter(book => 
-      book.status === 'non-tag' || book.status === 'tag-failed'
+    const booksToInfer = displayBookList.value.filter(book => 
+      !book.isCollection && (book.status === 'non-tag' || book.status === 'tag-failed')
     );
 
     if (booksToInfer.length === 0) {
