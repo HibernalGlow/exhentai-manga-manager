@@ -1171,6 +1171,15 @@
             </div>
           </el-col>
 
+          <!-- 保留未知标签 -->
+          <el-col :span="24" class="setting-switch">
+            <el-switch
+                v-model="setting.aiKeepUnknownTags"
+                active-text="保留未匹配到的新标签"
+                @change="saveSetting"
+            />
+          </el-col>
+
           <!-- 批量推断按钮 -->
           <el-col :span="12">
             <div class="setting-line">
@@ -1460,10 +1469,13 @@ const testAiApiConnection = async () => {
     // 测试标题
     const testTitle = '(C96) [サークル名 (作者名)] テスト本 (オリジナル)'
     
+    const configForBackend = JSON.parse(JSON.stringify(aiApiConfig.value));
+    configForBackend.keepUnknownTags = setting.value.aiKeepUnknownTags;
+
     const result = await ipcRenderer.invoke('ai-infer-tags', {
       bookId: 'test',
       title: testTitle,
-      apiConfig: JSON.parse(JSON.stringify(aiApiConfig.value)) // 深拷贝避免克隆问题
+      apiConfig: configForBackend
     })
     
     if (result.success) {
@@ -1506,90 +1518,67 @@ const showTagStatistics = async () => {
 // Batch infer tags
 const batchInferTags = async () => {
   try {
-    batchInferring.value = true
-    aiInferProgress.value = { current: 0, total: 0 }
-    
-    // 重新加载配置
-    await loadApiConfig()
-    await loadAiApiConfig()
-    
+    batchInferring.value = true;
+    aiInferProgress.value = { current: 0, total: 0 };
+
+    await loadApiConfig();
+    await loadAiApiConfig();
+
     if (!activeProvider.value) {
-      ElMessage.warning('请先在翻译 tab 中配置 API')
-      batchInferring.value = false
-      return
+      ElMessage.warning('请先在翻译 tab 中配置 API');
+      batchInferring.value = false;
+      return;
     }
-    
-    // 获取需要推断的书籍（non-tag 或 tag-failed）
+
     const booksToInfer = bookList.value.filter(book => 
       book.status === 'non-tag' || book.status === 'tag-failed'
-    )
-    
+    );
+
     if (booksToInfer.length === 0) {
-      ElMessage.info('没有需要推断标签的书籍')
-      batchInferring.value = false
-      return
+      ElMessage.info('没有需要推断标签的书籍');
+      batchInferring.value = false;
+      return;
     }
-    
-    // 限制数量
-    const booksToProcess = booksToInfer.slice(0, aiTagBatchSize.value)
-    const bookIds = booksToProcess.map(b => b.id)
-    
-    ElMessage.info(`开始推断 ${bookIds.length} 本书籍的标签...`)
-    
-    aiInferProgress.value = { current: 0, total: bookIds.length }
-    
-    // 逐个推断（避免并发过多）
-    for (let i = 0; i < bookIds.length; i++) {
-      if (!batchInferring.value) break // 用户停止
-      
-      const book = booksToProcess[i]
-      
-      try {
-        const result = await ipcRenderer.invoke('ai-infer-tags', {
-          bookId: book.id,
-          title: book.title,
-          apiConfig: JSON.parse(JSON.stringify(aiApiConfig.value)) // 深拷贝避免克隆问题
-        })
-        
-        if (result.success) {
-          ElMessage.success({
-            message: `✅ [${i + 1}/${bookIds.length}] ${book.title}`,
-            duration: 2000
-          })
-        } else {
-          ElMessage.warning({
-            message: `⚠️ [${i + 1}/${bookIds.length}] ${book.title}: ${result.message}`,
-            duration: 2000
-          })
-        }
-      } catch (e) {
-        console.error(`Infer tags error for ${book.id}:`, e)
-        ElMessage.error({
-          message: `❌ [${i + 1}/${bookIds.length}] ${book.title}: ${e.message}`,
-          duration: 2000
-        })
-      }
-      
-      aiInferProgress.value.current = i + 1
-      
-      // 延迟避免 API 限流
-      if (i < bookIds.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, aiTagDelay.value))
-      }
+
+    const bookIds = booksToInfer.map(b => b.id);
+    aiInferProgress.value.total = bookIds.length;
+
+    ElMessage.info(`开始为 ${bookIds.length} 本书籍批量推断标签...`);
+
+    const progressHandler = (event, progress) => {
+      aiInferProgress.value = progress;
+    };
+    ipcRenderer.on('ai-batch-progress', progressHandler);
+
+    const configForBackend = JSON.parse(JSON.stringify(aiApiConfig.value));
+    configForBackend.keepUnknownTags = setting.value.aiKeepUnknownTags;
+
+    const result = await ipcRenderer.invoke('ai-batch-infer-tags', {
+      bookIds: bookIds,
+      apiConfig: configForBackend
+    });
+
+    ipcRenderer.removeListener('ai-batch-progress', progressHandler);
+
+    if (result.success) {
+      ElMessage.success(`批量推断完成！成功: ${result.successCount}, 失败: ${result.errorCount}`);
+    } else {
+      ElMessage.error('批量推断失败: ' + result.message);
     }
-    
-    ElMessage.success(`批量推断完成！共处理 ${aiInferProgress.value.current} 本书籍`)
-    
-    // 刷新书籍列表
-    emit('loadBookList')
-    
+
+    if (result.errors && result.errors.length > 0) {
+      console.error('批量推断中的错误:', result.errors);
+    }
+
+    emit('loadBookList');
+
   } catch (e) {
-    console.error('Batch infer tags error:', e)
-    ElMessage.error('批量推断失败: ' + e.message)
+    console.error('Batch infer tags error:', e);
+    ElMessage.error('批量推断失败: ' + e.message);
   } finally {
-    batchInferring.value = false
+    batchInferring.value = false;
   }
-}
+};
 
 // Stop batch infer
 const stopBatchInfer = () => {
@@ -1801,6 +1790,7 @@ onMounted(() => {
     if (res.aiMaxTokens === undefined) setting.value.aiMaxTokens = 100
     if (res.aiTimeout === undefined) setting.value.aiTimeout = 30  // 默认30秒超时
     if (res.batchTranslationSize === undefined) setting.value.batchTranslationSize = 10
+    if (res.aiKeepUnknownTags === undefined) setting.value.aiKeepUnknownTags = true
     setting.value.concurrentScan = normalizeConcurrency(res.concurrentScan, defaultConcurrentScan)
     setting.value.concurrentWrite = normalizeConcurrency(res.concurrentWrite, defaultConcurrentWrite)
     

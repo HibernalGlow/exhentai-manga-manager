@@ -32,7 +32,7 @@ const fs = require('fs')
 const path = require('path')
 
 function registerAiTagHandlers(dependencies) {
-  const { Manga: db, translationData, setting } = dependencies
+  const { Manga: db, translationData, setting, saveBookToDatabase } = dependencies
   
   if (translationData && !reverseTranslationMap) {
     console.log('🤖 AI 处理器正在构建反向翻译地图...');
@@ -161,63 +161,158 @@ function registerAiTagHandlers(dependencies) {
     }
   })
   
+  function buildBatchPrompt(books, existingTags) {
+    const bookPrompts = books.map(book => `  { "id": ${book.id}, "title": "${book.title.replace(/"/g, '\"')}" }`).join(',\n');
+    
+    const tagExamples = {};
+    for (const [category, tags] of Object.entries(existingTags)) {
+      tagExamples[category] = tags.slice(0, 50);
+    }
+  
+    return `You are a professional manga tag classification assistant. For each manga in the JSON array below, infer its tags based on the title.
+
+Available tag examples (try to use these):
+${JSON.stringify(tagExamples, null, 2)}
+
+Manga list:
+[
+${bookPrompts}
+]
+
+Your response MUST be a valid JSON array, where each object contains the original "id" and the inferred "tags". The "tags" object should follow this structure: { "parody": [], "character": [], "artist": [], "group": [], "female": [], "male": [] }. Do not include items that are not in the original manga list. Ensure your response is a single, valid JSON array.
+
+Example Response:
+[
+  {
+    "id": 1,
+    "tags": { "parody": ["original"], "artist": ["artist name"], "group": ["circle name"] }
+  },
+  {
+    "id": 2,
+    "tags": { "parody": ["some parody"], "character": ["some character"] }
+  }
+]`;
+  }
+  
+  async function callAiApiBatch(books, existingTags, apiConfig) {
+    const { apiUrl, apiKey, model } = apiConfig;
+    const prompt = buildBatchPrompt(books, existingTags);
+    const isGoogleApi = apiUrl.includes('googleapis.com');
+  
+    if (isGoogleApi) {
+      const fullUrl = `${apiUrl}/v1beta/models/${model}:generateContent`;
+      const requestBody = {
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          response_mime_type: 'application/json',
+          temperature: 0.3,
+        },
+        safetySettings: [
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+        ],
+      };
+      const response = await fetch(fullUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify(requestBody),
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`API 请求失败: ${response.status} ${response.statusText} - ${errorBody}`);
+      }
+      const data = await response.json();
+      if (!data.candidates || data.candidates.length === 0 || data.candidates[0].finishReason === 'SAFETY') {
+        throw new Error(`AI 因为安全原因返回了空响应。`);
+      }
+      const content = data.candidates[0].content.parts[0].text;
+      return JSON.parse(content);
+    } else {
+      // OpenAI-compatible batch call
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: model,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.3,
+          response_format: { type: 'json_object' },
+        }),
+      });
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`API 请求失败: ${response.status} ${response.statusText} - ${errorBody}`);
+      }
+      const data = await response.json();
+      const content = data.choices[0].message.content;
+      return JSON.parse(content);
+    }
+  }
+
   // 批量 AI 推断标签
   ipcMain.handle('ai-batch-infer-tags', async (event, { bookIds, apiConfig }) => {
     try {
-      const concurrency = setting.batchTranslationSize || 10;
-      console.log(`🤖 批量 AI 推断，共 ${bookIds.length} 本书，并发数: ${concurrency}`);
+      const batchSize = setting.batchTranslationSize || 10;
+      console.log(`🤖 批量 AI 推断，共 ${bookIds.length} 本书，批次大小: ${batchSize}`);
       
       const results = [];
       const errors = [];
-      
-      // 获取现有标签列表（只获取一次）
       const existingTags = await getExistingTagsForAI(db);
       let processedCount = 0;
 
-      for (let i = 0; i < bookIds.length; i += concurrency) {
-        const chunk = bookIds.slice(i, i + concurrency);
-        console.log(`🔄 处理批次: ${Math.floor(i / concurrency) + 1}, 书籍数量: ${chunk.length}`);
+      for (let i = 0; i < bookIds.length; i += batchSize) {
+        const chunkBookIds = bookIds.slice(i, i + batchSize);
+        console.log(`🔄 处理批次: ${Math.floor(i / batchSize) + 1}, 书籍数量: ${chunkBookIds.length}`);
 
-        const promises = chunk.map(async (bookId) => {
-          try {
-            const book = await db.findByPk(bookId, { attributes: ['id', 'title', 'tags'], raw: true });
-            if (!book) throw new Error('书籍不存在');
-            
-            const inferredTags = await callAiApi(book.title, existingTags, apiConfig);
-            const normalizedTags = await matchAndNormalizeTags(db, inferredTags, apiConfig.keepUnknownTags);
-            
-            const currentTags = typeof book.tags === 'string' ? JSON.parse(book.tags) : (book.tags || {});
-            const mergedTags = mergeTags(currentTags, normalizedTags);
-            
-            await db.update(
-              { tags: JSON.stringify(mergedTags), status: 'tagged' },
-              { where: { id: bookId } }
-            );
-            
-            return { bookId, title: book.title, tags: normalizedTags };
-          } catch (error) {
-            console.error(`❌ 处理书籍 ${bookId} 失败:`, error);
-            throw { bookId, error: error.message };
+        try {
+          const booksInChunk = await db.findAll({
+            where: { id: chunkBookIds },
+            attributes: ['id', 'title', 'tags'],
+            raw: true
+          });
+
+          if (booksInChunk.length === 0) continue;
+
+          const inferredTagsArray = await callAiApiBatch(booksInChunk, existingTags, apiConfig);
+
+          for (const result of inferredTagsArray) {
+            const bookId = result.id;
+            const inferredTags = result.tags;
+            const book = booksInChunk.find(b => b.id === bookId);
+
+            if (book && inferredTags) {
+              const normalizedTags = await matchAndNormalizeTags(db, inferredTags, apiConfig.keepUnknownTags);
+              const currentTags = typeof book.tags === 'string' ? JSON.parse(book.tags) : (book.tags || {});
+              const mergedTags = mergeTags(currentTags, normalizedTags);
+              
+              await saveBookToDatabase({
+                id: bookId,
+                tags: JSON.stringify(mergedTags),
+                status: 'tagged'
+              });
+
+              results.push({ bookId, title: book.title, tags: normalizedTags });
+              console.log(`[${processedCount + 1}/${bookIds.length}] ✅ ${book.title}`);
+            } else {
+              throw new Error(`批处理返回结果中缺少 book ID ${bookId} 的数据`);
+            }
+            processedCount++;
+            event.sender.send('ai-batch-progress', { current: processedCount, total: bookIds.length });
           }
-        });
-
-        const chunkResults = await Promise.allSettled(promises);
-        
-        chunkResults.forEach(res => {
-          processedCount++;
-          if (res.status === 'fulfilled') {
-            results.push(res.value);
-            console.log(`[${processedCount}/${bookIds.length}] ✅ ${res.value.title}`);
-          } else {
-            errors.push(res.reason);
-            console.log(`[${processedCount}/${bookIds.length}] ❌ Book ID: ${res.reason.bookId}`);
+        } catch (error) {
+          console.error(`❌ 批次 ${Math.floor(i / batchSize) + 1} 处理失败:`, error);
+          // Mark all books in this chunk as failed
+          for (const bookId of chunkBookIds) {
+            errors.push({ bookId, error: error.message });
+            processedCount++;
+            event.sender.send('ai-batch-progress', { current: processedCount, total: bookIds.length });
           }
-          event.sender.send('ai-batch-progress', { current: processedCount, total: bookIds.length });
-        });
+        }
 
-        // Delay between chunks to avoid rate limiting
-        if (i + concurrency < bookIds.length) {
-          await sleep(1000); // 1 second delay
+        if (i + batchSize < bookIds.length) {
+          await sleep(1000); // 1 second delay between batches
         }
       }
       

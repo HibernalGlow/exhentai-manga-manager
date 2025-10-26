@@ -98,7 +98,10 @@ const prepareSetting = () => {
     matchTitleOnly: false, // 仅用标题匹配
     matchHash: false, // 启用 hash 匹配
     matchSha1: true, // 启用 SHA1 压缩包匹配（默认开启）
-    fastMatch: true // 快速匹配模式（默认开启）
+    fastMatch: true, // 快速匹配模式（默认开启）
+    aiKeepUnknownTags: true, // AI推断时，保留数据库中不存在的新标签
+    aiTagBatchSize: 10, // AI标签推断的批次大小
+    aiTagDelay: 1000 // AI标签推断的批次间隔
   }
   
   let setting
@@ -271,10 +274,4 @@ module.exports = {
   COVER_PATH,
   VIEWER_PATH,
   prepareSetting,
-  prepareCollectionList,
-  preparePath,
-  loadBlacklist,
-  saveBlacklist,
-  clearBlacklist,
-  getBlacklistPath
-}
+  pr

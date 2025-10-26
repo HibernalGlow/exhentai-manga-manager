@@ -475,6 +475,7 @@ app.whenReady().then(async () => {
       mainWindow,
       sendMessageToWebContents,
       STORE_PATH,
+      saveBookToDatabase: (book) => saveBookToDatabase(Manga, Metadata, book),
       translationData: translationPayload ? translationPayload.data : null
     })
     
