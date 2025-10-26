@@ -1,34 +1,5 @@
 let reverseTranslationMap = null;
 
-function filterHallucinatedTags(inferredTags, title) {
-  if (!inferredTags || !title) {
-    return inferredTags;
-  }
-
-  const lowerTitle = title.toLowerCase();
-  const tagsToRemove = {
-    artist: ["poriuretan", "ぽりうれたん"],
-    group: ["kinokonomi", "きのこのみ"]
-  };
-
-  const filteredTags = { ...inferredTags };
-
-  for (const category in tagsToRemove) {
-    if (Array.isArray(filteredTags[category])) {
-      const badTags = tagsToRemove[category];
-      const titleHasBadTag = badTags.some(t => lowerTitle.includes(t));
-      
-      if (!titleHasBadTag) {
-        filteredTags[category] = filteredTags[category].filter(tag => {
-          return !badTags.includes(tag.toLowerCase());
-        });
-      }
-    }
-  }
-
-  return filteredTags;
-}
-
 function buildReverseTranslationMap(translationData) {
   if (!translationData) return null;
   
@@ -152,10 +123,9 @@ function registerAiTagHandlers(dependencies) {
       
       // 调用 AI API
       const inferredTags = await callAiApi(title, existingTags, apiConfig)
-      const filteredTags = filterHallucinatedTags(inferredTags, title);
       
       // 匹配和规范化标签
-      const normalizedTags = await matchAndNormalizeTags(db, filteredTags, apiConfig.keepUnknownTags)
+      const normalizedTags = await matchAndNormalizeTags(db, inferredTags, apiConfig.keepUnknownTags)
       
       console.log(`✅ 推断结果:`, normalizedTags)
       
@@ -208,7 +178,7 @@ function registerAiTagHandlers(dependencies) {
   
     **Instructions:**
   
-    1.  **Deeply analyze the title**: Strictly analyze the title content. Content in \`()\` and \`[]\` are usually the group and artist. 严禁不加思考添加 poriuretanぽりうれたん 和 kinokonomi きのこのみ as tags.
+    1.  **Deeply analyze the title**: Strictly analyze the title content. Content in \`()\` and \`[]\` are usually the group and artist. 
   
     2.  **Enrich content tags**: For 'female' and 'male' categories, be bold in your inferences based on the title, e.g., 'sole female', 'schoolgirl uniform'.
   
@@ -356,8 +326,7 @@ function registerAiTagHandlers(dependencies) {
 
             if (inferredTags) {
               try {
-                const filteredTags = filterHallucinatedTags(inferredTags, book.title);
-                const normalizedTags = await matchAndNormalizeTags(db, filteredTags, apiConfig.keepUnknownTags);
+                const normalizedTags = await matchAndNormalizeTags(db, inferredTags, apiConfig.keepUnknownTags);
                 const currentTags = typeof book.tags === 'string' ? JSON.parse(book.tags) : (book.tags || {});
                 const mergedTags = mergeTags(currentTags, normalizedTags);
                 
