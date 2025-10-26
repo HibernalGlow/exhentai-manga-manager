@@ -174,6 +174,8 @@ function registerAiTagHandlers(dependencies) {
   
     return `You are a professional manga tag classification assistant. For each manga in the JSON array below, infer its tags based on the title.
 
+**IMPORTANT RULE**: The "Available tag examples" and "My Favorite Tags" are for reference for tag name and spelling ONLY. DO NOT use tags from these lists unless they are explicitly mentioned or strongly implied in the manga's TITLE. Your primary task is to analyze the TITLE.
+
 **Instructions:**
 1.  **Deeply analyze the title**: Don't just identify the artist and group in brackets. Infer the work's theme, plot, character relationships, and content features from the core title content.
 2.  **Enrich content tags**: For 'female' and 'male' categories, be bold in your inferences. For example, if the title implies actions or relationships (like 'chikan', 'pure love', 'NTR'), add them as tags. If it mentions body parts or clothing (like 'big breasts', 'uniform'), add those too.
@@ -548,7 +550,9 @@ function buildPrompt(title, existingTags) {
     tagExamples[category] = tags.slice(0, 50)
   }
   
-  return `请根据以下漫画标题推断标签：
+  return `**IMPORTANT RULE**: The "Available tag examples" and "My Favorite Tags" are for reference for tag name and spelling ONLY. DO NOT use tags from these lists unless they are explicitly mentioned or strongly implied in the manga's TITLE. Your primary task is to analyze the TITLE.
+
+请根据以下漫画标题推断标签：
 
 标题：${title}
 
