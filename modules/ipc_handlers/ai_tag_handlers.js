@@ -144,7 +144,7 @@ function registerAiTagHandlers(dependencies) {
             id: bookId,
             hash: book.hash, // Pass hash
             title: book.title, // Pass title for logging
-            tags: JSON.stringify(mergedTags),
+            tags: mergedTags, // Pass object directly
             status: 'tagged'
           });
         }
@@ -172,41 +172,69 @@ function registerAiTagHandlers(dependencies) {
       tagExamples[category] = tags.slice(0, 50);
     }
   
-    return `You are a professional manga tag classification assistant. For each manga in the JSON array below, infer its tags based on the title.
-
-**IMPORTANT RULE**: The "Available tag examples" and "My Favorite Tags" are for reference for tag name and spelling ONLY. DO NOT use tags from these lists unless they are explicitly mentioned or strongly implied in the manga's TITLE. Your primary task is to analyze the TITLE.
-
-**Instructions:**
-1.  **Deeply analyze the title**: Don't just identify the artist and group in brackets. Infer the work's theme, plot, character relationships, and content features from the core title content.
-2.  **Enrich content tags**: For 'female' and 'male' categories, be bold in your inferences. For example, if the title implies actions or relationships (like 'chikan', 'pure love', 'NTR'), add them as tags. If it mentions body parts or clothing (like 'big breasts', 'uniform'), add those too.
-3.  **Prioritize the optional list**: Try to choose from the provided "Available tag examples" to maintain tag consistency.
-4.  **Allow new tags**: If you are sure about a tag but it's not in the list, you can add it directly.
-5.  **Use original language**: Please use the original Japanese/English for tag names.
-
-Available tag examples (try to use these):
-${JSON.stringify(tagExamples, null, 2)}
-
-My Favorite Tags (Prioritize these if the title content is relevant):
-${JSON.stringify((setting.collectTag || []).map(t => t.tag))}
-
-Manga list:
-[
-${bookPrompts}
-]
-
-Your response MUST be a valid JSON array. Ensure your response contains an object for every single item in the input "Manga list", each with its original "id" and the inferred "tags". The "tags" object should follow this structure: { "parody": [], "character": [], "artist": [], "group": [], "female": [], "male": [] }.
-
-Example Response:
-[
-  {
-    "id": 1,
-    "tags": { "parody": ["original"], "artist": ["artist name"], "group": ["circle name"] }
-  },
-  {
-    "id": 2,
-    "tags": { "parody": ["some parody"], "character": ["some character"] }
-  }
-]`;
+      return `**CRITICAL INSTRUCTION**: Your task is to extract information ONLY from the manga TITLE provided for each item. DO NOT use any tags from the "Available tag examples" or "My Favorite Tags" lists unless the name is explicitly written in the title. For example, if the title is "[My Circle (My Artist)] My Title", you must extract "My Circle" and "My Artist". Do not invent or copy tags from the example lists.
+  
+    
+  
+    **Instructions:**
+  
+    1.  **Deeply analyze the title**: Strictly analyze the title content. Content in \`()\` and \`[]\` are usually the group and artist. 严禁不加思考添加 poriuretanぽりうれたん 和 kinokonomi きのこのみ as tags.
+  
+    2.  **Enrich content tags**: For 'female' and 'male' categories, be bold in your inferences based on the title, e.g., 'sole female', 'schoolgirl uniform'.
+  
+    3.  **Use original language**: Please use the original Japanese/English for tag names.
+  
+    
+  
+    Available tag examples (for spelling reference only):
+  
+    ${JSON.stringify(tagExamples, null, 2)}
+  
+    
+  
+    My Favorite Tags (for spelling reference only):
+  
+    ${JSON.stringify((setting.collectTag || []).map(t => t.tag))}
+  
+    
+  
+    Manga list:
+  
+    [
+  
+    ${bookPrompts}
+  
+    ]
+  
+    
+  
+    Your response MUST be a valid JSON array. Ensure your response contains an object for every single item in the input "Manga list", each with its original "id" and the inferred "tags". The "tags" object should follow this structure: { "parody": [], "character": [], "artist": [], "group": [], "female": [], "male": [] }.
+  
+    
+  
+    Example Response:
+  
+    [
+  
+      {
+  
+        "id": 1,
+  
+        "tags": { "parody": ["original"], "artist": ["artist name"], "group": ["circle name"] }
+  
+      },
+  
+      {
+  
+        "id": 2,
+  
+        "tags": { "parody": ["some parody"], "character": ["some character"] }
+  
+      }
+  
+    ]
+  
+    `;
   }
   
   async function callAiApiBatch(books, existingTags, apiConfig) {
@@ -306,7 +334,7 @@ Example Response:
                   id: book.id,
                   hash: book.hash,
                   title: book.title, 
-                  tags: JSON.stringify(mergedTags),
+                  tags: mergedTags, // Pass object directly
                   status: 'tagged'
                 };
                 await saveBookToDatabase(bookToSave);
