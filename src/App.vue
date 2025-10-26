@@ -1046,8 +1046,30 @@ export default defineComponent({
       try {
         this.buttonLoadBookListLoading = true
         const res = await ipcRenderer.invoke('load-book-list', scan)
+
+        // Synchronously parse tags before assigning to reactive state
+        for (const book of res) {
+          if (book && typeof book.tags === 'string') {
+            try {
+              book.tags = JSON.parse(book.tags || '{}');
+            } catch (e) {
+              console.error(`[App.vue] Failed to parse tags for book ${book.id}:`, e);
+              book.tags = {}; // Reset to empty object on failure
+            }
+          }
+        }
+
         this.bookList = this.prepareBookList(res)
-        this.$refs.FolderTreeRef.geneFolderTree()
+
+        // FIX: Refresh open book detail dialog with new data
+        if (this.bookDetail?.id) {
+          const updatedBook = this.bookList.find(b => b.id === this.bookDetail.id);
+          if (updatedBook) {
+            this.bookDetail = updatedBook;
+          }
+        }
+
+        this.$refs.FolderTreeRef.geneFolderTree(this.tagListRaw)
         // mirror a live cache at the end of loading books
         // this function is called after scan, force-gene-book-list, patch-local-metadata
         this.loadCollectionList()

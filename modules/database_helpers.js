@@ -175,16 +175,10 @@ async function loadBookListFromDatabase(dependenciesOrRetryCount = 0, retryCount
       return await Manga.findAll({ raw: true, transaction: t })
     })
 
-    console.log(`[DB Helper] Parsing tags for ${bookList.length} books...`);
+    // Parse tags
     for (let i = 0; i < bookList.length; i++) {
-      const b = bookList[i];
-      // console.log(`[DB Helper] Before parse for book ${b.id}: type=${typeof b.tags}, value=${b.tags}`);
-      if (typeof b.tags === 'string') {
-        b.tags = JSON.parse(b.tags || '{}');
-      } else {
-        b.tags = b.tags || {}; // Ensure it's at least an empty object
-      }
-      // console.log(`[DB Helper] After parse for book ${b.id}: type=${typeof b.tags}`);
+      const b = bookList[i]
+      b.tags = JSON.parse(b.tags || '{}')
     }
     
     // Flag missing books

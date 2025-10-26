@@ -220,7 +220,13 @@ const props = defineProps({
 
 // 获取高亮标签的函数
 const getHighlightedTags = (tagArr, category) => {
-  if (!tagArr || tagArr.length === 0) return []
+  // FIX: Add a guard to ensure tagArr is an array
+  if (!Array.isArray(tagArr)) {
+    console.warn(`[getHighlightedTags] Expected 'tagArr' to be an array for category '${category}', but got:`, tagArr);
+    return []; 
+  }
+
+  if (tagArr.length === 0) return []
   
   // 如果setting.showCollectTag为false，直接返回原始标签数组
   if (!setting.value.showCollectTag) {
@@ -259,6 +265,9 @@ const getHighlightedTags = (tagArr, category) => {
 
 
 const openBookDetail = (book) => {
+  console.log(`[BookDetailDialog] Opening detail for book ID ${book.id}.`);
+  console.log(`[BookDetailDialog] Type of tags: ${typeof book.tags}`);
+  console.log(`[BookDetailDialog] Value of tags:`, JSON.stringify(book.tags, null, 2));
   bookDetail.value = book
   dialogVisibleBookDetail.value = true
   comments.value = []
