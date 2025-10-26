@@ -7,6 +7,7 @@ const { registerAllHandlers } = require('./all_handlers')
 const { registerMetadataHandlers } = require('./metadata_handlers')
 const { registerBlacklistHandlers } = require('./blacklist_handlers')
 const { registerFolderBatchHandlers } = require('./folder_batch_handlers')
+const { registerAiTagHandlers } = require('./ai_tag_handlers')
 
 /**
  * 注册所有IPC处理器
@@ -27,6 +28,9 @@ function registerAllIpcHandlers(dependencies) {
     
     // 注册文件夹批量操作处理器
     registerFolderBatchHandlers(dependencies)
+    
+    // 注册 AI 标签处理器
+    registerAiTagHandlers(dependencies)
     
     console.log('✅ 所有IPC处理器注册完成')
     return true

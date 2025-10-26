@@ -13,7 +13,7 @@ const { ipcMain } = require('electron')
 const DEBUG = process.env.NODE_ENV === 'development'
 
 function registerFolderBatchHandlers(dependencies) {
-  const { db } = dependencies
+  const { db, saveBookToDatabase } = dependencies
   
   console.log('📝 注册文件夹批量操作处理器...')
   
@@ -78,53 +78,8 @@ function registerFolderBatchHandlers(dependencies) {
   ipcMain.handle('batch-update-artist-group-tags', async (event, folders) => {
     try {
       console.log(`📝 开始批量更新画师/社团标签，文件夹数量: ${folders.length}`)
-      console.log(`📁 接收到的文件夹路径:`)
-      folders.slice(0, 3).forEach((folder, idx) => {
-        console.log(`   ${idx + 1}. ${folder}`)
-      })
       
-      // 调试：显示数据库中的实际路径格式
-      const totalCount = await db.count()
-      console.log(`📊 数据库总书籍数: ${totalCount}`)
-      
-      const sampleBooks = await db.findAll({
-        attributes: ['filepath', 'status'],
-        limit: 10,
-        raw: true
-      })
-      console.log(`📚 数据库中的示例路径（前10本书）:`)
-      sampleBooks.forEach((book, idx) => {
-        console.log(`   ${idx + 1}. ${book.filepath} [${book.status}]`)
-      })
-      
-      // 测试路径格式
-      if (folders.length > 0) {
-        const testFolder = folders[0]
-        console.log(`🔍 测试不同路径格式:`)
-        console.log(`   原始: ${testFolder}`)
-        
-        // 测试各种格式
-        const formats = [
-          testFolder,  // e:/1hub/eh/1ehv/[artist]
-          testFolder.replace(/\//g, '\\'),  // e:\1hub\eh\1ehv\[artist]
-          testFolder.charAt(0).toUpperCase() + testFolder.slice(1),  // E:/1hub/eh/1ehv/[artist]
-          testFolder.replace(/\//g, '\\').charAt(0).toUpperCase() + testFolder.replace(/\//g, '\\').slice(1),  // E:\1hub\eh\1ehv\[artist]
-          'E:\\1Hub\\EH\\1EHV\\' + testFolder.split('/').pop()  // E:\1Hub\EH\1EHV\[artist]
-        ]
-        
-        for (let i = 0; i < formats.length; i++) {
-          const count = await db.count({
-            where: {
-              filepath: {
-                [db.sequelize.Sequelize.Op.like]: formats[i] + '%'
-              }
-            }
-          })
-          console.log(`   格式${i + 1}: ${formats[i]} -> ${count} 本`)
-        }
-      }
-      
-      const result = await batchUpdateTags(db, folders, ['artist', 'group'])
+      const result = await batchUpdateTags(db, folders, ['artist', 'group'], saveBookToDatabase)
       
       console.log(`✅ 批量更新画师/社团标签完成，更新了 ${result.updatedCount} 个文件`)
       return result
@@ -143,7 +98,7 @@ function registerFolderBatchHandlers(dependencies) {
     try {
       console.log(`📝 开始批量更新Coser标签，文件夹数量: ${folders.length}`)
       
-      const result = await batchUpdateTags(db, folders, ['cosplayer'])
+      const result = await batchUpdateTags(db, folders, ['cosplayer'], saveBookToDatabase)
       
       console.log(`✅ 批量更新Coser标签完成，更新了 ${result.updatedCount} 个文件`)
       return result
@@ -167,7 +122,7 @@ function registerFolderBatchHandlers(dependencies) {
  * @param {Array} categories - 要更新的标签类别
  * @returns {Object} 更新结果
  */
-async function batchUpdateTags(db, folders, categories) {
+async function batchUpdateTags(db, folders, categories, saveBookToDatabase) {
   let updatedCount = 0
   const errors = []
   
@@ -227,9 +182,25 @@ async function batchUpdateTags(db, folders, categories) {
       
       // 批量更新本文件夹的所有书籍
       if (folderUpdates.length > 0) {
-        const updated = await batchUpdateBookTags(db, folderUpdates)
+        console.log(`📝 准备更新 ${folderUpdates.length} 个标签...`)
+        console.log(`   示例更新:`, folderUpdates.slice(0, 2))
+        
+        const updated = await batchUpdateBookTags(db, folderUpdates, saveBookToDatabase)
         updatedCount += updated
         console.log(`✅ 文件夹 ${folderPath} 更新了 ${updated} 本书`)
+        
+        // 验证更新（总是验证第一本书）
+        if (updated > 0) {
+          const firstUpdate = folderUpdates[0]
+          const verifyBook = await db.findByPk(firstUpdate.bookId, {
+            attributes: ['id', 'title', 'tags'],
+            raw: true
+          })
+          console.log(`🔍 验证第一本书:`)
+          console.log(`   ID: ${firstUpdate.bookId}`)
+          console.log(`   标题: ${verifyBook?.title?.substring(0, 50)}...`)
+          console.log(`   标签:`, verifyBook?.tags)
+        }
       }
     } catch (error) {
       console.error(`❌ 处理文件夹 ${folderPath} 时出错:`, error)
@@ -373,30 +344,59 @@ function getMostCommonTag(tagCounts) {
 }
 
 /**
- * 批量更新书籍标签（性能优化）
+ * 批量更新书籍标签（使用现有的 saveBookToDatabase）
  */
-async function batchUpdateBookTags(db, updates) {
+async function batchUpdateBookTags(db, updates, saveBookToDatabase) {
   if (updates.length === 0) return 0
   
   try {
-    // 使用事务批量更新
-    const result = await db.sequelize.transaction(async (t) => {
-      const promises = updates.map(({ bookId, category, newTag }) => {
-        return db.sequelize.query(
-          `UPDATE Mangas SET tags = json_set(tags, '$.${category}', json_array(?)) WHERE id = ?`,
-          {
-            replacements: [newTag, bookId],
-            type: db.sequelize.Sequelize.QueryTypes.UPDATE,
-            transaction: t
-          }
-        )
-      })
-      
-      await Promise.all(promises)
-      return updates.length
-    })
+    let updatedCount = 0
     
-    return result
+    // 按书籍分组更新（一本书可能有多个类别要更新）
+    const bookUpdates = {}
+    for (const { bookId, category, newTag } of updates) {
+      if (!bookUpdates[bookId]) {
+        bookUpdates[bookId] = {}
+      }
+      bookUpdates[bookId][category] = newTag
+    }
+    
+    // 逐本书更新
+    for (const [bookId, categoryTags] of Object.entries(bookUpdates)) {
+      console.log(`\n📖 处理书籍 ${bookId}`)
+      
+      // 获取当前书籍（完整数据）
+      const book = await db.findByPk(bookId, { raw: true })
+      
+      if (!book) {
+        console.warn(`⚠️ 书籍 ${bookId} 不存在`)
+        continue
+      }
+      
+      // 获取当前标签
+      let currentTags = book.tags || {}
+      if (typeof currentTags === 'string') {
+        currentTags = JSON.parse(currentTags)
+      }
+      
+      console.log(`   更新前:`, currentTags)
+      
+      // 更新标签
+      for (const [category, newTag] of Object.entries(categoryTags)) {
+        currentTags[category] = [newTag]
+      }
+      
+      console.log(`   更新后:`, currentTags)
+      
+      // 使用现有的 saveBookToDatabase 方法保存
+      book.tags = currentTags
+      await saveBookToDatabase(book)
+      updatedCount++
+      
+      console.log(`   ✅ 已保存`)
+    }
+    
+    return updatedCount
   } catch (error) {
     console.error('批量更新标签失败:', error)
     throw error

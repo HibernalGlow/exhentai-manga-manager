@@ -808,7 +808,16 @@ async function batchUpdateArtistGroup(folders) {
       
       if (result.success) {
         appStore.printMessage('success', `成功更新 ${result.updatedCount} 个文件`)
-        // 刷新书籍列表
+        
+        // 重新从数据库加载书籍列表
+        console.log('🔄 重新加载书籍列表...')
+        const books = await ipcRenderer.invoke('load-book-list')
+        if (books && Array.isArray(books)) {
+          bookList.value = books
+          console.log(`✅ 已重新加载 ${books.length} 本书`)
+        }
+        
+        // 刷新显示
         emit('chunkList')
       } else {
         appStore.printMessage('error', result.message || '更新失败')
@@ -873,7 +882,16 @@ async function batchUpdateCoser(folders) {
       
       if (result.success) {
         appStore.printMessage('success', `成功更新 ${result.updatedCount} 个文件`)
-        // 刷新书籍列表
+        
+        // 重新从数据库加载书籍列表
+        console.log('🔄 重新加载书籍列表...')
+        const books = await ipcRenderer.invoke('load-book-list')
+        if (books && Array.isArray(books)) {
+          bookList.value = books
+          console.log(`✅ 已重新加载 ${books.length} 本书`)
+        }
+        
+        // 刷新显示
         emit('chunkList')
       } else {
         appStore.printMessage('error', result.message || '更新失败')

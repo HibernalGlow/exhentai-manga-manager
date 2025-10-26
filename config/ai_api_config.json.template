@@ -1,8 +1,7 @@
 {
-  "provider": "qwen",
-  "apiKey": "请填写你的API密钥",
-  "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-  "model": "qwen-max",
-  "temperature": 0.3,
-  "maxTokens": 2000
+  "apiUrl": "https://api.openai.com/v1/chat/completions",
+  "apiKey": "your-api-key-here",
+  "model": "gpt-3.5-turbo",
+  "enabled": false,
+  "comment": "支持 OpenAI 兼容的 API，如 DeepSeek、Qwen、Gemini 等"
 }

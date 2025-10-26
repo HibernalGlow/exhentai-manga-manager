@@ -414,7 +414,7 @@ app.whenReady().then(async () => {
       getImageListByBook,
       deleteImageFromBook,
       loadBookListFromDatabase,
-      saveBookToDatabase,
+      saveBookToDatabase: (book) => saveBookToDatabase(Manga, Metadata, book),
       clearFolder,
       createLimiter,
       initTranslationIPC,
@@ -451,7 +451,8 @@ app.whenReady().then(async () => {
     // 注册文件夹批量操作处理器
     registerFolderBatchHandlers({
       db: Manga,
-      mainWindow
+      mainWindow,
+      saveBookToDatabase: (book) => saveBookToDatabase(Manga, Metadata, book)
     })
     
     // 3. 最后创建窗口
