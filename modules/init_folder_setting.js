@@ -274,4 +274,10 @@ module.exports = {
   COVER_PATH,
   VIEWER_PATH,
   prepareSetting,
-  pr
+  prepareCollectionList,
+  preparePath,
+  loadBlacklist,
+  saveBlacklist,
+  clearBlacklist,
+  getBlacklistPath
+}

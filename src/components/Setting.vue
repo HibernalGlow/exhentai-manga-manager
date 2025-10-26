@@ -1140,34 +1140,46 @@
           <!-- 批量推断设置 -->
           <el-col :span="12">
             <div class="setting-line">
-              <el-input-number
-                  v-model="aiTagBatchSize"
-                  :min="1"
-                  :max="50"
-                  :step="1"
-                  style="width: 100%"
+              <el-tooltip
+                  content="单次API请求中包含的书籍数量。较大的值可以提高速度但可能超出API限制，建议值：5-20"
+                  placement="top"
               >
-                <template #prepend>
-                  <span class="setting-label">批量推断数量</span>
-                </template>
-              </el-input-number>
+                <el-input-number
+                    v-model="setting.aiTagBatchSize"
+                    :min="1"
+                    :max="50"
+                    :step="1"
+                    @change="saveSetting"
+                    style="width: 100%"
+                >
+                  <template #prepend>
+                    <span class="setting-label">批量推断数量</span>
+                  </template>
+                </el-input-number>
+              </el-tooltip>
             </div>
           </el-col>
 
           <!-- 推断间隔 -->
           <el-col :span="12">
             <div class="setting-line">
-              <el-input-number
-                  v-model="aiTagDelay"
-                  :min="500"
-                  :max="5000"
-                  :step="100"
-                  style="width: 100%"
+              <el-tooltip
+                  content="处理完一个批次后，等待多长时间再处理下一个批次，以避免API限流。单位是毫秒（1000ms = 1秒）。"
+                  placement="top"
               >
-                <template #prepend>
-                  <span class="setting-label">请求间隔(ms)</span>
-                </template>
-              </el-input-number>
+                <el-input-number
+                    v-model="setting.aiTagDelay"
+                    :min="500"
+                    :max="10000"
+                    :step="100"
+                    @change="saveSetting"
+                    style="width: 100%"
+                >
+                  <template #prepend>
+                    <span class="setting-label">批次间隔(ms)</span>
+                  </template>
+                </el-input-number>
+              </el-tooltip>
             </div>
           </el-col>
 
@@ -1350,8 +1362,6 @@ const batchInferring = ref(false)
 const aiInferProgress = ref({ current: 0, total: 0 })
 const aiApiConfig = ref(null)
 const aiApiConfigPath = ref('config/ai_api_config.json')
-const aiTagBatchSize = ref(10)
-const aiTagDelay = ref(1000)
 
 // Import metadata state
 const importingMetadata = ref(false)

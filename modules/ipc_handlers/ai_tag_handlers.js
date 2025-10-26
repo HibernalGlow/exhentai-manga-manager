@@ -254,7 +254,7 @@ Example Response:
   // 批量 AI 推断标签
   ipcMain.handle('ai-batch-infer-tags', async (event, { bookIds, apiConfig }) => {
     try {
-      const batchSize = setting.batchTranslationSize || 10;
+      const batchSize = setting.aiTagBatchSize || 10;
       console.log(`🤖 批量 AI 推断，共 ${bookIds.length} 本书，批次大小: ${batchSize}`);
       
       const results = [];
@@ -312,7 +312,7 @@ Example Response:
         }
 
         if (i + batchSize < bookIds.length) {
-          await sleep(1000); // 1 second delay between batches
+          await sleep(setting.aiTagDelay || 1000); // Use configurable delay
         }
       }
       
