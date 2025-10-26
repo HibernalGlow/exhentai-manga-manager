@@ -9,6 +9,9 @@ const { ipcMain } = require('electron')
  * 注册文件夹批量操作相关的IPC处理器
  * @param {Object} dependencies - 依赖项
  */
+// 开发模式标志
+const DEBUG = process.env.NODE_ENV === 'development'
+
 function registerFolderBatchHandlers(dependencies) {
   const { db } = dependencies
   
@@ -188,6 +191,9 @@ async function batchUpdateTags(db, folders, categories) {
         continue
       }
       
+      // 收集本文件夹的所有更新操作
+      const folderUpdates = []
+      
       // 对每个类别分别处理
       for (const category of categories) {
         // 统计该文件夹下【所有书籍】中该类别标签的出现次数（包括已标记的）
@@ -202,22 +208,28 @@ async function batchUpdateTags(db, folders, categories) {
         const mostCommonTag = getMostCommonTag(tagCounts)
         console.log(`🏆 文件夹 ${folderPath} 中 ${category} 类别最常见的标签: ${mostCommonTag} (出现 ${tagCounts[mostCommonTag]} 次)`)
         
-        // 只更新【需要更新的书籍】（non-tag/tag-failed）
+        // 收集需要更新的书籍
         for (const book of booksToUpdate) {
           const bookTags = book.tags[category] || []
           
           // 跳过已经有该类别标签的书籍
           if (bookTags.length > 0) {
-            console.log(`⏭️ 跳过书籍 ${book.id}，已有 ${category} 标签: ${bookTags.join(', ')}`)
             continue
           }
           
-          const updated = await updateBookTag(db, book.id, category, mostCommonTag)
-          if (updated) {
-            updatedCount++
-            console.log(`✅ 更新书籍 ${book.id} 的 ${category} 标签为: ${mostCommonTag}`)
-          }
+          folderUpdates.push({
+            bookId: book.id,
+            category,
+            newTag: mostCommonTag
+          })
         }
+      }
+      
+      // 批量更新本文件夹的所有书籍
+      if (folderUpdates.length > 0) {
+        const updated = await batchUpdateBookTags(db, folderUpdates)
+        updatedCount += updated
+        console.log(`✅ 文件夹 ${folderPath} 更新了 ${updated} 本书`)
       }
     } catch (error) {
       console.error(`❌ 处理文件夹 ${folderPath} 时出错:`, error)
@@ -232,11 +244,19 @@ async function batchUpdateTags(db, folders, categories) {
   }
 }
 
+// 路径规范化缓存
+const pathNormalizeCache = new Map()
+
 /**
  * 规范化路径（统一使用反斜杠，匹配数据库格式）
  * 数据库中存储的是 E:\1Hub\EH\1EHV\... 格式
  */
 function normalizePath(p) {
+  // 检查缓存
+  if (pathNormalizeCache.has(p)) {
+    return pathNormalizeCache.get(p)
+  }
+  
   let s = String(p || '').replace(/[\\/]+/g, '\\')
   if (s.length > 1 && s.endsWith('\\')) s = s.slice(0, -1)
   
@@ -248,6 +268,12 @@ function normalizePath(p) {
   // 修正路径中的大小写，匹配数据库格式
   // E:\1hub\eh\1ehv\ -> E:\1Hub\EH\1EHV\
   s = s.replace(/^E:\\1hub\\eh\\1ehv\\/i, 'E:\\1Hub\\EH\\1EHV\\')
+  
+  // 缓存结果（限制缓存大小）
+  if (pathNormalizeCache.size > 1000) {
+    pathNormalizeCache.clear()
+  }
+  pathNormalizeCache.set(p, s)
   
   return s
 }
@@ -263,8 +289,10 @@ async function getBooksInFolder(db, folderPath) {
     // 规范化文件夹路径（转换为数据库格式：大写盘符 + 反斜杠）
     const normalizedFolderPath = normalizePath(folderPath)
     
-    console.log(`🔍 查询文件夹: ${folderPath}`)
-    console.log(`   规范化后: ${normalizedFolderPath}`)
+    if (DEBUG) {
+      console.log(`🔍 查询文件夹: ${folderPath}`)
+      console.log(`   规范化后: ${normalizedFolderPath}`)
+    }
     
     // 查询所有书籍（用于统计标签）
     const allBooks = await db.findAll({
@@ -277,8 +305,6 @@ async function getBooksInFolder(db, folderPath) {
       raw: true
     })
     
-    console.log(`   查询到 ${allBooks.length} 本书籍（所有状态）`)
-    
     // 过滤出真正属于这个文件夹的书籍
     const books = allBooks.filter(book => {
       const normalizedBookPath = normalizePath(book.filepath)
@@ -286,16 +312,13 @@ async function getBooksInFolder(db, folderPath) {
       return normalizedBookPath.toUpperCase().startsWith(prefix.toUpperCase())
     })
     
-    console.log(`   过滤后: ${books.length} 本书籍`)
-    
     // 分离出需要更新的书籍（non-tag 或 tag-failed）
     const booksToUpdate = books.filter(book => 
       book.status === 'non-tag' || book.status === 'tag-failed'
     )
     
-    console.log(`   其中 ${booksToUpdate.length} 本需要更新（non-tag/tag-failed）`)
-    if (books.length > 0) {
-      console.log(`   示例: ${books[0].filepath}`)
+    if (DEBUG) {
+      console.log(`   查询到 ${allBooks.length} 本，过滤后 ${books.length} 本，需更新 ${booksToUpdate.length} 本`)
     }
     
     // tags字段已经是JSON格式，Sequelize会自动解析
@@ -350,34 +373,41 @@ function getMostCommonTag(tagCounts) {
 }
 
 /**
- * 更新书籍的某个类别标签
+ * 批量更新书籍标签（性能优化）
  */
-async function updateBookTag(db, bookId, category, newTag) {
+async function batchUpdateBookTags(db, updates) {
+  if (updates.length === 0) return 0
+  
   try {
-    // 首先获取当前的书籍
-    const book = await db.findByPk(bookId)
+    // 使用事务批量更新
+    const result = await db.sequelize.transaction(async (t) => {
+      const promises = updates.map(({ bookId, category, newTag }) => {
+        return db.sequelize.query(
+          `UPDATE Mangas SET tags = json_set(tags, '$.${category}', json_array(?)) WHERE id = ?`,
+          {
+            replacements: [newTag, bookId],
+            type: db.sequelize.Sequelize.QueryTypes.UPDATE,
+            transaction: t
+          }
+        )
+      })
+      
+      await Promise.all(promises)
+      return updates.length
+    })
     
-    if (!book) {
-      return false
-    }
-    
-    // 获取当前的tags
-    let tags = book.tags || {}
-    if (typeof tags === 'string') {
-      tags = JSON.parse(tags)
-    }
-    
-    // 更新指定类别的标签（替换为新标签）
-    tags[category] = [newTag]
-    
-    // 保存回数据库
-    await book.update({ tags })
-    
-    return true
+    return result
   } catch (error) {
-    console.error(`更新书籍 ${bookId} 的标签失败:`, error)
+    console.error('批量更新标签失败:', error)
     throw error
   }
+}
+
+/**
+ * 更新单个书籍的某个类别标签（向后兼容）
+ */
+async function updateBookTag(db, bookId, category, newTag) {
+  return batchUpdateBookTags(db, [{ bookId, category, newTag }])
 }
 
 module.exports = {
