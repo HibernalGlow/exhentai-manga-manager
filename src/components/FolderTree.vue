@@ -25,6 +25,15 @@
             ></el-input>
             <!-- Side buttons -->
             <div class="icon-group">
+              <el-tooltip content="Select untagged" placement="top">
+                <el-button
+                    size="default"
+                    circle
+                    :icon="Warning"
+                    aria-label="Select untagged"
+                    @click="selectUntaggedFolders"
+                />
+              </el-tooltip>
               <!--    Expand all /   -->
               <el-tooltip content="Expand all" placement="top">
                 <el-button
@@ -107,7 +116,16 @@
               show-checkbox
               :check-strictly="false"
               @check="handleCheckChange"
-          ></el-tree-v2>
+          >
+            <template #default="{ data }">
+              <div class="custom-tree-node">
+                <span class="node-label">{{ data.label }}</span>
+                <el-tag v-if="data.untaggedCount > 0" type="warning" size="small" effect="dark" round class="untagged-badge">
+                  {{ data.untaggedCount }}
+                </el-tag>
+              </div>
+            </template>
+          </el-tree-v2>
         </div>
         <el-button class="tree-backtop" circle @click="treeRef.scrollTo(0)" title="Back to top">
           <el-icon>
@@ -293,11 +311,9 @@ function closeFolderTree() {
 
 /** =======================  / construct folder tree
  **/
-function buildFolderTree(bookPathList) {
+function buildFolderTree(books) {
 // bookPathList: [ path string, ... ]
 // Output node: { label, folderName, folderPath, children:[...] }
-// Rule: collapse the top chain while there's exactly one subfolder and no files at that level
-// there can be multiple top-level folders
 
   // Trie node factory
   const makeNode = (name, path) => ({
@@ -305,61 +321,57 @@ function buildFolderTree(bookPathList) {
     folderPath: path,
     hasDirect: false,        // at least one file directly in this folder
     _children: new Map(),
+    untaggedCount: 0,
   })
 
   // Build trie
   const rootMap = new Map()
-  for (const it of bookPathList || []) {
-    const fp = normDir(it)
+  for (const book of books || []) {
+    const fp = normDir(book.filepath)
     if (!fp) continue
 
-    const parts = fp.split('/')
-    const dirs = parts.slice(0, -1).filter(Boolean) // drop filename
-    if (!dirs.length) continue
+    const parts = fp.split('/').slice(0, -1).filter(Boolean) // drop filename
+    if (!parts.length) continue
+
+    const isUntagged = book.status === 'non-tag' || book.status === 'tag-failed';
 
     let cursor = rootMap
     let accum = []
-    for (let i = 0; i < dirs.length; i++) {
-      const seg = dirs[i]
+    const parentNodes = [];
+    for (let i = 0; i < parts.length; i++) {
+      const seg = parts[i]
       accum.push(seg)
       let node = cursor.get(seg)
       if (!node) {
         node = makeNode(seg, accum.join('/'))
         cursor.set(seg, node)
       }
-      if (i === dirs.length - 1) {
+      parentNodes.push(node);
+      if (i === parts.length - 1) {
         // file belongs directly under this folder
         node.hasDirect = true
       }
       cursor = node._children
     }
-  }
-
-  // Collapse the leading chain while there's only one child and no direct files
-  const collapseOne = (node) => {
-    let n = node
-    while (!n.hasDirect && n._children.size === 1) {
-      const [, onlyChild] = n._children.entries().next().value
-      n = onlyChild
+    if (isUntagged) {
+      parentNodes.forEach(p => p.untaggedCount++);
     }
-    return n
-  }
-  // ---- Per-branch top collapse ----
-  const topMap = new Map()
-  for (const [, topNode] of rootMap) {
-    const collapsed = collapseOne(topNode)
-    topMap.set(collapsed.folderPath, collapsed)
   }
 
   // ---- Convert to Element-Plus-friendly array ----
   const toArray = (map, isTop) => {
     const arr = []
     for (const [, n] of map) {
+      const children = toArray(n._children, false)
+      const untaggedCount = n.untaggedCount;
+      let label = isTop ? n.folderPath : n.folderName;
+
       arr.push({
-        label: isTop ? n.folderPath : n.folderName, // full path at top, name below
+        label: label, // full path at top, name below
         folderName: n.folderName,
         folderPath: n.folderPath,                    // stable node-key
-        children: toArray(n._children, false),
+        children: children,
+        untaggedCount: untaggedCount,
       })
     }
     // Sort: top by full path, deeper by name
@@ -370,15 +382,15 @@ function buildFolderTree(bookPathList) {
     return arr
   }
 
-  return toArray(topMap, true)
+  return toArray(rootMap, true)
 }
 
 let dirIndex = { keys: [], idxs: [] } // precomputed directory index for fast lookup
 
 const geneFolderTree = async (tagListRaw) => {
   // always (re)build the folder tab;
-  const filepaths = bookList.value.filter(b => !b.isCollection).map(b => b.filepath)
-  folderTreeData.value = buildFolderTree(filepaths)
+  const booksForTree = bookList.value.filter(b => !b.isCollection)
+  folderTreeData.value = buildFolderTree(booksForTree)
   const { keys, idxs } = buildDirIndex(bookList.value)
   dirIndex = { keys, idxs }
   // build the rest tabs
@@ -1011,5 +1023,20 @@ defineExpose({
 .folder-tree-container {
   position: relative;
   width: 100%;
+}
+
+.custom-tree-node {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 8px;
+  overflow: hidden;
+}
+
+.node-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>
