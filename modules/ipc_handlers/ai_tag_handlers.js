@@ -122,7 +122,7 @@ function registerAiTagHandlers(dependencies) {
       const existingTags = await getExistingTagsForAI(db)
       
       // 调用 AI API
-      const inferredTags = await callAiApi(title, existingTags, apiConfig)
+      const inferredTags = await callAiApi(title, existingTags, apiConfig, setting)
       
       // 匹配和规范化标签
       const normalizedTags = await matchAndNormalizeTags(db, inferredTags, apiConfig.keepUnknownTags)
@@ -173,7 +173,7 @@ function registerAiTagHandlers(dependencies) {
     }
   })
   
-  function buildBatchPrompt(books, existingTags) {
+  function buildBatchPrompt(books, existingTags, setting) {
     const bookPrompts = books.map(book => `  { "id": ${book.id}, "title": "${book.title.replace(/"/g, '\"')}" }`).join(',\n');
     
     const tagExamples = {};
@@ -189,7 +189,7 @@ function registerAiTagHandlers(dependencies) {
 **Instructions:**
 1.  **Infer Category**: From the "Available Categories" list, choose the single most appropriate category for the manga.
 2.  **Deeply analyze the title**: Strictly analyze the title content. Content in \`()\` and \`[]\` are usually the group and artist.
-3.  **Enrich content tags**: For 'female' and 'male' categories, be bold in your inferences based on the title, e.g., 'sole female', 'schoolgirl uniform'.
+3.  **Enrich content tags**: For 'female' and 'male' categories, be bold in your inferences based on the title, e.g., 'sole female', 'schoolgirl uniform'.如果标题出现角色别名或简称  要正确识别角色和原作 比如红蒂->浊心斯卡蒂 C:skadi P:arknights F:Stocking 这样 同时打上角色本身的属性tag
 4.  **Use original language**: Please use the original Japanese/English for tag names.
 
 Available Categories:
@@ -223,7 +223,7 @@ Example Response:
   
   async function callAiApiBatch(books, existingTags, apiConfig) {
     const { apiUrl, apiKey, model } = apiConfig;
-    const prompt = buildBatchPrompt(books, existingTags);
+    const prompt = buildBatchPrompt(books, existingTags, setting);
     const isGoogleApi = apiUrl.includes('googleapis.com');
   
     if (isGoogleApi) {
@@ -435,7 +435,7 @@ async function getExistingTagsForAI(db) {
 /**
  * 调用 AI API 推断标签
  */
-async function callAiApi(title, existingTags, apiConfig) {
+async function callAiApi(title, existingTags, apiConfig, setting) {
   const { apiUrl, apiKey, model } = apiConfig;
 
   console.log('🤖 AI API 配置:', {
@@ -446,7 +446,7 @@ async function callAiApi(title, existingTags, apiConfig) {
   });
 
   // 构建提示词
-  const prompt = buildPrompt(title, existingTags);
+  const prompt = buildPrompt(title, existingTags, setting);
 
   const isGoogleApi = apiUrl.includes('googleapis.com');
 
@@ -547,6 +547,12 @@ async function callAiApi(title, existingTags, apiConfig) {
       throw new Error(`API 请求失败: ${response.status} ${response.statusText} - ${errorBody}`);
     }
 
+    const contentType = response.headers.get('Content-Type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const errorBody = await response.text();
+      throw new Error(`API 返回了非JSON内容。Content-Type: ${contentType || '未知'}。响应体: ${errorBody.substring(0, 200)}...`);
+    }
+
     const data = await response.json();
     const content = data.choices[0].message.content;
     return JSON.parse(content);
@@ -556,7 +562,7 @@ async function callAiApi(title, existingTags, apiConfig) {
 /**
  * 构建 AI 提示词
  */
-function buildPrompt(title, existingTags) {
+function buildPrompt(title, existingTags, setting) {
   const tagExamples = {}
   
   // 为每个类别提供示例（最多 50 个）

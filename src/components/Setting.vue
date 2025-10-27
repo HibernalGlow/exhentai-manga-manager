@@ -1389,8 +1389,10 @@ const loadApiConfig = async () => {
   try {
     const config = await ipcRenderer.invoke('get-api-config')
     if (config) {
+      console.log('[Setting.vue] Loaded API config from backend:', config);
       apiConfig.value = config
       activeProviderIndex.value = config.activeIndex || 0
+      console.log('[Setting.vue] Set activeProviderIndex to:', activeProviderIndex.value);
     }
   } catch (e) {
     console.error('Failed to load API config:', e)

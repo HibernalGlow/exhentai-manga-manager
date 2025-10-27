@@ -133,8 +133,8 @@ function saveApiConfig(config) {
       API_CONFIG = config
     }
     
-    fs.writeFileSync(API_CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8')
-    console.log('[API Config] Saved to:', API_CONFIG_FILE)
+    fs.writeFileSync(getApiConfigFilePath(), JSON.stringify(config, null, 2), 'utf8')
+    console.log('[API Config] Saved to:', getApiConfigFilePath())
     return true
   } catch (e) {
     console.error('[API Config] Failed to save:', e)
