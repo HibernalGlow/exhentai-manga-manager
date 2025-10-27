@@ -640,6 +640,13 @@
           </el-col>
           <el-col :span="8">
             <div class="setting-line">
+              <el-button class="function-button" type="success" plain @click="exportAiMatchedData">
+                导出AI匹配数据
+              </el-button>
+            </div>
+          </el-col>
+          <el-col :span="8">
+            <div class="setting-line">
               <el-button class="function-button" type="primary" plain @click="importDatabase">{{
                   $t('m.importMetadata')
                 }}
@@ -1612,7 +1619,30 @@ const batchInferTags = async () => {
 // Stop batch infer
 const stopBatchInfer = () => {
   batchInferring.value = false
-  ElMessage.warning('已停止批量推断')
+  ipcRenderer.invoke('stop-ai-batch-infer');
+  ElMessage.warning('已发送停止推断信号')
+}
+
+const exportAiMatchedData = async () => {
+  try {
+    const folderPath = await ipcRenderer.invoke('select-folder', '选择要保存导出文件的文件夹');
+    if (!folderPath) {
+      printMessage('info', '已取消导出');
+      return;
+    }
+
+    printMessage('info', '正在导出AI匹配数据，请稍候...');
+    const result = await ipcRenderer.invoke('export-ai-matched-books', folderPath);
+
+    if (result.success) {
+      printMessage('success', `成功导出 ${result.count} 条数据到 ${result.filePath}`);
+      ipcRenderer.invoke('show-file', result.filePath);
+    } else {
+      printMessage('error', `导出失败: ${result.error}`);
+    }
+  } catch (e) {
+    printMessage('error', `导出时发生错误: ${e.message}`);
+  }
 }
 
 // ========== End AI Tag Inference Functions ==========

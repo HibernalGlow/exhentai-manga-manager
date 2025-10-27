@@ -767,6 +767,38 @@ function registerAllHandlers(deps) {
     shell.showItemInFolder(filepath)
   })
 
+  ipcMain.handle('export-ai-matched-books', async (event, folderPath) => {
+    try {
+      const { Sequelize } = require('sequelize');
+      const books = await Manga.findAll({
+        where: {
+          tags: {
+            [Sequelize.Op.like]: '%"ai-matched"%'
+          }
+        },
+              raw: true
+            });
+        
+            console.log(`[Export] Found ${books.length} potential candidates with LIKE query.`);
+        
+            const booksToExport = books.filter(book => {        try {
+          const tags = (typeof book.tags === 'string') ? JSON.parse(book.tags) : book.tags;
+          return tags && tags.other && tags.other.includes('ai-matched');
+        } catch {
+          return false;
+        }
+      });
+  
+      const filePath = path.join(folderPath, 'ai-matched-export.json');
+      await fs.promises.writeFile(filePath, JSON.stringify(booksToExport, null, 2));
+  
+      return { success: true, count: booksToExport.length, filePath: filePath };
+    } catch (error) {
+      console.error('Failed to export AI-matched books:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // 注册翻译IPC处理器
   if (initTranslationIPC) {
     initTranslationIPC(ipcMain, { Manga, Metadata, STORE_PATH })
