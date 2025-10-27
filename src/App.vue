@@ -54,7 +54,7 @@
                    :title="$t('m.setting')"></el-button>
       </el-col>
       <el-col :span="3">
-        <el-select :placeholder="$t('m.sort_filter')" @change="handleSortChange" clearable v-model="sortValue">
+        <el-select :placeholder="$t('m.sort_filter')" @change="(val) => handleSortChange(val, this.displayBookList)" clearable v-model="sortValue">
           <el-option-group :label="$t('m.filter')">
             <el-option :label="$t('m.all')" value=""></el-option>
             <el-option :label="$t('m.bookmarkOnly')" value="mark"></el-option>
@@ -1144,33 +1144,33 @@ export default defineComponent({
     handleSortChangeFallback(val, bookList) {
       switch (val) {
         case 'mark':
-          this.displayBookList = _.filter(this.bookList, 'mark')
+          this.displayBookList = _.filter(bookList, 'mark')
           this.chunkList()
           break
         case 'collection':
-          this.displayBookList = _.filter(this.bookList, 'isCollection')
+          this.displayBookList = _.filter(bookList, 'isCollection')
           this.chunkList()
           break
         case 'hidden':
-          this.displayBookList = _.filter(this.bookList, 'hiddenBook')
+          this.displayBookList = _.filter(bookList, 'hiddenBook')
           this.chunkList()
           break
         case 'notag':
-          this.displayBookList = _.filter(this.bookList, this.isNoTag)
+          this.displayBookList = _.filter(bookList, this.isNoTag)
           this.chunkList()
           break
         case 'nocategory':
-          this.displayBookList = _.filter(this.bookList, this.isNoCategory)
+          this.displayBookList = _.filter(bookList, this.isNoCategory)
           this.chunkList()
           break
         case 'duplicateGallery':
-          this.displayBookList = _.filter(this.bookList, this.isDuplicateGallery)
+          this.displayBookList = _.filter(bookList, this.isDuplicateGallery)
           this.chunkList()
           break
         case 'recentRead':
           const recentReads = fetchRecentReads()
           this.displayBookList = _.uniqBy(
-              recentReads.map(id => this.bookList.find(book => {
+              recentReads.map(id => bookList.find(book => {
                 if (book.collectionHide) return false
                 if (book.isCollection) return book.ids.includes(id)
                 return book.id === id
@@ -1277,7 +1277,7 @@ export default defineComponent({
           this.chunkList()
           break
         default:
-          this.displayBookList = this.bookList
+          this.displayBookList = bookList
           this.chunkList()
           break
       }
