@@ -379,6 +379,7 @@ function registerAllHandlers(deps) {
     // 辅助函数
     findArchiveInFolder: dependencies.findArchiveInFolder,
     getEhviewerDataManually: dependencies.getEhviewerDataManually,
+    coverAndHashInMem: dependencies.coverAndHashInMem,
     // 自定义匹配模块
     normalizeString: dependencies.normalizeString,
     generateVariants: dependencies.generateVariants,

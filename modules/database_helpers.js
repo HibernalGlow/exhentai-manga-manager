@@ -214,8 +214,43 @@ async function saveBookListToDatabase(Manga, data) {
  * 保存单本书到数据库
  */
 async function saveBookToDatabase(Manga, Metadata, book) {
+  // 首先验证 book 参数是否存在
+  if (!book) {
+    console.error(`❌ 错误: book 参数为 undefined`)
+    throw new Error(`Cannot save Metadata: book parameter is undefined`)
+  }
+  
+  // 验证 hash 是否存在且非空
+  if (!book.hash || typeof book.hash !== 'string' || book.hash.trim() === '') {
+    console.error(`❌ 错误: 尝试保存 Metadata 时 hash 为 null/undefined/empty`)
+    console.error(`  book.hash: ${JSON.stringify(book.hash)}`)
+    console.error(`  book.hash 类型: ${typeof book.hash}`)
+    console.error(`  book 对象: ${JSON.stringify(book)}`)
+    throw new Error(`Cannot save Metadata without hash for book: ${book.title || 'unknown'}`)
+  }
+  
   await Manga.update(book, { where: { id: book.id } })
-  await Metadata.upsert(book)
+  
+  // 确保 metadata 对象包含 hash 字段，这是主键
+  // 显式设置每个字段，避免 undefined 值
+  const metadata = {
+    hash: book.hash,  // 已经在上面验证过了，这里直接使用
+    title: book.title || null,
+    status: book.status || null,
+    rating: book.rating ?? null,
+    tags: book.tags || {},
+    title_jpn: book.title_jpn || null,
+    filecount: book.filecount ?? null,
+    posted: book.posted ?? null,
+    filesize: book.filesize ?? null,
+    category: book.category || null,
+    url: book.url || null,
+    mark: book.mark ?? false
+  }
+  
+  console.log(`🔍 [保存调试] metadata.hash = "${metadata.hash}"`)
+  
+  await Metadata.upsert(metadata)
   console.log(`Saved ${book.title}`)
 }
 

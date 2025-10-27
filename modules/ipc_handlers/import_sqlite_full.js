@@ -40,6 +40,7 @@ function registerImportSqliteFullHandlers(dependencies) {
     // 辅助函数
     findArchiveInFolder,
     getEhviewerDataManually,
+    coverAndHashInMem,
     // 自定义匹配模块
     normalizeString,
     generateVariants,
@@ -213,25 +214,28 @@ function registerImportSqliteFullHandlers(dependencies) {
                 // 再次检查中断信号
                 if (controller.signal.aborted) return;
                 
+                // 在闭包中创建 book 的深拷贝，避免循环变量捕获问题
+                const currentBook = _.cloneDeep(book);
+                
                 let metadata;
                 let matchType = '';
                 
                 // folder类型特殊处理
-                if (book.type === 'folder') {
-                  const dirname = book.filepath;
+                if (currentBook.type === 'folder') {
+                  const dirname = currentBook.filepath;
                   const ehviewerData = getEhviewerDataManually(dirname);
                   const { gid, token } = ehviewerData || {};
                   if (gid && token) {
                     metadata = await db.get('SELECT * FROM gallery WHERE gid = ? AND token = ?', [gid, token]);
                     if (metadata) {
                       matchType = 'Folder';
-                      sendMessageToWebContents(`✅ [${matchType}] 匹配: ${book.title} -> gid:${gid}`);
+                      sendMessageToWebContents(`✅ [${matchType}] 匹配: ${currentBook.title} -> gid:${gid}`);
                     }
                   }
                 }
                 
                 if (metadata === undefined) {
-                  let filename = path.parse(book.title).name;
+                  let filename = path.parse(currentBook.title).name;
                   const originalFilename = filename;
                   
                   if (matchOptions?.trimTitleRegExp) {
@@ -258,8 +262,8 @@ function registerImportSqliteFullHandlers(dependencies) {
                     let foundKeys = []
                     
                     // 优先使用 hash 匹配（使用独立模块）
-                    if (matchOptions?.matchHash && book.hash && global.hashIndex) {
-                      const hashKeys = matchByHash(book, global.hashIndex)
+                    if (matchOptions?.matchHash && currentBook.hash && global.hashIndex) {
+                      const hashKeys = matchByHash(currentBook, global.hashIndex)
                       if (hashKeys.length > 0) {
                         foundKeys.push(...hashKeys)
                       }
@@ -267,7 +271,7 @@ function registerImportSqliteFullHandlers(dependencies) {
 
                     // 如果 hash 没匹配到，尝试SHA1压缩包匹配
                     if (foundKeys.length === 0 && matchOptions?.matchSha1) {
-                      const archivePath = findArchiveInFolder(book.filepath)
+                      const archivePath = findArchiveInFolder(currentBook.filepath)
                       if (archivePath) {
                         sendMessageToWebContents(`🔍 [SHA1压缩包] 尝试匹配: ${path.basename(archivePath)}`)
                         const sha1Match = await matchBySha1FromArchive(archivePath, originalFilename, db)
@@ -305,7 +309,7 @@ function registerImportSqliteFullHandlers(dependencies) {
                     if (!metadata) {
                       // 匹配失败，加入黑名单 - 根据失败阶段设置不同reason
                       let failureReason = '自动添加（匹配失败）'
-                      if (matchOptions?.matchHash && book.hash && global.hashIndex) {
+                      if (matchOptions?.matchHash && currentBook.hash && global.hashIndex) {
                         // Hash匹配已启用但失败
                         failureReason = '自动添加（Hash匹配失败）'
                       } else if (matchOptions?.matchSha1) {
@@ -316,11 +320,11 @@ function registerImportSqliteFullHandlers(dependencies) {
                         failureReason = '自动添加（标题匹配失败）'
                       }
                       
-                      const bookKey = `${book.id}|${book.title}`
+                      const bookKey = `${currentBook.id}|${currentBook.title}`
                       blacklist.set(bookKey, {
                         reason: failureReason,
-                        filename: book.title,
-                        fullPath: book.filepath,
+                        filename: currentBook.title,
+                        fullPath: currentBook.filepath,
                         addedAt: new Date().toISOString()
                       })
                       blacklisted++
@@ -338,11 +342,11 @@ function registerImportSqliteFullHandlers(dependencies) {
                       params = [`%${filename}%`, `%${filename}%`];
                     } else {
                       sql = `SELECT * FROM gallery WHERE torrents LIKE ? OR title LIKE ? OR title_jpn LIKE ? OR thumb LIKE ?`;
-                      params = [`%${filename}%`, `%${filename}%`, `%${filename}%`, `%${book.coverHash}%`];
+                      params = [`%${filename}%`, `%${filename}%`, `%${filename}%`, `%${currentBook.coverHash}%`];
                     }
-                    if (matchOptions?.matchHash && book.hash) {
+                    if (matchOptions?.matchHash && currentBook.hash) {
                       sql += ` OR hash = ?`;
-                      params.push(book.hash);
+                      params.push(currentBook.hash);
                     }
                     metadata = await db.get(sql, ...params);
                     
@@ -351,17 +355,17 @@ function registerImportSqliteFullHandlers(dependencies) {
                       let failureReason = '自动添加（匹配失败）'
                       if (matchOptions?.matchTitleOnly) {
                         failureReason = '自动添加（仅标题匹配失败）'
-                      } else if (matchOptions?.matchHash && book.hash) {
+                      } else if (matchOptions?.matchHash && currentBook.hash) {
                         failureReason = '自动添加（Hash匹配失败）'
                       } else {
                         failureReason = '自动添加（SQL匹配失败）'
                       }
                       
-                      const bookKey = `${book.id}|${book.title}`
+                      const bookKey = `${currentBook.id}|${currentBook.title}`
                       blacklist.set(bookKey, {
                         reason: failureReason,
-                        filename: book.title,
-                        fullPath: book.filepath,
+                        filename: currentBook.title,
+                        fullPath: currentBook.filepath,
                         addedAt: new Date().toISOString()
                       })
                       blacklisted++
@@ -377,17 +381,58 @@ function registerImportSqliteFullHandlers(dependencies) {
                   
                   // 使用独立模块解析元数据
                   metadata = parseMetadataTags(metadata);
+
+                  // 如果元数据没有哈希，则根据gid和token生成一个稳定的哈希
+                  if (!metadata.hash && metadata.gid && metadata.token) {
+                    metadata.hash = `g${metadata.gid}t${metadata.token}`;
+                    sendMessageToWebContents(`⚠️ 为 GID ${metadata.gid} 生成了临时哈希: ${metadata.hash}`);
+                  }
                   
-                  // 更新 book 对象
-                  _.assign(book, _.pick(metadata, ['tags', 'title', 'title_jpn', 'filecount', 'rating', 'posted', 'filesize', 'category', 'url']), { status: 'tagged' });
+                  // 更新 currentBook 对象（手动分配）
+                  currentBook.tags = metadata.tags;
+                  currentBook.title = metadata.title;
+                  currentBook.title_jpn = metadata.title_jpn;
+                  currentBook.filecount = metadata.filecount;
+                  currentBook.rating = metadata.rating;
+                  currentBook.posted = metadata.posted;
+                  currentBook.filesize = metadata.filesize;
+                  currentBook.category = metadata.category;
+                  currentBook.url = metadata.url;
+                  currentBook.status = 'tagged';
+                  
+                  // 确保 hash 存在：优先使用 metadata.hash，否则保持原有的 currentBook.hash
+                  if (metadata.hash) {
+                    currentBook.hash = metadata.hash;
+                  } else if (!currentBook.hash) {
+                    // 如果 currentBook.hash 也不存在，尝试从 gid 和 token 生成
+                    if (metadata.gid && metadata.token) {
+                      currentBook.hash = `g${metadata.gid}t${metadata.token}`;
+                      sendMessageToWebContents(`⚠️ 为 book 生成了哈希: ${currentBook.hash}`);
+                    } else {
+                      sendMessageToWebContents(`❌ 错误: 无法为 book 生成哈希值`);
+                      sendMessageToWebContents(`  currentBook: ${JSON.stringify(currentBook)}`);
+                      sendMessageToWebContents(`  metadata: ${JSON.stringify(metadata)}`);
+                    }
+                  }
+
+                  // 调试日志
+                  if (!currentBook.hash) {
+                    sendMessageToWebContents(`❌ 严重错误: 保存前 currentBook.hash 缺失! 标题: ${currentBook.title}`);
+                    sendMessageToWebContents(`  元数据对象: ${JSON.stringify(metadata)}`);
+                    sendMessageToWebContents(`  currentBook 对象: ${JSON.stringify(currentBook)}`);
+                  }
+                  
+                  // 额外验证和调试
+                  sendMessageToWebContents(`🔍 [调试] 保存前检查: currentBook.hash = "${currentBook.hash}", metadata.hash = "${metadata.hash}"`);
                   
                   // 实时保存到数据库（Manga 表 + Metadata 表）
-                  await saveBookToDatabase(Manga, Metadata, book);
+                  // 注意：saveBookToDatabase 已经包含了 Manga 和 Metadata 参数，只需要传递 book
+                  await saveBookToDatabase(currentBook);
                   
                   if (matchType === 'SQL' || matchType === 'FastSQL') {
                     // 使用完整的文件原名（包含扩展名前的完整部分）
                     // 处理 folder 类型书籍可能没有 path 属性的情况
-                    const bookPath = book.path || book.filepath || book.title
+                    const bookPath = currentBook.path || currentBook.filepath || currentBook.title
                     const originalFileName = path.parse(bookPath).name;
                     // 优先显示日文标题
                     const matchedTitle = metadata.title_jpn || metadata.title || 'N/A';

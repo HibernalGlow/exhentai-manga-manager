@@ -82,7 +82,7 @@ function registerMetadataPatchHandlers(dependencies) {
               }
             })
             signal?.throwIfAborted?.()
-            await dbLimit(() => saveBookToDatabase(Manga, Metadata, book))
+            await dbLimit(() => saveBookToDatabase(book))
           } catch (e) {
             if (e?.name === 'AbortError') throw e
             if (e?.code === 'ENOENT' || e?.code === 'ENOTDIR') {
@@ -123,7 +123,7 @@ function registerMetadataPatchHandlers(dependencies) {
         if (targetFilePath && coverPath) {
           const hash = createHash('sha1').update(fs.readFileSync(targetFilePath)).digest('hex')
           _.assign(book, { type, coverPath, hash, pageCount, bundleSize, mtime: mtime.toJSON(), coverHash })
-          await saveBookToDatabase(Manga, Metadata, book)
+          await saveBookToDatabase(book)
         }
         if ((i + 1) % 50 === 0) await clearFolder(TEMP_PATH)
         setProgressBar(i / bookListLength)
@@ -217,7 +217,7 @@ function registerMetadataPatchHandlers(dependencies) {
                 book.coverPath = newCoverPath
                 book.coverHash = newCoverHash
 
-                await dbLimit(() => saveBookToDatabase(Manga, Metadata, book))
+                await dbLimit(() => saveBookToDatabase(book))
                 repairedCount++
               }
             }
@@ -253,7 +253,7 @@ function registerMetadataPatchHandlers(dependencies) {
         try {
           // 这里可以添加自动分类逻辑
           // 暂时只是更新状态
-          await saveBookToDatabase(Manga, Metadata, book)
+          await saveBookToDatabase(book)
         } catch (e) {
           sendMessageToWebContents(`填充 ${book.filepath} 元数据失败: ${e.message}`)
         }
