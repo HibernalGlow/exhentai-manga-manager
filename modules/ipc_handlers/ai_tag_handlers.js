@@ -153,8 +153,9 @@ function registerAiTagHandlers(dependencies) {
             hash: book.hash, // Pass hash
             title: book.title, // Pass title for logging
             tags: mergedTags, // Pass object directly
-            status: 'tagged'
-          });
+            status: 'tagged', 
+            category: inferredTags.category 
+});
         }
       }
       
@@ -180,69 +181,44 @@ function registerAiTagHandlers(dependencies) {
       tagExamples[category] = tags.slice(0, 50);
     }
   
-      return `**CRITICAL INSTRUCTION**: Your task is to extract information ONLY from the manga TITLE provided for each item. DO NOT use any tags from the "Available tag examples" or "My Favorite Tags" lists unless the name is explicitly written in the title. For example, if the title is "[My Circle (My Artist)] My Title", you must extract "My Circle" and "My Artist". Do not invent or copy tags from the example lists.
-  
-    
-  
-    **Instructions:**
-  
-    1.  **Deeply analyze the title**: Strictly analyze the title content. Content in \`()\` and \`[]\` are usually the group and artist. 
-  
-    2.  **Enrich content tags**: For 'female' and 'male' categories, be bold in your inferences based on the title, e.g., 'sole female', 'schoolgirl uniform'.
-  
-    3.  **Use original language**: Please use the original Japanese/English for tag names.
-  
-    
-  
-    Available tag examples (for spelling reference only):
-  
-    ${JSON.stringify(tagExamples, null, 2)}
-  
-    
-  
-    My Favorite Tags (for spelling reference only):
-  
-    ${JSON.stringify((setting.collectTag || []).map(t => t.tag))}
-  
-    
-  
-    Manga list:
-  
-    [
-  
-    ${bookPrompts}
-  
-    ]
-  
-    
-  
-    Your response MUST be a valid JSON array. Ensure your response contains an object for every single item in the input "Manga list", each with its original "id" and the inferred "tags". The "tags" object should follow this structure: { "parody": [], "character": [], "artist": [], "group": [], "female": [], "male": [] }.
-  
-    
-  
-    Example Response:
-  
-    [
-  
-      {
-  
-        "id": 1,
-  
-        "tags": { "parody": ["original"], "artist": ["artist name"], "group": ["circle name"] }
-  
-      },
-  
-      {
-  
-        "id": 2,
-  
-        "tags": { "parody": ["some parody"], "character": ["some character"] }
-  
-      }
-  
-    ]
-  
-    `;
+  const categoryOptions = ["Doujinshi", "Manga", "Artist CG", "Game CG", "Non-H", "Image Set", "Western", "Cosplay", "Asian Porn", "Misc"];
+  return `You are a professional manga tag classification assistant. For each manga in the JSON array below, infer its category and tags based on the title.
+
+**CRITICAL INSTRUCTION**: Your task is to extract information ONLY from the manga TITLE provided for each item. DO NOT use any tags from the "Available tag examples" or "My Favorite Tags" lists unless the name is explicitly written in the title. For example, if the title is "[My Circle (My Artist)] My Title", you must extract "My Circle" and "My Artist". Do not invent or copy tags from the example lists.
+
+**Instructions:**
+1.  **Infer Category**: From the "Available Categories" list, choose the single most appropriate category for the manga.
+2.  **Deeply analyze the title**: Strictly analyze the title content. Content in \`()\` and \`[]\` are usually the group and artist.
+3.  **Enrich content tags**: For 'female' and 'male' categories, be bold in your inferences based on the title, e.g., 'sole female', 'schoolgirl uniform'.
+4.  **Use original language**: Please use the original Japanese/English for tag names.
+
+Available Categories:
+${JSON.stringify(categoryOptions)}
+
+Available tag examples (for spelling reference only):
+${JSON.stringify(tagExamples, null, 2)}
+
+My Favorite Tags (for spelling reference only):
+${JSON.stringify((setting.collectTag || []).map(t => t.tag))}
+
+Manga list:
+[
+${bookPrompts}
+]
+
+Your response MUST be a valid JSON array. Ensure your response contains an object for every single item in the input "Manga list", each with its original "id" and the inferred "tags". The "tags" object should follow this structure: { "category": "...", "parody": [], "character": [], "artist": [], "group": [], "female": [], "male": [] }.
+
+Example Response:
+[
+  {
+    "id": 1,
+    "tags": { "category": "Doujinshi", "parody": ["original"], "artist": ["artist name"], "group": ["circle name"] }
+  },
+  {
+    "id": 2,
+    "tags": { "category": "Manga", "parody": ["some parody"], "character": ["some character"] }
+  }
+]`;
   }
   
   async function callAiApiBatch(books, existingTags, apiConfig) {
@@ -346,13 +322,7 @@ function registerAiTagHandlers(dependencies) {
                   mergedTags.other.push('ai-matched');
                 }
 
-                const bookToSave = {
-                  id: book.id,
-                  hash: book.hash,
-                  title: book.title, 
-                  tags: mergedTags, // Pass object directly
-                  status: 'tagged'
-                };
+                const bookToSave = { id: book.id, hash: book.hash, title: book.title, tags: mergedTags, status: 'tagged', category: inferredTags.category };
                 await saveBookToDatabase(bookToSave);
 
                 console.log(`  🏷️  Saved Tags: ${JSON.stringify(mergedTags)}`);
@@ -594,33 +564,36 @@ function buildPrompt(title, existingTags) {
     tagExamples[category] = tags.slice(0, 50)
   }
   
-  return `**IMPORTANT RULE**: The "Available tag examples" and "My Favorite Tags" are for reference for tag name and spelling ONLY. DO NOT use tags from these lists unless they are explicitly mentioned or strongly implied in the manga's TITLE. Your primary task is to analyze the TITLE.
+  const categoryOptions = ["Doujinshi", "Manga", "Artist CG", "Game CG", "Non-H", "Image Set", "Western", "Cosplay", "Asian Porn", "Misc"];
 
-请根据以下漫画标题推断标签：
+  return `**CRITICAL INSTRUCTION**: Your task is to extract information ONLY from the manga TITLE provided. DO NOT use any tags from the "Available tag examples" or "My Favorite Tags" lists unless the name is explicitly written in the title. For example, if the title is "[My Circle (My Artist)] My Title", you must extract "My Circle" and "My Artist". Do not invent or copy tags from the example lists.
+
+请根据以下漫画标题推断标签和分类：
 
 标题：${title}
 
-可选标签列表（请尽量从这些标签中选择）：
+可选标签列表（仅供参考拼写）：
 ${JSON.stringify(tagExamples, null, 2)}
 
-我的收藏标签（如果标题内容相关，请优先使用这些标签）：
+我的收藏标签（仅供参考拼写）：
 ${JSON.stringify((setting.collectTag || []).map(t => t.tag))}
 
 要求：
-1. **深入分析标题**: 不仅仅是识别括号里的作者和社团名。要从标题的核心内容推断出作品的题材、情节、角色关系和内容特征。
-2. **丰富内容标签**: 对于 'female' 和 'male' 类别，请大胆推断。例如，如果标题暗示了某种行为或关系（如  '純愛', 'NTR'），请将它们作为标签。如果标题中有身体部位或服装（如  '制服'），也请添加。
-3. **返回 JSON 格式**: { "parody": [...], "character": [...], "artist": [...], "group": [...], "female": [...], "male": [...] }
-4. **优先使用可选列表**: 尽量从提供的“可选标签列表”中选择，这有助于保持标签一致性。
-5. **允许新标签**: 如果你很确定某个标签，但它不在可选列表中，可以直接添加。
-6. **使用原文**: 标签名请使用日文/英文原文。
+1. **推断类别**: 从可选类别列表中，为该漫画选择最合适的唯一一个分类。
+   可选类别列表: ${JSON.stringify(categoryOptions)}
+2. **深入分析标题**: 严格根据标题内容推断，特别是括号 \`[]\` 和 \`()\` 中的内容通常是社团和作者。
+3. **丰富内容标签**: 对于 'female' 和 'male' 类别，请根据标题内容大胆推断。这包括但不限于：身体特征 (如 lolicon)、服装 (如 schoolgirl uniform, swimsuit)、情节或行为 (如 rape, netorare, masturbation)、以及角色关系 (如 teacher, sister)。
+4. **返回 JSON 格式**: { "category": "...", "parody": [...], "character": [...], "artist": [...], "group": [...], "female": [...], "male": [...] }
+5. **使用原文**: 标签名请使用日文/英文原文。
 
 示例：
 标题：(C96) [サークル名 (作者名)] キャラ名本 (原作名)
 返回：{
-  "parody": ["原作名"],
-  "character": ["キャラ名"],
-  "artist": ["作者名"],
-  "group": ["サークル名"],
+  "category": "Doujinshi",
+  "parody": ["原作名的英文/罗马音"],
+  "character": ["キャラ名的英文/罗马音"],
+  "artist": ["作者名的英文/罗马音"],
+  "group": ["サークル名的英文/罗马音"],
   "female": [],
   "male": []
 }`
