@@ -656,21 +656,27 @@
           <el-col :span="8">
             <div class="setting-line">
               <div style="margin-bottom: 8px;">
-                <strong style="color: var(--el-text-color-primary); margin-bottom: 8px; display: block;">匹配策略</strong>
-                <div style="display: flex; flex-wrap: wrap; gap: 12px;">
-                  <el-checkbox v-model="setting.matchTitleOnly" @change="saveSetting" style="margin-right: 0;">
-                    仅用标题匹配（title/title_jpn）
-                  </el-checkbox>
-                  <el-checkbox v-model="setting.matchHash" @change="saveSetting" style="margin-right: 0;">
-                    启用 hash 匹配
-                  </el-checkbox>
-                  <el-checkbox v-model="setting.matchSha1" @change="saveSetting" style="margin-right: 0;">
-                    启用 SHA1 压缩包匹配
-                  </el-checkbox>
-                  <el-checkbox v-model="setting.fastMatch" @change="saveSetting" style="margin-right: 0;">
-                    ⚡ 快速匹配模式
-                  </el-checkbox>
-                </div>
+                <el-collapse v-model="advancedCollapse" style="border:none;">
+                  <el-collapse-item name="1" style="border:none;">
+                    <template #title>
+                      <strong style="color: var(--el-text-color-primary);">匹配策略</strong>
+                    </template>
+                    <div style="display: flex; flex-wrap: wrap; gap: 12px;">
+                      <el-checkbox v-model="setting.matchTitleOnly" @change="saveSetting" style="margin-right: 0;">
+                        仅用标题匹配（title/title_jpn）
+                      </el-checkbox>
+                      <el-checkbox v-model="setting.matchHash" @change="saveSetting" style="margin-right: 0;">
+                        启用 hash 匹配
+                      </el-checkbox>
+                      <el-checkbox v-model="setting.matchSha1" @change="saveSetting" style="margin-right: 0;">
+                        启用 SHA1 压缩包匹配
+                      </el-checkbox>
+                      <el-checkbox v-model="setting.fastMatch" @change="saveSetting" style="margin-right: 0;">
+                        ⚡ 快速匹配模式
+                      </el-checkbox>
+                    </div>
+                  </el-collapse-item>
+                </el-collapse>
               </div>
               <div style="margin-top: 12px; display: flex; gap: 8px;">
                 <el-button 
@@ -1356,6 +1362,7 @@ const { printMessage } = appStore
 const { t, locale } = useI18n()
 const dialogVisibleSetting = ref(false)
 const activeSettingPanel = ref('general')
+const advancedCollapse = ref([])
 
 const emit = defineEmits([
   'loadBookList',
