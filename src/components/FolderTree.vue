@@ -120,9 +120,14 @@
             <template #default="{ data }">
               <div class="custom-tree-node">
                 <span class="node-label">{{ data.label }}</span>
-                <el-tag v-if="data.untaggedCount > 0" type="warning" size="small" effect="dark" round class="untagged-badge">
-                  {{ data.untaggedCount }}
-                </el-tag>
+                <div class="badge-group">
+                  <el-tag v-if="data.missingInfoCount > 0" type="primary" size="small" effect="dark" round class="info-badge">
+                    {{ data.missingInfoCount }}
+                  </el-tag>
+                  <el-tag v-if="data.untaggedCount > 0" type="warning" size="small" effect="dark" round class="untagged-badge">
+                    {{ data.untaggedCount }}
+                  </el-tag>
+                </div>
               </div>
             </template>
           </el-tree-v2>
@@ -322,6 +327,7 @@ function buildFolderTree(books) {
     hasDirect: false,        // at least one file directly in this folder
     _children: new Map(),
     untaggedCount: 0,
+    missingInfoCount: 0,
   })
 
   // Build trie
@@ -334,6 +340,8 @@ function buildFolderTree(books) {
     if (!parts.length) continue
 
     const isUntagged = book.status === 'non-tag' || book.status === 'tag-failed';
+    const isMissingInfo = (book.category === 'Cosplay' && !book.tags.cosplayer?.length) ||
+                          (book.category !== 'Cosplay' && (!book.tags.artist?.length && !book.tags.group?.length));
 
     let cursor = rootMap
     let accum = []
@@ -356,6 +364,25 @@ function buildFolderTree(books) {
     if (isUntagged) {
       parentNodes.forEach(p => p.untaggedCount++);
     }
+    if (isMissingInfo) {
+      parentNodes.forEach(p => p.missingInfoCount++);
+    }
+  }
+
+  // Collapse the leading chain while there's only one child and no direct files
+  const collapseOne = (node) => {
+    let n = node
+    while (!n.hasDirect && n._children.size === 1) {
+      const [, onlyChild] = n._children.entries().next().value
+      n = onlyChild
+    }
+    return n
+  }
+  // ---- Per-branch top collapse ----
+  const topMap = new Map()
+  for (const [, topNode] of rootMap) {
+    const collapsed = collapseOne(topNode)
+    topMap.set(collapsed.folderPath, collapsed)
   }
 
   // ---- Convert to Element-Plus-friendly array ----
@@ -364,6 +391,7 @@ function buildFolderTree(books) {
     for (const [, n] of map) {
       const children = toArray(n._children, false)
       const untaggedCount = n.untaggedCount;
+      const missingInfoCount = n.missingInfoCount;
       let label = isTop ? n.folderPath : n.folderName;
 
       arr.push({
@@ -372,6 +400,7 @@ function buildFolderTree(books) {
         folderPath: n.folderPath,                    // stable node-key
         children: children,
         untaggedCount: untaggedCount,
+        missingInfoCount: missingInfoCount,
       })
     }
     // Sort: top by full path, deeper by name
@@ -382,7 +411,7 @@ function buildFolderTree(books) {
     return arr
   }
 
-  return toArray(rootMap, true)
+  return toArray(topMap, true)
 }
 
 let dirIndex = { keys: [], idxs: [] } // precomputed directory index for fast lookup
@@ -1038,5 +1067,10 @@ defineExpose({
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.badge-group {
+  display: flex;
+  gap: 4px;
 }
 </style>
