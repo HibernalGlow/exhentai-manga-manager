@@ -269,8 +269,8 @@ function registerImportSqliteFullHandlers(dependencies) {
                       }
                     }
 
-                    // 如果 hash 没匹配到，尝试SHA1压缩包匹配
-                    if (foundKeys.length === 0 && matchOptions?.matchSha1) {
+                    // 如果启用了 SHA1，且还没有匹配结果，尝试 SHA1 匹配
+                    if (matchOptions?.matchSha1 && foundKeys.length === 0) {
                       const archivePath = findArchiveInFolder(currentBook.filepath)
                       if (archivePath) {
                         sendMessageToWebContents(`🔍 [SHA1压缩包] 尝试匹配: ${path.basename(archivePath)}`)
@@ -284,6 +284,7 @@ function registerImportSqliteFullHandlers(dependencies) {
 ╚══════════════════════════════════════════════════════════════╝`)
                         }
                       }
+                      // 不输出"未找到压缩包"的警告，因为很多文件本来就不是压缩包，这是正常情况
                     }
                     
                     // 如果 hash 和 SHA1 都没匹配到，使用标题匹配（使用独立模块）
@@ -350,11 +351,34 @@ function registerImportSqliteFullHandlers(dependencies) {
                     }
                     metadata = await db.get(sql, ...params);
                     
+                    // 如果 SQL 查询没找到，尝试 SHA1 匹配（如果启用了）
+                    if (!metadata && matchOptions?.matchSha1) {
+                      const archivePath = findArchiveInFolder(currentBook.filepath)
+                      if (archivePath) {
+                        sendMessageToWebContents(`🔍 [SHA1压缩包] 尝试匹配: ${path.basename(archivePath)}`)
+                        const sha1Match = await matchBySha1FromArchive(archivePath, originalFilename, db)
+                        if (sha1Match) {
+                          metadata = await db.get('SELECT * FROM gallery WHERE gid = ? AND token = ?', [sha1Match.gid, sha1Match.token])
+                          if (metadata) {
+                            matchType = 'SHA1'
+                            sendMessageToWebContents(`╔══════════════════════════════════════════════════════════════╗
+║                        🎉 匹配成功! 🎉                        ║
+║ 匹配方式: SHA1压缩包                                             ║
+║ 匹配结果: gid=${sha1Match.gid}                                  ║
+╚══════════════════════════════════════════════════════════════╝`)
+                          }
+                        }
+                      }
+                    }
+                    
                     if (!metadata) {
                       // 匹配失败，加入黑名单 - 根据匹配选项设置不同reason
                       let failureReason = '自动添加（匹配失败）'
                       if (matchOptions?.matchTitleOnly) {
                         failureReason = '自动添加（仅标题匹配失败）'
+                      } else if (matchOptions?.matchSha1) {
+                        // SHA1 匹配已启用但失败
+                        failureReason = '自动添加（SHA1匹配失败）'
                       } else if (matchOptions?.matchHash && currentBook.hash) {
                         failureReason = '自动添加（Hash匹配失败）'
                       } else {
