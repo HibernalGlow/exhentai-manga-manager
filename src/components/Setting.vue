@@ -602,55 +602,59 @@
             </el-row>
           </el-col>
           <el-col :span="8">
-            <div class="setting-line">
-              <el-checkbox v-model="setting.autoMatchOnRebuild" @change="saveSetting" style="margin-bottom: 8px;">
-                {{$t('m.autoMatchOnRebuild')}}
-              </el-checkbox>
-              <el-popconfirm
-                  placement="top-start"
-                  :title="$t('m.rebuildWarning')"
-                  @confirm="forceGeneBookList"
-              >
-                <template #reference>
-                  <el-button class="function-button" plain>{{$t('m.rebuildLibrary')}}</el-button>
-                </template>
-              </el-popconfirm>
+            <div class="setting-line advanced-button-group">
+              <div class="button-row">
+                <el-checkbox v-model="setting.autoMatchOnRebuild" @change="saveSetting" class="button-checkbox">
+                  {{$t('m.autoMatchOnRebuild')}}
+                </el-checkbox>
+              </div>
+              <div class="button-row">
+                <el-popconfirm
+                    placement="top-start"
+                    :title="$t('m.rebuildWarning')"
+                    @confirm="forceGeneBookList"
+                >
+                  <template #reference>
+                    <el-button class="function-button advanced-button" plain>{{$t('m.rebuildLibrary')}}</el-button>
+                  </template>
+                </el-popconfirm>
+              </div>
             </div>
           </el-col>
           <el-col :span="8">
-            <div class="setting-line">
-              <el-popconfirm
-                  placement="top-start"
-                  :title="$t('m.patchWarning')"
-                  @confirm="patchLocalMetadata"
-              >
-                <template #reference>
-                  <el-button class="function-button" type="primary" plain>{{$t('m.patchLocalMetadata')}}</el-button>
-                </template>
-              </el-popconfirm>
+            <div class="setting-line advanced-button-group">
+              <div class="button-row">
+                <el-popconfirm
+                    placement="top-start"
+                    :title="$t('m.patchWarning')"
+                    @confirm="patchLocalMetadata"
+                >
+                  <template #reference>
+                    <el-button class="function-button advanced-button" type="primary" plain>{{$t('m.patchLocalMetadata')}}</el-button>
+                  </template>
+                </el-popconfirm>
+              </div>
+              <div class="button-row">
+                <el-button class="function-button advanced-button" type="primary" plain @click="exportDatabase">{{
+                    $t('m.exportMetadata')
+                  }}
+                </el-button>
+              </div>
             </div>
           </el-col>
           <el-col :span="8">
-            <div class="setting-line">
-              <el-button class="function-button" type="primary" plain @click="exportDatabase">{{
-                  $t('m.exportMetadata')
+            <div class="setting-line advanced-button-group">
+              <div class="button-row">
+                <el-button class="function-button advanced-button" type="success" plain @click="exportAiMatchedData">
+                  导出AI匹配数据
+                </el-button>
+              </div>
+              <div class="button-row">
+                <el-button class="function-button advanced-button" type="primary" plain @click="importDatabase">{{
+                    $t('m.importMetadata')
                 }}
-              </el-button>
-            </div>
-          </el-col>
-          <el-col :span="8">
-            <div class="setting-line">
-              <el-button class="function-button" type="success" plain @click="exportAiMatchedData">
-                导出AI匹配数据
-              </el-button>
-            </div>
-          </el-col>
-          <el-col :span="8">
-            <div class="setting-line">
-              <el-button class="function-button" type="primary" plain @click="importDatabase">{{
-                  $t('m.importMetadata')
-                }}
-              </el-button>
+                </el-button>
+              </div>
             </div>
           </el-col>
           <el-col :span="8">
@@ -703,68 +707,76 @@
             </div>
           </el-col>
           <el-col :span="8">
-            <div class="setting-line">
-              <el-button class="function-button" type="danger" :icon="Delete"
-                         :loading="busyRemove" :disabled="busyRemove" @click="removeMissingRecords"
-              >{{$t('m.removeMissingRecords')}}
-              </el-button>
+            <div class="setting-line advanced-button-group">
+              <div class="button-row">
+                <el-button class="function-button advanced-button" type="danger" :icon="Delete"
+                           :loading="busyRemove" :disabled="busyRemove" @click="removeMissingRecords"
+                >{{$t('m.removeMissingRecords')}}
+                </el-button>
+              </div>
+              <div class="button-row">
+                <el-button class="function-button advanced-button" type="warning" plain @click="fillNoCategoryMetadata">
+                  {{$t('m.fillNoCategoryMetadata')}}
+                </el-button>
+              </div>
             </div>
           </el-col>
           <el-col :span="8">
-            <div class="setting-line">
-              <el-button class="function-button" type="warning" plain @click="fillNoCategoryMetadata">
-                {{$t('m.fillNoCategoryMetadata')}}
-              </el-button>
+            <div class="setting-line advanced-button-group">
+              <div class="button-row">
+                <el-button class="function-button advanced-button" type="warning" plain @click="clearMatchBlacklist">
+                  清空匹配黑名单
+                </el-button>
+              </div>
+              <div class="button-row">
+                <el-button class="function-button advanced-button" type="info" plain @click="showBlacklistStats">
+                  查看黑名单
+                </el-button>
+              </div>
             </div>
           </el-col>
           <el-col :span="8">
-            <div class="setting-line">
-              <el-button class="function-button" type="warning" plain @click="clearMatchBlacklist">
-                清空匹配黑名单
-              </el-button>
-              <el-button class="function-button" type="info" plain @click="showBlacklistStats">
-                查看黑名单
-              </el-button>
+            <div class="setting-line advanced-button-group">
+              <div class="button-row">
+                <el-button class="function-button advanced-button" type="success" plain @click="showTitleIndexCacheStatus">
+                  📦 标题索引缓存
+                </el-button>
+              </div>
+              <div class="button-row">
+                <el-button class="function-button advanced-button" type="warning" plain @click="clearTitleIndexCache">
+                  清除缓存
+                </el-button>
+              </div>
             </div>
           </el-col>
           <el-col :span="8">
-            <div class="setting-line">
-              <el-button class="function-button" type="success" plain @click="showTitleIndexCacheStatus">
-                📦 标题索引缓存
-              </el-button>
-              <el-button class="function-button" type="warning" plain @click="clearTitleIndexCache">
-                清除缓存
-              </el-button>
-            </div>
-          </el-col>
-          <el-col :span="8">
-            <div class="setting-line">
-              <el-popconfirm
-                  placement="top-start"
-                  title="确定要清理所有文件夹类型的漫画吗？此操作不可撤销。"
-                  @confirm="cleanFolderManga"
-              >
-                <template #reference>
-                  <el-button class="function-button" type="danger" plain>
-                    清理文件夹漫画
-                  </el-button>
-                </template>
-              </el-popconfirm>
-            </div>
-          </el-col>
-          <el-col :span="8">
-            <div class="setting-line">
-              <el-popconfirm
-                  placement="top-start"
-                  title="确定要修复缺失的封面吗？这将检查所有书籍并重新生成缺失的封面缩略图。"
-                  @confirm="repairMissingCovers"
-              >
-                <template #reference>
-                  <el-button class="function-button" type="primary" plain>
-                    修复缺失封面
-                  </el-button>
-                </template>
-              </el-popconfirm>
+            <div class="setting-line advanced-button-group">
+              <div class="button-row">
+                <el-popconfirm
+                    placement="top-start"
+                    title="确定要清理所有文件夹类型的漫画吗？此操作不可撤销。"
+                    @confirm="cleanFolderManga"
+                >
+                  <template #reference>
+                    <el-button class="function-button advanced-button" type="danger" plain>
+                      清理文件夹漫画
+                    </el-button>
+                  </template>
+                </el-popconfirm>
+              </div>
+              <div class="button-row">
+                <el-popconfirm
+                    placement="top-start"
+                    title="确定要修复缺失的封面吗？这将检查所有书籍并重新生成缺失的封面缩略图。"
+                    @confirm="repairMissingCovers"
+                >
+                  <template #reference>
+                    <el-button class="function-button advanced-button" type="primary" plain>
+                      修复缺失封面
+                    </el-button>
+                  </template>
+                </el-popconfirm>
+              </div>
             </div>
           </el-col>
         </el-row>
@@ -1634,23 +1646,72 @@ const stopBatchInfer = () => {
 
 const exportAiMatchedData = async () => {
   try {
-    const folderPath = await ipcRenderer.invoke('select-folder', '选择要保存导出文件的文件夹');
-    if (!folderPath) {
-      printMessage('info', '已取消导出');
+    // 检查是否有AI匹配的书籍
+    const aiMatchedBooks = bookList.value.filter(book => 
+      book.tags && book.tags.some(tag => tag.startsWith('ai:'))
+    );
+    
+    if (aiMatchedBooks.length === 0) {
+      ElMessage.warning('没有找到AI匹配的书籍数据');
       return;
     }
 
-    printMessage('info', '正在导出AI匹配数据，请稍候...');
-    const result = await ipcRenderer.invoke('export-ai-matched-books', folderPath);
-
-    if (result.success) {
-      printMessage('success', `成功导出 ${result.count} 条数据到 ${result.filePath}`);
-      ipcRenderer.invoke('show-file', result.filePath);
-    } else {
-      printMessage('error', `导出失败: ${result.error}`);
-    }
+    // 显示确认对话框
+    const confirmResult = await ElMessageBox.confirm(
+      `找到 ${aiMatchedBooks.length} 本AI匹配的书籍，是否导出？`,
+      '确认导出',
+      {
+        confirmButtonText: '导出',
+        cancelButtonText: '取消',
+        type: 'info',
+        beforeClose: (action, instance, done) => {
+          if (action === 'confirm') {
+            instance.confirmButtonLoading = true;
+            instance.confirmButtonText = '准备导出...';
+            
+            // 选择保存位置
+            ipcRenderer.invoke('select-folder', '选择要保存导出文件的文件夹')
+              .then(folderPath => {
+                if (folderPath) {
+                  // 执行导出
+                  ipcRenderer.invoke('export-ai-matched-books', folderPath)
+                    .then(result => {
+                      if (result.success) {
+                        ElMessage.success({
+                          message: `成功导出 ${result.count} 条数据到 ${result.filePath}`,
+                          duration: 5000,
+                          showClose: true
+                        });
+                        ipcRenderer.invoke('show-file', result.filePath);
+                      } else {
+                        ElMessage.error(`导出失败: ${result.error}`);
+                      }
+                    })
+                    .catch(e => {
+                      ElMessage.error(`导出时发生错误: ${e.message}`);
+                    })
+                    .finally(() => {
+                      done();
+                    });
+                } else {
+                  ElMessage.info('已取消导出');
+                  done();
+                }
+              })
+              .catch(e => {
+                ElMessage.error(`选择文件夹失败: ${e.message}`);
+                done();
+              });
+          } else {
+            done();
+          }
+        }
+      }
+    );
   } catch (e) {
-    printMessage('error', `导出时发生错误: ${e.message}`);
+    if (e !== 'cancel') {
+      ElMessage.error(`导出时发生错误: ${e.message}`);
+    }
   }
 }
 
@@ -2956,11 +3017,44 @@ defineExpose({
 }
 
 .category-count {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--el-text-color-secondary);
-  background: var(--el-border-color-light);
+  background: var(--el-color-primary);
+  color: white;
   padding: 2px 6px;
   border-radius: 10px;
+  min-width: 18px;
+  text-align: center;
+}
+
+/* Advanced tab button group styles */
+.advanced-button-group {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 8px;
+}
+
+.button-row {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.advanced-button {
+  width: 100%;
+  height: 100%;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.button-checkbox {
+  width: 100%;
+  text-align: center;
+  margin: 0 !important;
 }
 
 .category-tags {
