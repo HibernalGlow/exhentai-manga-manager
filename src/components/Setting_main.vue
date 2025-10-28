@@ -179,9 +179,6 @@ const activeProvider = computed(() => {
   return apiConfig.value.providers[activeProviderIndex.value]
 })
 
-// Library computed properties
-const libs = computed(() => setting.value.libraries || [])
-
 // concurrent scan options; default is min(concurrencyOptionCeiling, 4)
 const concurrencyOptionCeiling = Math.max(1, Number(navigator.hardwareConcurrency) || 4)
 const defaultConcurrentScan = Math.min(concurrencyOptionCeiling, 4)
@@ -201,12 +198,6 @@ const loadApiConfig = async () => {
       apiConfig.value = config
       activeProviderIndex.value = config.activeIndex || 0
       console.log('[Setting.vue] Set activeProviderIndex to:', activeProviderIndex.value);
-      
-      // Update translation tab reference
-      if (translationTabRef.value) {
-        translationTabRef.value.apiConfig = apiConfig.value
-        translationTabRef.value.activeProviderIndex = activeProviderIndex.value
-      }
     }
   } catch (e) {
     console.error('Failed to load API config:', e)
@@ -1387,6 +1378,8 @@ async function onSettingOpen() {
     await librariesTabRef.value.resetWorkingLibraries()
   }
 }
+
+const libs = computed(() => setting.value.libraries || [])
 
 defineExpose({
   dialogVisibleSetting,
