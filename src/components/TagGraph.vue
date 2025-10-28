@@ -1,6 +1,18 @@
 <template>
   <el-dialog v-model="dialogVisibleGraph" fullscreen destroy-on-close>
     <template #header><p>{{$t('m.tagAnalysis')}}</p></template>
+    
+    <!-- 趣味统计信息 -->
+    <el-row class="stats-container">
+      <el-col :span="6" v-for="stat in interestingStats" :key="stat.title">
+        <el-card class="stat-card" :body-style="{ padding: '15px' }">
+          <div class="stat-title">{{stat.title}}</div>
+          <div class="stat-value" @click="handleStatClick(stat)">{{stat.value}}</div>
+          <div class="stat-desc">{{stat.desc}}</div>
+        </el-card>
+      </el-col>
+    </el-row>
+    
     <el-row>
       <el-col :span="12" class="graph-frame">
         <canvas id="graph-artist"></canvas>
@@ -39,11 +51,95 @@ const emit = defineEmits(['search'])
 const dialogVisibleGraph = ref(false)
 const tagListRef = ref(null)
 const tagListTitle = ref('')
+const interestingStats = ref([])
 
 // 处理搜索事件
 const handleSearch = (query) => {
   emit('search', query)
   dialogVisibleGraph.value = false
+}
+
+// 处理统计项点击事件
+const handleStatClick = (stat) => {
+  if (stat.query) {
+    emit('search', stat.query)
+    dialogVisibleGraph.value = false
+  }
+}
+
+// 生成趣味统计
+const generateInterestingStats = (bookInfos, artists, maleTags, femaleTags, mtime) => {
+  const stats = []
+  
+  // 最稀有标签（只出现1次的标签）
+  const allTags = [...maleTags, ...femaleTags]
+  const rareTags = allTags.filter(tag => tag[1] === 1).slice(0, 5)
+  if (rareTags.length > 0) {
+    const rareTag = rareTags[0]
+    stats.push({
+      title: `🔍 ${t('m.rarestTag')}`,
+      value: appStore.translate(rareTag[0]) || rareTag[0],
+      desc: '只出现1次的独特标签',
+      query: `${rareTag[2] === 'rgb(54, 162, 235)' ? 'm' : 'f'}:"${rareTag[0]}"`
+    })
+  }
+  
+  // 最常见标签
+  const commonTag = allTags[0]
+  if (commonTag) {
+    stats.push({
+      title: `🔥 ${t('m.commonTag')}`,
+      value: `${appStore.translate(commonTag[0]) || commonTag[0]} (${commonTag[1]}次)`,
+      desc: '出现频率最高的标签',
+      query: `${commonTag[2] === 'rgb(54, 162, 235)' ? 'm' : 'f'}:"${commonTag[0]}"`
+    })
+  }
+  
+  // 最多产作者
+  if (artists.length > 0) {
+    const topArtist = artists[0]
+    stats.push({
+      title: `🎨 ${t('m.prolificAuthor')}`,
+      value: `${appStore.translate(topArtist[0]) || topArtist[0]} (${topArtist[1]}本)`,
+      desc: '作品数量最多的创作者',
+      query: `a:"${topArtist[0]}"`
+    })
+  }
+  
+  // 最活跃月份
+  if (mtime.length > 0) {
+    const activeMonth = mtime.reduce((max, month) => month[1] > max[1] ? month : max)
+    stats.push({
+      title: `📅 ${t('m.activeMonth')}`,
+      value: `${activeMonth[0]} (${activeMonth[1]}本)`,
+      desc: '发布作品最多的月份',
+      query: `mtime:>=${activeMonth[0]}-01 mtime:<=${activeMonth[0]}-31`
+    })
+  }
+  
+  // 标签多样性
+  const uniqueTags = new Set(allTags.map(tag => tag[0])).size
+  stats.push({
+    title: `🌈 ${t('m.tagDiversity')}`,
+    value: `${uniqueTags} 种`,
+    desc: '不同标签的总数量',
+    query: null
+  })
+  
+  // 男性vs女性标签比例
+  const maleCount = maleTags.reduce((sum, tag) => sum + tag[1], 0)
+  const femaleCount = femaleTags.reduce((sum, tag) => sum + tag[1], 0)
+  const ratio = maleCount > femaleCount ? 
+    `男:${((maleCount / (maleCount + femaleCount)) * 100).toFixed(1)}%` :
+    `女:${((femaleCount / (maleCount + femaleCount)) * 100).toFixed(1)}%`
+  stats.push({
+    title: `⚖️ ${t('m.tagGenderRatio')}`,
+    value: ratio,
+    desc: '男性vs女性标签的比例',
+    query: maleCount > femaleCount ? 'm:"*"' : 'f:"*"'
+  })
+  
+  interestingStats.value = stats
 }
 
 const resolveTags = (tags) => {
@@ -178,6 +274,9 @@ const displayTagGraph = async () => {
       }))
   tagData = _.sortBy(tagData, p => -p[1]).slice(0, 24)
   
+  // 生成趣味统计
+  generateInterestingStats(bookInfos, artists, maleTags, femaleTags, mtime)
+  
   // 检查是否有数据
   if (tagData.length === 0) {
     console.warn('没有标签数据，跳过标签图表')
@@ -241,5 +340,40 @@ defineExpose({
 
 <style lang="stylus">
 .graph-frame, .graph-frame, .graph-frame
-  height: calc(50vh - 52px)
+  height: calc(40vh - 52px)
+
+.stats-container
+  margin-bottom: 20px
+  padding: 0 10px
+
+.stat-card
+  margin: 5px
+  text-align: center
+  cursor: pointer
+  transition: all 0.3s ease
+  
+  &:hover
+    transform: translateY(-2px)
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15)
+
+.stat-title
+  font-size: 14px
+  font-weight: bold
+  color: #606266
+  margin-bottom: 8px
+
+.stat-value
+  font-size: 16px
+  font-weight: bold
+  color: #409EFF
+  margin-bottom: 5px
+  cursor: pointer
+  
+  &:hover
+    color: #66b1ff
+    text-decoration: underline
+
+.stat-desc
+  font-size: 12px
+  color: #909399
 </style>
