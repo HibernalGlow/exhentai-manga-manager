@@ -2074,7 +2074,7 @@ html.nhentai
   align-items: center;
   gap: 8px;
   padding: 0 20px;
-  height: 60px;
+  height: auto;
   flex-wrap: nowrap;
 }
 
