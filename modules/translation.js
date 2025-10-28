@@ -841,6 +841,11 @@ function initTranslationIPC(ipcMain, getSettings) {
     return await getBookTranslation(bookHash)
   })
 
+  // 批量获取书籍翻译
+  ipcMain.handle('get-translations-batch', async (event, bookHashes) => {
+    return await getTranslationsBatch(bookHashes)
+  })
+
   // 保存书籍翻译
   ipcMain.handle('save-book-translation', async (event, { bookHash, translation }) => {
     await saveBookTranslation(bookHash, translation)

@@ -403,12 +403,16 @@ const categoryColors = {
 .book-chinese-title
   margin: 4px 6px 8px 6px
   font-size: 13px
-  color: #e6a23c
+  color: #409eff
   font-weight: 500
   line-height: 16px
   word-wrap: break-word
   white-space: normal
   opacity: 0.9
+  background: linear-gradient(135deg, rgba(64, 158, 255, 0.1), rgba(64, 158, 255, 0.05))
+  padding: 2px 6px
+  border-radius: 4px
+  border-left: 3px solid #409eff
 .book-card-mark, .book-card-language, .book-card-pagecount
   position: absolute
   cursor: pointer

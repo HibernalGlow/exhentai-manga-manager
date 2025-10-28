@@ -1027,6 +1027,18 @@ export default defineComponent({
       // called at the app mounted; new cache is saved after every scan
       const { appCache, dbSignature } = await ipcRenderer.invoke('load-app-cache')
       if (await ipcRenderer.invoke('should-use-cache', dbSignature)) {
+        // 批量加载翻译数据
+        const bookHashes = appCache.bookList.map(book => book.hash || book.id)
+        const translations = await ipcRenderer.invoke('get-translations-batch', bookHashes)
+        
+        // 将翻译数据附加到书籍对象上
+        for (const book of appCache.bookList) {
+          const bookHash = book.hash || book.id
+          if (translations[bookHash]) {
+            book._translation = translations[bookHash]
+          }
+        }
+        
         this.bookList = appCache.bookList
         this.$refs.FolderTreeRef.loadTreeCache(appCache.treeCache)
         this.$refs.EditViewRef.selectBookList = []
@@ -1056,6 +1068,18 @@ export default defineComponent({
               console.error(`[App.vue] Failed to parse tags for book ${book.id}:`, e);
               book.tags = {}; // Reset to empty object on failure
             }
+          }
+        }
+
+        // 批量加载翻译数据
+        const bookHashes = res.map(book => book.hash || book.id)
+        const translations = await ipcRenderer.invoke('get-translations-batch', bookHashes)
+        
+        // 将翻译数据附加到书籍对象上
+        for (const book of res) {
+          const bookHash = book.hash || book.id
+          if (translations[bookHash]) {
+            book._translation = translations[bookHash]
           }
         }
 
@@ -1449,12 +1473,21 @@ export default defineComponent({
           ])
         })
         const categoryToken = book.category ? [`cat:${book.category}`] : []
+        // 获取书籍的翻译标题
+        const getBookTranslation = (book) => {
+          if (book._translation) {
+            return book._translation.chinese_title || ''
+          }
+          return ''
+        }
+        
         const bookString = JSON.stringify(
             _.assign(
                 {},
                 _.pick(book, ['title', 'title_jpn', 'status', 'filepath', 'url', 'pageDiff']),
                 {
-                  tags: tagTokens.concat(categoryToken)
+                  tags: tagTokens.concat(categoryToken),
+                  chinese_title: getBookTranslation(book)
                 }
             )
         ).toLowerCase()
