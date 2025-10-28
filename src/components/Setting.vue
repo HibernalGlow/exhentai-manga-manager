@@ -1646,10 +1646,13 @@ const stopBatchInfer = () => {
 
 const exportAiMatchedData = async () => {
   try {
-    // 检查是否有AI匹配的书籍
-    const aiMatchedBooks = bookList.value.filter(book => 
-      book.tags && book.tags.some(tag => tag.startsWith('ai:'))
-    );
+    // 检查是否有AI匹配的书籍 - 匹配tags.other中的ai-matched
+    const aiMatchedBooks = bookList.value.filter(book => {
+      return book.tags && 
+             book.tags.other && 
+             Array.isArray(book.tags.other) && 
+             book.tags.other.includes('ai-matched');
+    });
     
     if (aiMatchedBooks.length === 0) {
       ElMessage.warning('没有找到AI匹配的书籍数据');
@@ -1657,60 +1660,54 @@ const exportAiMatchedData = async () => {
     }
 
     // 显示确认对话框
-    const confirmResult = await ElMessageBox.confirm(
+    await ElMessageBox.confirm(
       `找到 ${aiMatchedBooks.length} 本AI匹配的书籍，是否导出？`,
       '确认导出',
       {
         confirmButtonText: '导出',
         cancelButtonText: '取消',
-        type: 'info',
-        beforeClose: (action, instance, done) => {
-          if (action === 'confirm') {
-            instance.confirmButtonLoading = true;
-            instance.confirmButtonText = '准备导出...';
-            
-            // 选择保存位置
-            ipcRenderer.invoke('select-folder', '选择要保存导出文件的文件夹')
-              .then(folderPath => {
-                if (folderPath) {
-                  // 执行导出
-                  ipcRenderer.invoke('export-ai-matched-books', folderPath)
-                    .then(result => {
-                      if (result.success) {
-                        ElMessage.success({
-                          message: `成功导出 ${result.count} 条数据到 ${result.filePath}`,
-                          duration: 5000,
-                          showClose: true
-                        });
-                        ipcRenderer.invoke('show-file', result.filePath);
-                      } else {
-                        ElMessage.error(`导出失败: ${result.error}`);
-                      }
-                    })
-                    .catch(e => {
-                      ElMessage.error(`导出时发生错误: ${e.message}`);
-                    })
-                    .finally(() => {
-                      done();
-                    });
-                } else {
-                  ElMessage.info('已取消导出');
-                  done();
-                }
-              })
-              .catch(e => {
-                ElMessage.error(`选择文件夹失败: ${e.message}`);
-                done();
-              });
-          } else {
-            done();
-          }
-        }
+        type: 'info'
       }
     );
+
+    // 选择保存位置
+    const folderPath = await ipcRenderer.invoke('select-folder', '选择要保存导出文件的文件夹');
+    if (!folderPath) {
+      ElMessage.info('已取消导出');
+      return;
+    }
+
+    // 显示加载状态
+    const loadingMessage = ElMessage({
+      message: '正在导出AI匹配数据，请稍候...',
+      type: 'info',
+      duration: 0,
+      showClose: false
+    });
+
+    try {
+      // 执行导出
+      const result = await ipcRenderer.invoke('export-ai-matched-books', folderPath);
+
+      if (result.success) {
+        ElMessage.success({
+          message: `成功导出 ${result.count} 条数据到 ${result.filePath}`,
+          duration: 5000,
+          showClose: true
+        });
+        ipcRenderer.invoke('show-file', result.filePath);
+      } else {
+        ElMessage.error(`导出失败: ${result.error}`);
+      }
+    } finally {
+      loadingMessage.close();
+    }
   } catch (e) {
-    if (e !== 'cancel') {
-      ElMessage.error(`导出时发生错误: ${e.message}`);
+    if (e === 'cancel') {
+      ElMessage.info('已取消导出');
+    } else {
+      console.error('Export AI matched data error:', e);
+      ElMessage.error(`导出时发生错误: ${e.message || e}`);
     }
   }
 }
