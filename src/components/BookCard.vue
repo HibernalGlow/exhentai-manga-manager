@@ -15,7 +15,7 @@
       @click="$emit('handleClickCover')"
       @contextmenu="$emit('onBookContextMenu', $event, book)"
     />
-    <el-tag class="book-card-language" size="small"
+    <el-tag v-if="book.readCount > 0" class="book-card-language" size="small"
       :type="isChineseTranslatedManga(book) ? 'danger' : 'info'"
       @click="$emit('handleSearchString', `:count=${book.readCount}`)"
     >{{book.readCount}}</el-tag>
