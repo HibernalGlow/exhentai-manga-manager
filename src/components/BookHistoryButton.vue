@@ -104,6 +104,7 @@ const emit = defineEmits(['open-book-detail'])
 
 const sideVisibleBookHistory = ref(false)
 const activeHistoryTab = ref('readCount')
+const detailHistoryUpdateTrigger = ref(0) // 用于强制更新详情列表
 
 // 显示书籍历史记录
 const showBookHistory = () => {
@@ -150,6 +151,9 @@ const readCountList = computed(() => {
 
 // 打开详情记录列表
 const detailOpenList = computed(() => {
+  // 添加依赖项，确保能响应更新
+  detailHistoryUpdateTrigger.value
+  
   const detailOpenHist = JSON.parse(localStorage.getItem('detailOpenHistory') || '[]')
   const historyBooks = []
   
@@ -186,6 +190,9 @@ const recordDetailOpen = (book) => {
   }
   
   localStorage.setItem('detailOpenHistory', JSON.stringify(detailOpenHist))
+  
+  // 触发响应式更新
+  detailHistoryUpdateTrigger.value++
 }
 
 defineExpose({
