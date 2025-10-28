@@ -6,7 +6,19 @@
     <el-row class="stats-container">
       <el-col :span="6" v-for="stat in interestingStats" :key="stat.title">
         <el-card class="stat-card" :body-style="{ padding: '15px' }">
-          <div class="stat-title">{{stat.title}}</div>
+          <div class="stat-title">
+            {{stat.title}}
+            <el-button 
+              v-if="stat.title.includes('随机') || stat.title.includes('稀有') || stat.title.includes('组合')" 
+              type="text" 
+              size="small" 
+              @click="refreshRandomTag"
+              class="refresh-btn"
+              title="刷新推荐"
+            >
+              🔄
+            </el-button>
+          </div>
           <div class="stat-value" @click="handleStatClick(stat)">{{stat.value}}</div>
           <div class="stat-desc">{{stat.desc}}</div>
         </el-card>
@@ -67,6 +79,19 @@ const handleStatClick = (stat) => {
   }
 }
 
+// 刷新随机标签
+const refreshRandomTag = () => {
+  const bookInfos = tagListRef.value.getBookInfos()
+  if (!bookInfos || bookInfos.length === 0) return
+  
+  const artists = _(bookInfos.map(book => book.artists)).flatten().filter(Boolean).countBy().toPairs().sortBy(p => -p[1]).slice(0, 20).value()
+  const maleTags = _(bookInfos.map(book => book.male)).flatten().filter(Boolean).countBy().toPairs().sortBy(p => -p[1]).slice(0, 24).value()
+  const femaleTags = _(bookInfos.map(book => book.female)).flatten().filter(Boolean).countBy().toPairs().sortBy(p => -p[1]).slice(0, 24).value()
+  const mtime = _(bookInfos.map(book => book.mtime)).filter(Boolean).countBy().toPairs().sortBy(p => p[0]).value()
+  
+  generateInterestingStats(bookInfos, artists, maleTags, femaleTags, mtime)
+}
+
 // 生成趣味统计
 const generateInterestingStats = (bookInfos, artists, maleTags, femaleTags, mtime) => {
   const stats = []
@@ -118,10 +143,10 @@ const generateInterestingStats = (bookInfos, artists, maleTags, femaleTags, mtim
   }
   
   // 标签多样性
-  const uniqueTags = new Set(allTags.map(tag => tag[0])).size
+  const uniqueTagCount = new Set(allTags.map(tag => tag[0])).size
   stats.push({
     title: `🌈 ${t('m.tagDiversity')}`,
-    value: `${uniqueTags} 种`,
+    value: `${uniqueTagCount} 种`,
     desc: '不同标签的总数量',
     query: null
   })
@@ -138,6 +163,89 @@ const generateInterestingStats = (bookInfos, artists, maleTags, femaleTags, mtim
     desc: '男性vs女性标签的比例',
     query: maleCount > femaleCount ? 'm:"*"' : 'f:"*"'
   })
+  
+  // 随机独特标签推荐
+  // 根据总标签数量动态调整筛选条件
+  const maxCount = Math.max(...allTags.map(tag => tag[1]))
+  const threshold = Math.max(1, Math.floor(maxCount * 0.1)) // 最多10%的阈值，至少为1
+  const uniqueTags = allTags.filter(tag => tag[1] <= threshold)
+  
+  console.log(`随机标签调试: 总标签数=${allTags.length}, 最大出现次数=${maxCount}, 阈值=${threshold}, 符合条件=${uniqueTags.length}`)
+  
+  if (uniqueTags.length > 0) {
+    // 随机选择一个独特标签
+    const randomUniqueTag = uniqueTags[Math.floor(Math.random() * uniqueTags.length)]
+    stats.push({
+      title: `🎲 ${t('m.randomUniqueTag')}`,
+      value: appStore.translate(randomUniqueTag[0]) || randomUniqueTag[0],
+      desc: `随机推荐的独特标签 (${randomUniqueTag[1]}次)`,
+      query: `${randomUniqueTag[2] === 'rgb(54, 162, 235)' ? 'm' : 'f'}:"${randomUniqueTag[0]}"`
+    })
+  } else {
+    // 如果没有符合条件的标签，选择出现次数最少的标签
+    const minCount = Math.min(...allTags.map(tag => tag[1]))
+    const leastCommonTags = allTags.filter(tag => tag[1] === minCount)
+    if (leastCommonTags.length > 0) {
+      const randomTag = leastCommonTags[Math.floor(Math.random() * leastCommonTags.length)]
+      stats.push({
+        title: `🎲 ${t('m.randomUniqueTag')}`,
+        value: appStore.translate(randomTag[0]) || randomTag[0],
+        desc: `随机推荐的标签 (${randomTag[1]}次)`,
+        query: `${randomTag[2] === 'rgb(54, 162, 235)' ? 'm' : 'f'}:"${randomTag[0]}"`
+      })
+    }
+  }
+  
+  // 最稀有作者（只有1本作品的作者）
+  const rareAuthors = artists.filter(author => author[1] === 1)
+  if (rareAuthors.length > 0) {
+    const rareAuthor = rareAuthors[Math.floor(Math.random() * Math.min(rareAuthors.length, 5))]
+    stats.push({
+      title: `🌟 ${t('m.rareAuthor')}`,
+      value: appStore.translate(rareAuthor[0]) || rareAuthor[0],
+      desc: `只创作了1本作品的作者`,
+      query: `a:"${rareAuthor[0]}"`
+    })
+  }
+  
+  // 标签组合推荐（随机选择一个出现较少的标签组合）
+  const tagCombinations = []
+  // 动态调整阈值，确保能找到组合
+  const maleMaxCount = Math.max(...maleTags.map(tag => tag[1]))
+  const femaleMaxCount = Math.max(...femaleTags.map(tag => tag[1]))
+  const maleThreshold = Math.max(1, Math.floor(maleMaxCount * 0.3)) // 30%阈值
+  const femaleThreshold = Math.max(1, Math.floor(femaleMaxCount * 0.3))
+  
+  for (let i = 0; i < Math.min(maleTags.length, 10); i++) {
+    for (let j = 0; j < Math.min(femaleTags.length, 10); j++) {
+      if (maleTags[i][1] <= maleThreshold && femaleTags[j][1] <= femaleThreshold) {
+        tagCombinations.push({
+          male: maleTags[i],
+          female: femaleTags[j]
+        })
+      }
+    }
+  }
+  
+  // 如果没有找到符合条件的组合，使用最常见的标签
+  if (tagCombinations.length === 0 && maleTags.length > 0 && femaleTags.length > 0) {
+    const randomMale = maleTags[Math.floor(Math.random() * Math.min(maleTags.length, 5))]
+    const randomFemale = femaleTags[Math.floor(Math.random() * Math.min(femaleTags.length, 5))]
+    tagCombinations.push({
+      male: randomMale,
+      female: randomFemale
+    })
+  }
+  
+  if (tagCombinations.length > 0) {
+    const randomCombo = tagCombinations[Math.floor(Math.random() * tagCombinations.length)]
+    stats.push({
+      title: `💝 ${t('m.tagCombo')}`,
+      value: `${appStore.translate(randomCombo.male[0]) || randomCombo.male[0]} + ${appStore.translate(randomCombo.female[0]) || randomCombo.female[0]}`,
+      desc: `独特的标签组合推荐`,
+      query: `m:"${randomCombo.male[0]}" f:"${randomCombo.female[0]}"`
+    })
+  }
   
   interestingStats.value = stats
 }
@@ -361,6 +469,20 @@ defineExpose({
   font-weight: bold
   color: #606266
   margin-bottom: 8px
+  display: flex
+  justify-content: space-between
+  align-items: center
+
+.refresh-btn
+  padding: 0
+  margin: 0
+  font-size: 16px
+  line-height: 1
+  min-height: auto
+  
+  &:hover
+    transform: rotate(180deg)
+    transition: transform 0.3s ease
 
 .stat-value
   font-size: 16px
