@@ -209,6 +209,7 @@ const emit = defineEmits([
   'getBookInfo',
   'searchFromTag',
   'jumpMangeDetail',
+  'detail-opened',
 ])
 
 const props = defineProps({
@@ -272,6 +273,9 @@ const openBookDetail = (book) => {
   dialogVisibleBookDetail.value = true
   comments.value = []
   if (setting.value.showComment) getComments(book.url)
+  
+  // 触发记录详情打开事件
+  emit('detail-opened', book)
 }
 const openUrl = (url) => {
   ipcRenderer.invoke('open-url', url)

@@ -153,7 +153,7 @@ export function toggleCollectTag({
       cat: category,
       tag: tagName,
       letter: letter,
-      color: generateAutoColor ? generateAutoColor(category) : '#409EFF'
+      color: generateAutoColor ? generateAutoColor(tagName) : '#409EFF'
     }
     setting.collectTag.push(newTag)
     printMessage('success', '已添加到收藏')
@@ -164,23 +164,23 @@ export function toggleCollectTag({
 }
 
 /**
- * 根据类别自动生成颜色
- * @param {string} category - 标签类别
+ * 根据标签名自动生成颜色
+ * @param {string} tagName - 标签名称
  * @returns {string} 颜色值
  */
-export function generateAutoColor(category) {
-  const categoryColors = {
-    'female': '#FF6B9D',      // 粉红色
-    'male': '#4A9EFF',        // 蓝色
-    'mixed': '#9D5CFF',       // 紫色
-    'artist': '#FF9F40',      // 橙色
-    'group': '#20C5DE',       // 青色
-    'parody': '#67C23A',      // 绿色
-    'character': '#F56C6C',   // 红色
-    'language': '#909399',    // 灰色
-    'cosplayer': '#E6A23C',   // 金色
-    'other': '#606266'        // 深灰色
+export function generateAutoColor(tagName) {
+  // 简单的hash函数
+  let hash = 0
+  for (let i = 0; i < tagName.length; i++) {
+    const char = tagName.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash & hash // 转换为32位整数
   }
-  
-  return categoryColors[category] || '#409EFF' // 默认蓝色
+
+  // 使用hash生成颜色
+  const hue = Math.abs(hash) % 360
+  const saturation = 65 + (Math.abs(hash) % 20) // 65-85%
+  const lightness = 45 + (Math.abs(hash >> 8) % 20) // 45-65%
+
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`
 }

@@ -24,37 +24,37 @@
                 style="flex:1"
             ></el-input>
             <!-- Side buttons -->
-            <div class="icon-group">
-              <el-tooltip content="Select untagged" placement="top">
-                <el-button
-                    size="default"
-                    circle
-                    :icon="Warning"
-                    aria-label="Select untagged"
-                    @click="selectUntaggedFolders"
-                />
-              </el-tooltip>
-              <!--    Expand all /   -->
-              <el-tooltip content="Expand all" placement="top">
-                <el-button
-                    size="default"
-                    circle
-                    :icon="CirclePlusFilled"
-                    aria-label="Expand all"
-                    @click="expandAll"
-                />
-              </el-tooltip>
-              <!-- Collapse all -->
-              <el-tooltip content="Collapse all" placement="top">
-                <el-button
-                    size="default"
-                    circle
-                    :icon="RemoveFilled"
-                    aria-label="Collapse all"
-                    @click="collapseAll"
-                />
-              </el-tooltip>
-            </div>
+          <div class="icon-group">
+            <el-tooltip content="Select untagged" placement="top">
+              <el-button
+                  size="default"
+                  circle
+                  :icon="Warning"
+                  aria-label="Select untagged"
+                  @click="selectUntaggedFolders"
+              />
+            </el-tooltip>
+            <!--    Expand all /   -->
+            <el-tooltip content="Expand all" placement="top">
+              <el-button
+                  size="default"
+                  circle
+                  :icon="CirclePlusFilled"
+                  aria-label="Expand all"
+                  @click="expandAll"
+              />
+            </el-tooltip>
+            <!-- Collapse all -->
+            <el-tooltip content="Collapse all" placement="top">
+              <el-button
+                  size="default"
+                  circle
+                  :icon="RemoveFilled"
+                  aria-label="Collapse all"
+                  @click="collapseAll"
+              />
+            </el-tooltip>
+          </div>
           </div>
           
           <!-- 第二行：批量操作按钮组（可折叠） -->

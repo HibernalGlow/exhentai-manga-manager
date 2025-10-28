@@ -7,7 +7,10 @@
         <el-button type="primary" :icon="TreeViewAlt" plain @click="$refs.FolderTreeRef.openFolderTree()"
                    :title="$t('m.folderTree')"></el-button>
       </el-col>
-      <el-col :span="8">
+      <el-col :span="1">
+        <BookHistoryButton :book-list="bookList" :setting="setting" @open-book-detail="openBookDetailFromHistory" ref="BookHistoryButtonRef" />
+      </el-col>
+      <el-col :span="6">
         <div class="search-input-wrapper" ref="searchInputWrapper">
           <el-autocomplete
               ref="searchAutocomplete"
@@ -53,7 +56,7 @@
         <el-button :icon="SettingIcon" plain @click="$refs.SettingRef.dialogVisibleSetting = true"
                    :title="$t('m.setting')"></el-button>
       </el-col>
-      <el-col :span="3">
+      <el-col :span="5">
         <el-select :placeholder="$t('m.sort_filter')" @change="handleSortChange" clearable v-model="sortValue">
           <el-option-group :label="$t('m.filter')">
             <el-option :label="$t('m.all')" value=""></el-option>
@@ -148,7 +151,7 @@
                 :book="book"
                 :search-string="searchString"
                 v-if="!book.isCollection && !book.collectionHide && (sortValue === 'hidden' || !book.hiddenBook) && !book.folderHide && visibilityMap[book.id]"
-                @open-book-detail="$refs.BookDetailDialogRef.openBookDetail(book)"
+                @open-book-detail="openBookDetailFromHistory(book)"
                 @handle-click-cover="handleClickCover(book)"
                 @on-book-context-menu="onBookContextMenu"
                 @handle-search-string="handleSearchString"
@@ -209,7 +212,7 @@
               :book="book"
               :search-string="searchString"
               :tabindex="index + 1"
-              @open-book-detail="$refs.BookDetailDialogRef.openBookDetail(book)"
+              @open-book-detail="openBookDetailFromHistory(book)"
               @handle-click-cover="handleClickCover(book)"
               @on-book-context-menu="onBookContextMenu"
               @handle-search-string="handleSearchString"
@@ -232,6 +235,7 @@
         @get-book-info="$refs.SearchDialogRef.getBookInfo(bookDetail)"
         @search-from-tag="searchFromTag"
         @jump-mange-detail="jumpMangeDetail"
+        @detail-opened="recordDetailOpen"
     />
     <InternalViewer
         ref="InternalViewerRef"
@@ -270,6 +274,7 @@ import RandomTags from './components/RandomTags.vue'
 import MoveFileDialog from './components/MoveFileDialog.vue'
 import FavoriteTagPanel from './components/FavoriteTagPanel.vue'
 import SearchAgilePanel from './components/SearchAgilePanel.vue'
+import BookHistoryButton from './components/BookHistoryButton.vue'
 
 import { mapWritableState, mapActions } from 'pinia'
 import { useAppStore, toPlain } from './pinia.js'
@@ -288,7 +293,8 @@ export default defineComponent({
     RandomTags,
     MoveFileDialog,
     FavoriteTagPanel,
-    SearchAgilePanel
+    SearchAgilePanel,
+    BookHistoryButton
   },
   setup() {
     return {
@@ -1803,6 +1809,22 @@ export default defineComponent({
         this.$refs.BookDetailDialogRef.openBookDetail(activeBookList[indexNext])
       } else {
         this.printMessage('info', this.$t('c.outOfRange'))
+      }
+    },
+    
+    // 从历史记录打开书籍详情
+    openBookDetailFromHistory(book) {
+      // 记录打开详情
+      if (this.$refs.BookHistoryButtonRef) {
+        this.$refs.BookHistoryButtonRef.recordDetailOpen(book)
+      }
+      this.$refs.BookDetailDialogRef.openBookDetail(book)
+    },
+    
+    // 记录详情打开
+    recordDetailOpen(book) {
+      if (this.$refs.BookHistoryButtonRef) {
+        this.$refs.BookHistoryButtonRef.recordDetailOpen(book)
       }
     },
     jumpMangeDetailRandom() {
