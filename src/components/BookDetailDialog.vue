@@ -503,8 +503,26 @@ const toggleCollectTag = (tagName, category, letter, isCollected) => {
     setting: setting.value,
     ipcRenderer,
     printMessage,
-    generateAutoColor
+    generateAutoColor: generateColorFromTag
   })
+}
+
+// 根据标签名生成颜色的函数（与CollectTagTab保持一致）
+const generateColorFromTag = (tagName) => {
+  // 简单的hash函数
+  let hash = 0
+  for (let i = 0; i < tagName.length; i++) {
+    const char = tagName.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash & hash // 转换为32位整数
+  }
+
+  // 使用hash生成颜色
+  const hue = Math.abs(hash) % 360
+  const saturation = 65 + (Math.abs(hash) % 20) // 65-85%
+  const lightness = 45 + (Math.abs(hash >> 8) % 20) // 45-65%
+
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`
 }
 
 // 从本书元数据中删除标签
