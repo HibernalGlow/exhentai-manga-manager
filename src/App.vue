@@ -2,15 +2,14 @@
   <el-config-provider :locale="localeFile">
     <div id="progressbar" :style="{ width: progress + '%' }"></div>
     <el-button class="fullscreen-button" circle :icon="FullScreen" size="large" @click="switchFullscreen"></el-button>
-    <el-row :gutter="20" class="book-search-bar">
-      <el-col :span="1" :offset="2">
+    <div class="book-search-bar">
+      <div class="search-bar-left">
         <el-button type="primary" :icon="TreeViewAlt" plain @click="$refs.FolderTreeRef.openFolderTree()"
-                   :title="$t('m.folderTree')"></el-button>
-      </el-col>
-      <el-col :span="1">
-        <BookHistoryButton :book-list="bookList" :setting="setting" @open-book-detail="openBookDetailFromHistory" ref="BookHistoryButtonRef" />
-      </el-col>
-      <el-col :span="6">
+                   :title="$t('m.folderTree')" class="search-bar-button"></el-button>
+        <BookHistoryButton :book-list="bookList" :setting="setting" @open-book-detail="openBookDetailFromHistory" ref="BookHistoryButtonRef" class="search-bar-button" />
+      </div>
+      
+      <div class="search-bar-center">
         <div class="search-input-wrapper" ref="searchInputWrapper">
           <el-autocomplete
               ref="searchAutocomplete"
@@ -33,31 +32,20 @@
           </el-autocomplete>
           <SearchAgilePanel ref="searchAgilePanelRef" :favorite-tags="favoriteTagsForSearch" :visible="favoriteTagPanelVisible" :enable-mixed="enableMixedGenderSearch" :panel-height="favoriteTagPanelHeight" @append-tag="appendCollectTag" @hide-panel="handlePanelHide" @show-panel="handlePanelShow" @update:enable-mixed="enableMixedGenderSearch = $event" @update:panel-height="updatePanelHeight" @apply-search-history="applySearchHistory" />
         </div>
-      </el-col>
-      <el-col :span="1">
-        <el-button type="primary" :icon="Search32Filled" plain @click="searchBook" :title="$t('m.search')"></el-button>
-      </el-col>
-      <el-col :span="1">
-        <el-button :icon="MdShuffle" plain @click="shuffleBook" :title="$t('m.shuffle')"></el-button>
-      </el-col>
-      <el-col :span="1">
+      </div>
+      
+      <div class="search-bar-right">
+        <el-button type="primary" :icon="Search32Filled" plain @click="searchBook" :title="$t('m.search')" class="search-bar-button"></el-button>
+        <el-button :icon="MdShuffle" plain @click="shuffleBook" :title="$t('m.shuffle')" class="search-bar-button"></el-button>
         <el-button type="primary" :icon="MdRefresh" plain :title="$t('m.manualScan')"
-                   @click="loadBookList(true)" :loading="buttonLoadBookListLoading"></el-button>
-      </el-col>
-      <el-col :span="1">
+                   @click="loadBookList(true)" :loading="buttonLoadBookListLoading" class="search-bar-button"></el-button>
         <el-button type="primary" :icon="MdCodeDownload" plain :title="$t('m.batchGetMetadata')"
-                   @click="getBookListMetadata()" :loading="buttonGetMetadatasLoading"></el-button>
-      </el-col>
-      <el-col :span="1">
+                   @click="getBookListMetadata()" :loading="buttonGetMetadatasLoading" class="search-bar-button"></el-button>
         <el-button :icon="ArrowTrendingLines20Filled" plain @click="$refs.TagGraphRef.displayTagGraph()"
-                   :title="$t('m.tagAnalysis')"></el-button>
-      </el-col>
-      <el-col :span="1">
+                   :title="$t('m.tagAnalysis')" class="search-bar-button"></el-button>
         <el-button :icon="SettingIcon" plain @click="$refs.SettingRef.dialogVisibleSetting = true"
-                   :title="$t('m.setting')"></el-button>
-      </el-col>
-      <el-col :span="5">
-        <el-select :placeholder="$t('m.sort_filter')" @change="handleSortChange" clearable v-model="sortValue">
+                   :title="$t('m.setting')" class="search-bar-button"></el-button>
+        <el-select :placeholder="$t('m.sort_filter')" @change="handleSortChange" clearable v-model="sortValue" class="sort-select">
           <el-option-group :label="$t('m.filter')">
             <el-option :label="$t('m.all')" value=""></el-option>
             <el-option :label="$t('m.bookmarkOnly')" value="mark"></el-option>
@@ -94,40 +82,24 @@
             <el-option :label="$t('m.pageDescend')" value="pageDescend"></el-option>
           </el-option-group>
         </el-select>
-      </el-col>
-      <el-col :span="4">
-        <el-row :gutter="20">
-          <el-col :span="6" v-if="!editTagView && !editCollectionView">
-            <el-button plain @click="$refs.EditViewRef.enterEditCollectionView()" :icon="CicsSystemGroup"
-                       :title="$t('m.manageCollection')"></el-button>
-          </el-col>
-          <el-col :span="6" v-if="editCollectionView">
-            <el-button type="primary" plain @click="$refs.EditViewRef.addCollection()" :icon="Collections24Regular"
-                       :title="$t('m.addCollection')"></el-button>
-          </el-col>
-          <el-col :span="6" v-if="editCollectionView">
-            <el-button type="primary" plain @click="$refs.EditViewRef.editCollection()" :icon="Edit"
-                       :title="$t('m.editCollection')"></el-button>
-          </el-col>
-          <el-col :span="6" v-if="editCollectionView">
-            <el-button type="primary" plain @click="$refs.EditViewRef.saveCollection()" :icon="Save16Regular"
-                       :title="$t('m.save')"></el-button>
-          </el-col>
-          <el-col :span="6" v-if="editCollectionView">
-            <el-button type="primary" plain @click="$refs.EditViewRef.exitCollectionView()" :icon="MdExit"
-                       :title="$t('m.exit')"></el-button>
-          </el-col>
-          <el-col :span="6" v-if="!editTagView && !editCollectionView">
-            <el-button plain @click="$refs.EditViewRef.enterEditTagView()" :icon="TagGroup"
-                       :title="$t('m.manageTag')"></el-button>
-          </el-col>
-          <el-col :span="6" v-if="editTagView">
-            <el-button type="primary" plain @click="$refs.EditViewRef.exitEditTagView()" :icon="MdExit"
-                       :title="$t('m.exit')"></el-button>
-          </el-col>
-        </el-row>
-      </el-col>
-    </el-row>
+      </div>
+      <div class="edit-buttons">
+        <el-button v-if="!editTagView && !editCollectionView" plain @click="$refs.EditViewRef.enterEditCollectionView()" :icon="CicsSystemGroup"
+                   :title="$t('m.manageCollection')"></el-button>
+        <el-button v-if="editCollectionView" type="primary" plain @click="$refs.EditViewRef.addCollection()" :icon="Collections24Regular"
+                   :title="$t('m.addCollection')"></el-button>
+        <el-button v-if="editCollectionView" type="primary" plain @click="$refs.EditViewRef.editCollection()" :icon="Edit"
+                   :title="$t('m.editCollection')"></el-button>
+        <el-button v-if="editCollectionView" type="primary" plain @click="$refs.EditViewRef.saveCollection()" :icon="Save16Regular"
+                   :title="$t('m.save')"></el-button>
+        <el-button v-if="editCollectionView" type="primary" plain @click="$refs.EditViewRef.exitCollectionView()" :icon="MdExit"
+                   :title="$t('m.exit')"></el-button>
+        <el-button v-if="!editTagView && !editCollectionView" plain @click="$refs.EditViewRef.enterEditTagView()" :icon="TagGroup"
+                   :title="$t('m.manageTag')"></el-button>
+        <el-button v-if="editTagView" type="primary" plain @click="$refs.EditViewRef.exitEditTagView()" :icon="MdExit"
+                   :title="$t('m.exit')"></el-button>
+      </div>
+    </div>
     <RandomTags
         ref="randomTagsRef"
         v-if="!editTagView && !editCollectionView && !setting.disableRandomTag"
@@ -2095,4 +2067,58 @@ html.nhentai
   --el-fill-color-extra-light: #1f1f1f
   --el-fill-color-dark: #666666
   --el-border-color: #6e6e6e
+
+
+.book-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 20px;
+  height: 60px;
+  flex-wrap: nowrap;
+}
+
+.search-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.search-bar-center {
+  flex: 1;
+  min-width: 300px;
+  max-width: 600px;
+}
+
+.search-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.search-bar-button {
+  flex-shrink: 0;
+}
+
+.sort-select {
+  min-width: 150px;
+  max-width: 200px;
+}
+
+.search-input-wrapper {
+  width: 100%;
+}
+
+.search-input {
+  width: 100%;
+}
+
+.edit-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
 </style>
