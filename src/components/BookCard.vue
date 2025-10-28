@@ -235,7 +235,7 @@ const toggleCollectTag = (tagName, category, letter, isCollected) => {
     setting: setting.value,
     ipcRenderer,
     printMessage,
-    generateAutoColor: generateColorFromTag
+    generateAutoColor: getRandomColor
   })
 }
 
@@ -255,6 +255,25 @@ const generateColorFromTag = (tagName) => {
   const lightness = 45 + (Math.abs(hash >> 8) % 20) // 45-65%
 
   return `hsl(${hue}, ${saturation}%, ${lightness}%)`
+}
+
+const moderateSoftColors = [
+  '#FF6F61', // 略微柔和但鲜艳的珊瑚红
+  '#F48FB1', // 鲜明的粉红色
+  '#42A5F5', // 鲜艳的蓝色
+  '#66BB6A', // 鲜艳的绿色
+  '#FFCA28', // 亮黄色
+  '#AB47BC', // 鲜亮的紫色
+  '#26A69A', // 热带青色
+  '#FFA726', // 鲜亮的橙色
+  '#8D6E63', // 保存自然的棕色
+  '#78909C',  // 鲜明的灰蓝色
+]
+
+// 获取随机颜色的函数
+const getRandomColor = () => {
+  const randomIndex = Math.floor(Math.random() * moderateSoftColors.length)
+  return moderateSoftColors[randomIndex]
 }
 
 // 从本书元数据中删除标签
