@@ -32,8 +32,6 @@ import { useAppStore } from '../pinia.js'
 const appStore = useAppStore()
 const { setting } = storeToRefs(appStore)
 
-const { translate } = appStore
-
 const { t } = useI18n()
 
 const emit = defineEmits(['search'])
@@ -49,7 +47,9 @@ const handleSearch = (query) => {
 }
 
 const resolveTags = (tags) => {
-  if (setting.value.showTranslation) return tags.map(tag => translate(tag) || tag)
+  if (setting.value.showTranslation) {
+    return tags.map(tag => appStore.translate(tag) || tag)
+  }
   return tags
 }
 
@@ -59,9 +59,23 @@ const displayTagGraph = async () => {
 
   // 使用TagList组件获取处理后的书籍信息
   const bookInfos = tagListRef.value.getBookInfos()
+  
+  // 检查是否有有效的书籍数据
+  if (!bookInfos || bookInfos.length === 0) {
+    console.warn('没有可用的书籍数据用于标签分析')
+    return
+  }
 
-  const artists = _(bookInfos.map(book => book.artists)).flatten().countBy().toPairs().sortBy(p => -p[1]).slice(0, 20).value()
-  const chartArtist = new Chart(
+  console.log(`标签分析：处理 ${bookInfos.length} 本书籍`)
+  
+  const artists = _(bookInfos.map(book => book.artists)).flatten().filter(Boolean).countBy().toPairs().sortBy(p => -p[1]).slice(0, 20).value()
+  console.log(`找到 ${artists.length} 个作者标签`)
+  
+  // 检查是否有数据
+  if (artists.length === 0) {
+    console.warn('没有作者标签数据，跳过作者图表')
+  } else {
+    const chartArtist = new Chart(
       document.getElementById('graph-artist'),
       {
         type: 'bar',
@@ -101,9 +115,16 @@ const displayTagGraph = async () => {
         }
       }
   )
+  }
 
-  const mtime = _(bookInfos.map(book => book.mtime)).countBy().toPairs().sortBy(p => p[0]).value()
-  const chartMtime = new Chart(
+  const mtime = _(bookInfos.map(book => book.mtime)).filter(Boolean).countBy().toPairs().sortBy(p => p[0]).value()
+  console.log(`找到 ${mtime.length} 个时间标签`)
+  
+  // 检查是否有数据
+  if (mtime.length === 0) {
+    console.warn('没有时间标签数据，跳过时间图表')
+  } else {
+    const chartMtime = new Chart(
       document.getElementById('graph-mtime'),
       {
         type: 'line',
@@ -139,9 +160,12 @@ const displayTagGraph = async () => {
         }
       }
   )
+  }
 
-  const maleTags = _(bookInfos.map(book => book.male)).flatten().countBy().toPairs().sortBy(p => -p[1]).slice(0, 24).value()
-  const femaleTags = _(bookInfos.map(book => book.female)).flatten().countBy().toPairs().sortBy(p => -p[1]).slice(0, 24).value()
+  const maleTags = _(bookInfos.map(book => book.male)).flatten().filter(Boolean).countBy().toPairs().sortBy(p => -p[1]).slice(0, 24).value()
+  const femaleTags = _(bookInfos.map(book => book.female)).flatten().filter(Boolean).countBy().toPairs().sortBy(p => -p[1]).slice(0, 24).value()
+  console.log(`找到 ${maleTags.length} 个男性标签，${femaleTags.length} 个女性标签`)
+  
   let tagData = maleTags.map(p => {
     p[2] = 'rgba(54, 162, 235, 0.2)'
     p[3] = 'rgb(54, 162, 235)'
@@ -153,7 +177,12 @@ const displayTagGraph = async () => {
         return p
       }))
   tagData = _.sortBy(tagData, p => -p[1]).slice(0, 24)
-  const chartTagCount = new Chart(
+  
+  // 检查是否有数据
+  if (tagData.length === 0) {
+    console.warn('没有标签数据，跳过标签图表')
+  } else {
+    const chartTagCount = new Chart(
       document.getElementById('graph-tag-count'),
       {
         type: 'bar',
@@ -200,6 +229,7 @@ const displayTagGraph = async () => {
         }
       }
   )
+  }
 }
 
 defineExpose({

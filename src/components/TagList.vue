@@ -34,8 +34,6 @@ import { useAppStore } from '../pinia.js'
 
 const appStore = useAppStore()
 const { setting, displayBookList } = storeToRefs(appStore)
-
-const { translate } = appStore
 const props = defineProps({
   title: {
     type: String,
@@ -54,7 +52,7 @@ const groupedItems = ref({})
 // 根据标签类型添加前缀
 const formatTagText = (item) => {
   const displayName = setting.value.showTranslation
-      ? (translate(item.name, item.type) || item.name)
+      ? (appStore.translate(item.name, item.type) || item.name)
       : item.name
 
   if (item.type === 'male') {
@@ -68,7 +66,14 @@ const formatTagText = (item) => {
 
 
 const getBookInfos = () => {
+  // 检查 displayBookList 是否存在
+  if (!displayBookList.value || !Array.isArray(displayBookList.value)) {
+    console.warn('displayBookList 不可用或不是数组')
+    return []
+  }
+
   const filteredBooks = displayBookList.value.filter(book => !book.folderHide && !book.hiddenBook)
+  console.log(`从 ${displayBookList.value.length} 本书籍中筛选出 ${filteredBooks.length} 本有效书籍`)
 
   const bookInfos = filteredBooks.map(book => ({
     artists: book?.tags?.artist ? [...book.tags.artist] : [],

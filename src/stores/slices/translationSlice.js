@@ -116,10 +116,10 @@ export function translationSlice() {
     // dictError: errorRef,
 
     // Layered single-key translator: translateTag.value(key, category?) => {name, intro}
-    // translator,
+    translator,
     // translatorsByCat,
     // getSingleTranslator,
-    // translate,
+    translate,
     // ensureTranslators,
     // --------------------------------------------------------------------------------
     ensureTranslationLoaded,

@@ -1,6 +1,10 @@
 import { defineStore } from 'pinia'
 import { ElMessage } from 'element-plus'
 import { isReactive, toRaw, unref } from 'vue'
+import { translationSlice } from './stores/slices/translationSlice.js'
+
+// 初始化翻译功能
+const { translate: translateFunc, ensureTranslationLoaded } = translationSlice()
 
 export const useAppStore = defineStore('appStore', {
   state: () => ({
@@ -179,6 +183,12 @@ export const useAppStore = defineStore('appStore', {
     },
   },
   actions: {
+    translate (tag, category) {
+      return translateFunc(tag, category)
+    },
+    async ensureTranslationLoaded () {
+      await ensureTranslationLoaded()
+    },
     isBook (book) {
       // isCollection mean book is collection
       return !book.isCollection
