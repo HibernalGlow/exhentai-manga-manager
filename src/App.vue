@@ -1,7 +1,6 @@
 <template>
   <el-config-provider :locale="localeFile">
-    <div id="progressbar" :style="{ width: progress + '%' }"></div>
-    <el-button class="fullscreen-button" circle :icon="FullScreen" size="large" @click="switchFullscreen"></el-button>
+    <AppTopControls :progress="progress" @switch-fullscreen="switchFullscreen" />
     <SearchBar
       :search-string="searchString"
       :sort-value="sortValue"
@@ -50,40 +49,24 @@
         v-if="!editTagView && !editCollectionView && !setting.disableRandomTag"
         @search="handleSearchString"
     />
-    <el-row :gutter="20" class="book-card-area">
-      <el-col :span="24" v-if="!editTagView && !editCollectionView" class="book-card-list"
-              :style="{height: setting.disableRandomTag ? 'calc(100vh - 96px)' : 'calc(100vh - 134px)'}">
-        <div
-            v-for="(book, index) in visibleChunkDisplayBookList"
-            :key="book.id"
-            class="book-card-frame"
-            v-lazy:[book.id]="loadBookCardContent"
-            :tabindex="index + 1"
-        >
-          <transition name="pop">
-            <!-- show book card when book isn't a collection, book isn't hidden because collected,
-              and book isn't hidden by user except sorting by onlyHiddenBook
-              and book isn't hidden by folder select -->
-            <BookCard
-                :book="book"
-                :search-string="searchString"
-                v-if="!book.isCollection && !book.collectionHide && (sortValue === 'hidden' || !book.hiddenBook) && !book.folderHide && visibilityMap[book.id]"
-                @open-book-detail="openBookDetailFromHistory(book)"
-                @handle-click-cover="handleClickCover(book)"
-                @on-book-context-menu="onBookContextMenu"
-                @handle-search-string="handleSearchString"
-                @search-from-tag="searchFromTag"
-                @open-local-book="$refs.BookDetailDialogRef.openLocalBook(book)"
-                @view-manga="$refs.InternalViewerRef.viewManga(book)"
-            />
-            <BookCardCollection
-                :book="book"
-                v-else-if="book.isCollection && !book.folderHide && visibilityMap[book.id]"
-                @open-collection="openCollection(book)"
-            />
-          </transition>
-        </div>
-      </el-col>
+    <template v-if="!editTagView && !editCollectionView">
+      <BookListGrid
+          :book-list="visibleChunkDisplayBookList"
+          :visibility-map="visibilityMap"
+          :search-string="searchString"
+          :sort-value="sortValue"
+          :disable-random-tag="setting.disableRandomTag"
+          :on-lazy-load="loadBookCardContent"
+          @open-book-detail="openBookDetailFromHistory"
+          @handle-click-cover="handleClickCover"
+          @on-book-context-menu="onBookContextMenu"
+          @handle-search-string="handleSearchString"
+          @search-from-tag="searchFromTag"
+          @open-local-book="(book) => $refs.BookDetailDialogRef.openLocalBook(book)"
+          @view-manga="(book) => $refs.InternalViewerRef.viewManga(book)"
+          @open-collection="openCollection"
+      />
+    </template>
       <EditView
           ref="EditViewRef"
           @preview-manga="previewManga"
@@ -92,7 +75,6 @@
           @get-books-metadata="(bookList, gap, callback) => $refs.SearchDialogRef.getBooksMetadata(bookList, gap, callback)"
           @handle-remove-book-display="handleRemoveBookDisplay"
       />
-    </el-row>
     <PaginationBar
         v-model:currentPage="currentPage"
         v-model:pageSize="setting.pageSize"
@@ -169,6 +151,8 @@ import BookHistoryButton from './components/BookHistoryButton.vue'
 import SearchBar from './components/AppComponents/SearchBar.vue'
 import PaginationBar from './components/AppComponents/PaginationBar.vue'
 import CollectionDrawer from './components/AppComponents/CollectionDrawer.vue'
+import BookListGrid from './components/AppComponents/BookListGrid.vue'
+import AppTopControls from './components/AppComponents/AppTopControls.vue'
 
 import './App.styl'
 
@@ -197,7 +181,9 @@ export default defineComponent({
     BookHistoryButton,
     SearchBar,
     PaginationBar,
-    CollectionDrawer
+    CollectionDrawer,
+    BookListGrid,
+    AppTopControls
   },
   setup() {
     const searchComposable = useSearch()
