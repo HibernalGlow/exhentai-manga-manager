@@ -165,7 +165,7 @@ export default defineComponent({
       default: 240
     }
   },
-  emits: ['hide-panel', 'append-tag', 'update:enableMixed', 'update:panelHeight', 'apply-search-history'],
+  emits: ['hide-panel', 'show-panel', 'append-tag', 'update:enableMixed', 'update:panelHeight', 'apply-search-history'],
   computed: {
     localEnableMixed: {
       get() {
@@ -212,6 +212,8 @@ export default defineComponent({
   },
   mounted() {
     this.loadSearchHistory()
+    // listen to global history updates
+    try { window.addEventListener('emm-search-history-updated', this.loadSearchHistory) } catch {}
     // 延迟添加点击外部监听器，避免影响面板打开时的点击事件
     this.$nextTick(() => {
       setTimeout(() => {
@@ -237,6 +239,7 @@ export default defineComponent({
   },
   beforeUnmount() {
     this.removeClickOutsideListener()
+    try { window.removeEventListener('emm-search-history-updated', this.loadSearchHistory) } catch {}
   },
   methods: {
     appendTag(tag, modifier = '') {
@@ -547,7 +550,7 @@ export default defineComponent({
   display: flex
   align-items: center
   justify-content: space-between
-  padding: 8px 12px
+  padding: 4px 8px
   margin-bottom: 4px
   border-radius: 6px
   cursor: pointer
@@ -574,10 +577,10 @@ export default defineComponent({
   display: inline-flex
   align-items: center
   gap: 4px
-  padding: 2px 8px
+  padding: 1px 6px
   border-radius: 4px
   font-size: 12px
-  line-height: 1.4
+  line-height: 1.2
   border: 1px solid
   background: var(--tag-bg-color, var(--el-fill-color-light))
   border-color: var(--tag-border-color, var(--el-border-color))

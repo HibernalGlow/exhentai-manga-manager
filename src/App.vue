@@ -2,6 +2,7 @@
   <el-config-provider :locale="localeFile">
     <AppTopControls :progress="progress" @switch-fullscreen="switchFullscreen" />
     <SearchBar
+      ref="SearchBarRef"
       :search-string="searchString"
       :sort-value="sortValue"
       :setting="setting"
@@ -23,7 +24,7 @@
       :handle-panel-show="handlePanelShow"
       :update-panel-height="(h, ...rest) => updatePanelHeight(h, setting, () => $refs.SettingRef.saveSetting())"
       :apply-search-history="(q) => applySearchHistory(q)"
-      :add-search-history="(q) => addSearchHistory(q)"
+      
       @open-folder-tree="$refs.FolderTreeRef.openFolderTree()"
       @search-book="searchBook"
       @shuffle-book="shuffleBook"
@@ -41,7 +42,9 @@
       @exit-edit-tag="$refs.EditViewRef.exitEditTagView()"
     >
       <template #left-extra>
-        <BookHistoryButton :book-list="bookList" :setting="setting" @open-book-detail="openBookDetailFromHistory" ref="BookHistoryButtonRef" class="search-bar-button" />
+        <span class="search-bar-button">
+          <BookHistoryButton :book-list="bookList" :setting="setting" @open-book-detail="openBookDetailFromHistory" ref="BookHistoryButtonRef" />
+        </span>
             </template>
     </SearchBar>
     <RandomTags
@@ -76,7 +79,7 @@
           @handle-remove-book-display="handleRemoveBookDisplay"
       />
     <PaginationBar
-        v-model:currentPage="currentPage"
+          v-model:currentPage="currentPage"
         v-model:pageSize="setting.pageSize"
           :total="displayBookCount"
           @size-change="handleSizeChange"

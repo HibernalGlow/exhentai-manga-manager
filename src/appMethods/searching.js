@@ -1,3 +1,4 @@
+import searchHistoryManager from '../utils/searchHistoryManager.js'
 export function querySearch(queryString, callback) {
   let result = []
   const options = this.customOptions.concat(this.tagList)
@@ -194,9 +195,12 @@ export function searchBook() {
   if (!this.sortValue || ['mark', 'hidden', 'collection'].includes(this.sortValue)) this.sortValue = 'addDescend'
   this.handleSortChange(this.sortValue, this.displayBookList)
   if (this.searchString && this.searchString.trim()) {
-    this.addSearchHistory(this.searchString.trim())
+    // persist history centrally and notify listeners
+    searchHistoryManager.addSearch(this.searchString.trim())
+    try { window.dispatchEvent(new CustomEvent('emm-search-history-updated')) } catch {}
   }
-  if (this.currentUI() === 'edit-group-tag') {
+  const ui = typeof this.currentUI === 'function' ? this.currentUI() : 'home'
+  if (ui === 'edit-group-tag') {
     this.$refs.EditViewRef.selectBookList = []
     this.displayBookList.forEach(book => book.selected = false)
   }

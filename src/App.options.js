@@ -288,6 +288,13 @@ export default defineComponent({
     loadBookCardContent(id) {
       this.visibilityMap[id] = true
     },
+    addSearchHistory(query) {
+      try {
+        this.$refs.SearchBarRef?.addSearchHistory?.(query)
+      } catch (e) {
+        console.warn('addSearchHistory failed:', e)
+      }
+    },
     // externalized method groups
     ...sorting,
     ...books,

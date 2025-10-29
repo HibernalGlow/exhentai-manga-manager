@@ -141,7 +141,6 @@ const props = defineProps({
   handlePanelShow: { type: Function, required: true },
   updatePanelHeight: { type: Function, required: true },
   applySearchHistory: { type: Function, required: true },
-  addSearchHistory: { type: Function, required: true },
 })
 
 defineEmits([
@@ -165,6 +164,16 @@ defineEmits([
 
 const localSortValue = ref(props.sortValue)
 watch(() => props.sortValue, (v) => { localSortValue.value = v })
+const searchAgilePanelRef = ref(null)
+
+defineExpose({
+  addSearchHistory(query) {
+    try {
+      searchAgilePanelRef.value?.addSearchHistory?.(query)
+    } catch {}
+  }
+})
+
 </script>
 
 
