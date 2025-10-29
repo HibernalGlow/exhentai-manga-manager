@@ -2,104 +2,49 @@
   <el-config-provider :locale="localeFile">
     <div id="progressbar" :style="{ width: progress + '%' }"></div>
     <el-button class="fullscreen-button" circle :icon="FullScreen" size="large" @click="switchFullscreen"></el-button>
-    <div class="book-search-bar">
-      <div class="search-bar-left">
-        <el-button type="primary" :icon="TreeViewAlt" plain @click="$refs.FolderTreeRef.openFolderTree()"
-                   :title="$t('m.folderTree')" class="search-bar-button"></el-button>
+    <SearchBar
+      :search-string="searchString"
+      :sort-value="sortValue"
+      :setting="setting"
+      :favorite-tags-for-search="favoriteTagsForSearch"
+      :enable-mixed-gender-search="enableMixedGenderSearch"
+      :favorite-tag-panel-visible="favoriteTagPanelVisible"
+      :favorite-tag-panel-height="favoriteTagPanelHeight"
+      :button-load-book-list-loading="buttonLoadBookListLoading"
+      :button-get-metadatas-loading="buttonGetMetadatasLoading"
+      :edit-tag-view="editTagView"
+      :edit-collection-view="editCollectionView"
+      :query-search="querySearch"
+      :handle-search-focus="handleSearchFocus"
+      :handle-search-blur="handleSearchBlur"
+      :handle-search-string-change="handleSearchStringChange"
+      :handle-input="handleInput"
+      :append-collect-tag="appendCollectTag"
+      :handle-panel-hide="handlePanelHide"
+      :handle-panel-show="handlePanelShow"
+      :update-panel-height="(h, ...rest) => updatePanelHeight(h, setting, () => $refs.SettingRef.saveSetting())"
+      :apply-search-history="(q) => applySearchHistory(q)"
+      :add-search-history="(q) => addSearchHistory(q)"
+      @open-folder-tree="$refs.FolderTreeRef.openFolderTree()"
+      @search-book="searchBook"
+      @shuffle-book="shuffleBook"
+      @load-book-list="(scan) => loadBookList(scan)"
+      @get-book-list-metadata="getBookListMetadata"
+      @open-tag-graph="$refs.TagGraphRef.displayTagGraph()"
+      @open-setting="() => { $refs.SettingRef.dialogVisibleSetting = true }"
+      @sort-change="(val) => handleSortChange(val)"
+      @enter-edit-collection="$refs.EditViewRef.enterEditCollectionView()"
+      @add-collection="$refs.EditViewRef.addCollection()"
+      @edit-collection="$refs.EditViewRef.editCollection()"
+      @save-collection="$refs.EditViewRef.saveCollection()"
+      @exit-collection="$refs.EditViewRef.exitCollectionView()"
+      @enter-edit-tag="$refs.EditViewRef.enterEditTagView()"
+      @exit-edit-tag="$refs.EditViewRef.exitEditTagView()"
+    >
+      <template #left-extra>
         <BookHistoryButton :book-list="bookList" :setting="setting" @open-book-detail="openBookDetailFromHistory" ref="BookHistoryButtonRef" class="search-bar-button" />
-      </div>
-      
-      <div class="search-bar-center">
-        <div class="search-input-wrapper" ref="searchInputWrapper">
-          <el-autocomplete
-              ref="searchAutocomplete"
-              :model-value="searchString"
-              :fetch-suggestions="querySearch"
-              @focus="handleSearchFocus"
-              @blur="handleSearchBlur"
-              @click="handleSearchFocus"
-              @keyup.enter="searchBook"
-              @change="handleSearchStringChange"
-              @input="handleInput"
-              clearable
-              :trigger-on-focus="false"
-              class="search-input"
-          >
-            <template #default="{ item }">
-              <span class="autocomplete-label">{{item.label}}</span>
-              <span class="autocomplete-value">{{item.value}}</span>
-            </template>
-          </el-autocomplete>
-          <SearchAgilePanel ref="searchAgilePanelRef" :favorite-tags="favoriteTagsForSearch" :visible="favoriteTagPanelVisible" :enable-mixed="enableMixedGenderSearch" :panel-height="favoriteTagPanelHeight" @append-tag="appendCollectTag" @hide-panel="handlePanelHide" @show-panel="handlePanelShow" @update:enable-mixed="enableMixedGenderSearch = $event" @update:panel-height="updatePanelHeight" @apply-search-history="applySearchHistory" />
-        </div>
-      </div>
-      
-      <div class="search-bar-right">
-        <el-button type="primary" :icon="Search32Filled" plain @click="searchBook" :title="$t('m.search')" class="search-bar-button"></el-button>
-        <el-button :icon="MdShuffle" plain @click="shuffleBook" :title="$t('m.shuffle')" class="search-bar-button"></el-button>
-        <el-button type="primary" :icon="MdRefresh" plain :title="$t('m.manualScan')"
-                   @click="loadBookList(true)" :loading="buttonLoadBookListLoading" class="search-bar-button"></el-button>
-        <el-button type="primary" :icon="MdCodeDownload" plain :title="$t('m.batchGetMetadata')"
-                   @click="getBookListMetadata()" :loading="buttonGetMetadatasLoading" class="search-bar-button"></el-button>
-        <el-button :icon="ArrowTrendingLines20Filled" plain @click="$refs.TagGraphRef.displayTagGraph()"
-                   :title="$t('m.tagAnalysis')" class="search-bar-button"></el-button>
-        <el-button :icon="SettingIcon" plain @click="$refs.SettingRef.dialogVisibleSetting = true"
-                   :title="$t('m.setting')" class="search-bar-button"></el-button>
-        <el-select :placeholder="$t('m.sort_filter')" @change="handleSortChange" clearable v-model="sortValue" class="sort-select">
-          <el-option-group :label="$t('m.filter')">
-            <el-option :label="$t('m.all')" value=""></el-option>
-            <el-option :label="$t('m.bookmarkOnly')" value="mark"></el-option>
-            <el-option :label="$t('m.collectionOnly')" value="collection"></el-option>
-            <el-option :label="$t('m.hiddenOnly')" value="hidden"></el-option>
-            <el-option :label="$t('m.recentReadOnly')" value="recentRead"></el-option>
-            <el-option :label="$t('m.noTagOnly')" value="notag"></el-option>
-            <el-option :label="$t('m.noCategoryOnly')" value="nocategory"></el-option>
-            <el-option :label="$t('m.duplicateGalleryOnly')" value="duplicateGallery"></el-option>
-          </el-option-group>
-          <el-option-group :label="$t('m.sort')">
-            <el-option :label="$t('m.shuffle')" value="shuffle"></el-option>
-            <el-option :label="$t('m.urlGroupAscend')" value="urlGroupAscend"></el-option>
-            <el-option :label="$t('m.urlGroupDescend')" value="urlGroupDescend"></el-option>
-            <el-option :label="$t('m.collectTagCountAscend')" value="collectTagCountAscend"></el-option>
-            <el-option :label="$t('m.collectTagCountDescend')" value="collectTagCountDescend"></el-option>
-            <el-option :label="$t('m.duplicateCountAscend')" value="duplicateCountAscend"></el-option>
-            <el-option :label="$t('m.duplicateCountDescend')" value="duplicateCountDescend"></el-option>
-            <el-option :label="$t('m.addTimeAscend')" value="addAscend"></el-option>
-            <el-option :label="$t('m.addTimeDescend')" value="addDescend"></el-option>
-            <el-option :label="$t('m.mtimeAscend')" value="mtimeAscend"></el-option>
-            <el-option :label="$t('m.mtimeDescend')" value="mtimeDescend"></el-option>
-            <el-option :label="$t('m.postTimeAscend')" value="postAscend"></el-option>
-            <el-option :label="$t('m.postTimeDescend')" value="postDescend"></el-option>
-            <el-option :label="$t('m.ratingAscend')" value="scoreAscend"></el-option>
-            <el-option :label="$t('m.ratingDescend')" value="scoreDescend"></el-option>
-            <el-option :label="$t('m.readCountAscend')" value="readCountAscend"></el-option>
-            <el-option :label="$t('m.readCountDescend')" value="readCountDescend"></el-option>
-            <el-option :label="$t('m.artistAscend')" value="artistAscend"></el-option>
-            <el-option :label="$t('m.artistDescend')" value="artistDescend"></el-option>
-            <el-option :label="$t('m.titleAscend')" value="titleAscend"></el-option>
-            <el-option :label="$t('m.titleDescend')" value="titleDescend"></el-option>
-            <el-option :label="$t('m.pageAscend')" value="pageAscend"></el-option>
-            <el-option :label="$t('m.pageDescend')" value="pageDescend"></el-option>
-          </el-option-group>
-        </el-select>
-      </div>
-      <div class="edit-buttons">
-        <el-button v-if="!editTagView && !editCollectionView" plain @click="$refs.EditViewRef.enterEditCollectionView()" :icon="CicsSystemGroup"
-                   :title="$t('m.manageCollection')"></el-button>
-        <el-button v-if="editCollectionView" type="primary" plain @click="$refs.EditViewRef.addCollection()" :icon="Collections24Regular"
-                   :title="$t('m.addCollection')"></el-button>
-        <el-button v-if="editCollectionView" type="primary" plain @click="$refs.EditViewRef.editCollection()" :icon="Edit"
-                   :title="$t('m.editCollection')"></el-button>
-        <el-button v-if="editCollectionView" type="primary" plain @click="$refs.EditViewRef.saveCollection()" :icon="Save16Regular"
-                   :title="$t('m.save')"></el-button>
-        <el-button v-if="editCollectionView" type="primary" plain @click="$refs.EditViewRef.exitCollectionView()" :icon="MdExit"
-                   :title="$t('m.exit')"></el-button>
-        <el-button v-if="!editTagView && !editCollectionView" plain @click="$refs.EditViewRef.enterEditTagView()" :icon="TagGroup"
-                   :title="$t('m.manageTag')"></el-button>
-        <el-button v-if="editTagView" type="primary" plain @click="$refs.EditViewRef.exitEditTagView()" :icon="MdExit"
-                   :title="$t('m.exit')"></el-button>
-      </div>
-    </div>
+      </template>
+    </SearchBar>
     <RandomTags
         ref="randomTagsRef"
         v-if="!editTagView && !editCollectionView && !setting.disableRandomTag"
@@ -148,53 +93,27 @@
           @handle-remove-book-display="handleRemoveBookDisplay"
       />
     </el-row>
-    <el-row class="pagination-bar">
-      <el-pagination
-          v-model:currentPage="currentPage"
-          v-model:page-size="setting.pageSize"
-          :page-sizes="[12, 24, 42, 72, 500, 5000, 1000000]"
-          size="small"
-          layout="total, sizes, prev, pager, next, jumper"
-          :total="displayBookCount"
-          @size-change="handleSizeChange"
-          @current-change="handleCurrentPageChange"
-          background
-      />
-    </el-row>
-    <el-drawer v-model="drawerVisibleCollection"
-               direction="btt"
-               size="calc(100vh - 60px)"
-               destroy-on-close
-               class="collection-drawer"
-    >
-      <template #header>
-        <div>
-          <span class="open-collection-title">{{openCollectionTitle}}</span>
-          <el-button type="primary" :icon="Edit" plain link class="collection-edit-button"
-                     @click="editCurrentCollection"/>
-        </div>
-      </template>
-      <div class="collection-book-card-list">
-        <div
-            v-for="(book, index) in openCollectionBookList"
-            :key="book.id"
-            class="book-card-frame"
-        >
-          <BookCard
-              :book="book"
-              :search-string="searchString"
-              :tabindex="index + 1"
-              @open-book-detail="openBookDetailFromHistory(book)"
-              @handle-click-cover="handleClickCover(book)"
-              @on-book-context-menu="onBookContextMenu"
-              @handle-search-string="handleSearchString"
-              @search-from-tag="searchFromTag"
-              @open-local-book="$refs.BookDetailDialogRef.openLocalBook(book)"
-              @view-manga="$refs.InternalViewerRef.viewManga(book)"
-          />
-        </div>
-      </div>
-    </el-drawer>
+    <PaginationBar
+        v-model:currentPage="currentPage"
+        v-model:pageSize="setting.pageSize"
+        :total="displayBookCount"
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentPageChange"
+    />
+    <CollectionDrawer
+        v-model="drawerVisibleCollection"
+        :title="openCollectionTitle"
+        :book-list="openCollectionBookList"
+        :search-string="searchString"
+        @edit-current-collection="editCurrentCollection"
+        @open-book-detail="openBookDetailFromHistory"
+        @handle-click-cover="handleClickCover"
+        @on-book-context-menu="onBookContextMenu"
+        @handle-search-string="handleSearchString"
+        @search-from-tag="searchFromTag"
+        @open-local-book="(book) => $refs.BookDetailDialogRef.openLocalBook(book)"
+        @view-manga="(book) => $refs.InternalViewerRef.viewManga(book)"
+    />
     <MoveFileDialog ref="moveDlgRef" :save-book-fn="saveBook"/>
     <BookDetailDialog
         ref="BookDetailDialogRef"
@@ -247,6 +166,9 @@ import MoveFileDialog from './components/MoveFileDialog.vue'
 import FavoriteTagPanel from './components/FavoriteTagPanel.vue'
 import SearchAgilePanel from './components/SearchAgilePanel.vue'
 import BookHistoryButton from './components/BookHistoryButton.vue'
+import SearchBar from './components/AppComponents/SearchBar.vue'
+import PaginationBar from './components/AppComponents/PaginationBar.vue'
+import CollectionDrawer from './components/AppComponents/CollectionDrawer.vue'
 
 import './App.styl'
 
@@ -272,7 +194,10 @@ export default defineComponent({
     MoveFileDialog,
     FavoriteTagPanel,
     SearchAgilePanel,
-    BookHistoryButton
+    BookHistoryButton,
+    SearchBar,
+    PaginationBar,
+    CollectionDrawer
   },
   setup() {
     const searchComposable = useSearch()
