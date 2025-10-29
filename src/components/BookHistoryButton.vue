@@ -209,7 +209,7 @@ defineExpose({
     padding-top: 0
 
 .history-content
-  height: calc(100vh - 120px)
+  height: auto
   overflow-y: auto
 
 .history-list
