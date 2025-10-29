@@ -20,7 +20,7 @@ import { ref, watch } from 'vue'
 
 const props = defineProps({
   currentPage: { type: Number, required: true },
-  pageSize: { type: Number, required: true },
+  pageSize: { type: Number, default: 24 },
   total: { type: Number, required: true },
   pageSizes: { type: Array, default: () => [12, 24, 42, 72, 500, 5000, 1000000] },
   layout: { type: String, default: 'total, sizes, prev, pager, next, jumper' },

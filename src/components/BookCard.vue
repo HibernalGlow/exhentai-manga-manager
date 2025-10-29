@@ -1,7 +1,7 @@
 <template>
   <div class="book-card">
     <p class="book-title"
-      @click="$emit('openBookDetail')"
+      @click="$emit('openBookDetail', book)"
       @contextmenu="onMangaTitleContextMenu($event, book)"
       :title="getDisplayTitle(book)"
     >{{getDisplayTitle(book)}}</p>
@@ -12,7 +12,7 @@
       class="book-cover"
       :src="book.coverPath"
       @error="onCoverError"
-      @click="$emit('handleClickCover')"
+      @click="$emit('handleClickCover', book)"
       @contextmenu="$emit('onBookContextMenu', $event, book)"
     />
     <el-tag v-if="book.readCount > 0" class="book-card-language" size="small"
@@ -55,8 +55,8 @@
     </div>
     <div>
       <el-button-group class="outer-read-button-group">
-        <el-button type="success" size="small" class="outer-read-button" plain @click="$emit('openLocalBook')">{{$t('m.re')}}</el-button>
-        <el-button type="success" size="small" class="outer-read-button" plain @click="$emit('viewManga')">{{$t('m.ad')}}</el-button>
+        <el-button type="success" size="small" class="outer-read-button" plain @click="$emit('openLocalBook', book)">{{$t('m.re')}}</el-button>
+        <el-button type="success" size="small" class="outer-read-button" plain @click="$emit('viewManga', book)">{{$t('m.ad')}}</el-button>
       </el-button-group>
       <el-button-group v-if="setting.deleteMode" class="outer-delete-button-group">
         <el-button type="danger" size="small" class="outer-delete-button" plain @click="deleteBook(book)">{{$t('m.deleteFile')}}</el-button>
