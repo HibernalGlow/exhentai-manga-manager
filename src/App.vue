@@ -253,6 +253,10 @@ import './App.styl'
 import { mapWritableState, mapActions } from 'pinia'
 import { useAppStore, toPlain } from './pinia.js'
 
+import { useSearch } from './composables/useSearch.js'
+import { useCollectTagMatch } from './composables/useCollectTagMatch.js'
+import { useDuplicateGallery } from './composables/useDuplicateGallery.js'
+
 export default defineComponent({
   components: {
     Setting,
@@ -271,11 +275,18 @@ export default defineComponent({
     BookHistoryButton
   },
   setup() {
+    const searchComposable = useSearch()
+    const collectTagMatchComposable = useCollectTagMatch()
+    const duplicateGalleryComposable = useDuplicateGallery()
+
     return {
       SettingIcon, FullScreen, Edit,
       Collections24Regular, Search32Filled, ArrowTrendingLines20Filled, Save16Regular,
       MdRefresh, MdCodeDownload, MdExit, MdShuffle,
-      TreeViewAlt, CicsSystemGroup, TagGroup
+      TreeViewAlt, CicsSystemGroup, TagGroup,
+      ...searchComposable,
+      ...collectTagMatchComposable,
+      ...duplicateGalleryComposable
     }
   },
   provide() {
@@ -293,17 +304,9 @@ export default defineComponent({
       visibilityMap: {},
       buttonLoadBookListLoading: false,
       buttonGetMetadatasLoading: false,
-      favoriteTagPanelVisible: false,
-      favoriteTagHideTimer: null,
-      favoriteTagPanelHeight: 240,
-      enableMixedGenderSearch: false,
       // collection
       drawerVisibleCollection: false,
       openCollectionTitle: undefined,
-      // 收藏标签匹配数量缓存
-      collectTagMatchCache: new Map(),
-      // 重复画廊数量缓存
-      duplicateCountCache: new Map(),
     }
   },
   computed: {
@@ -405,8 +408,6 @@ export default defineComponent({
     ipcRenderer.invoke('load-setting')
         .then(async (res) => {
           this.setting = res
-          // 加载收藏标签面板高度
-          this.favoriteTagPanelHeight = this.setting.favoriteTagPanelHeight || 240
           if (this.setting.loadOnStart) {
             // skip the cache and rescan all libraries
             // await this.loadBookList()
@@ -464,14 +465,14 @@ export default defineComponent({
     bookList() {
       this.handleSortChange(this.sortValue, this.bookList)
       // 书籍列表改变时重新计算收藏标签匹配缓存
-      this.recalculateCollectTagMatchCache()
+      this.recalculateCollectTagMatchCache(this.bookList, this.setting.collectTag)
       // 重新构建重复画廊数量缓存
       this.buildDuplicateCountCache()
     },
     'setting.collectTag': {
       handler() {
         // 收藏标签改变时重新计算缓存
-        this.recalculateCollectTagMatchCache()
+        this.recalculateCollectTagMatchCache(this.bookList, this.setting.collectTag)
       },
       deep: true
     },
@@ -501,52 +502,20 @@ export default defineComponent({
     handleSearchBlur() {
       this.scheduleFavoriteHide()
     },
-    clearFavoriteHideTimer() {
-      if (this.favoriteTagHideTimer) {
-        clearTimeout(this.favoriteTagHideTimer)
-        this.favoriteTagHideTimer = null
-      }
-    },
-    scheduleFavoriteHide() {
-      this.clearFavoriteHideTimer()
-      this.favoriteTagHideTimer = setTimeout(() => {
-        this.favoriteTagPanelVisible = false
-        this.favoriteTagHideTimer = null
-      }, 180)
-    },
     appendCollectTag(tag, modifier = '', event) {
-      if (event?.shiftKey && !modifier) {
-        modifier = '~'
-      }
-      const baseToken = `${tag.letter}:"${tag.tag}"$`
-      const token = modifier === '-' ? `-${baseToken}` : modifier === '~' ? `~${baseToken}` : baseToken
-      const trimmed = this.searchString.trim()
-      const nextValue = trimmed ? `${trimmed} ${token}` : token
-      this.handleInput(nextValue)
-      this.$nextTick(() => {
-        this.$refs.searchAutocomplete?.focus?.()
-      })
+      this.appendCollectTag(tag, modifier, event, this.searchString, this.handleInput, this.$refs.searchAutocomplete)
     },
     handlePanelHide() {
-      this.favoriteTagPanelVisible = false
+      this.handlePanelHide()
     },
     updatePanelHeight(height) {
-      this.favoriteTagPanelHeight = height
-      // 保存到设置
-      this.setting.favoriteTagPanelHeight = height
-      this.$refs.SettingRef.saveSetting()
+      this.updatePanelHeight(height, this.setting, () => this.$refs.SettingRef.saveSetting())
     },
-
-    // 搜索历史相关方法
     addSearchHistory(query) {
-      // 这里可以直接调用SearchAgilePanel组件的方法
-      if (this.$refs.searchAgilePanelRef) {
-        this.$refs.searchAgilePanelRef.addSearchHistory(query)
-      }
+      this.addSearchHistory(query, this.$refs.searchAgilePanelRef)
     },
     applySearchHistory(query) {
-      this.searchString = query
-      this.searchBook()
+      this.applySearchHistory(query, this.searchString, this.searchBook)
     },
 
     // 计算书籍匹配收藏标签的数量（带缓存）
@@ -597,129 +566,7 @@ export default defineComponent({
       return matchCount
     },
 
-    // 重新计算收藏标签匹配缓存
-    recalculateCollectTagMatchCache() {
-      if (!Array.isArray(this.bookList)) {
-        return
-      }
 
-      // 清空缓存
-      this.collectTagMatchCache.clear()
-
-      // 预计算所有书籍的匹配数量
-      this.bookList.forEach(book => {
-        if (book && book.id) {
-          const matchCount = this.calculateCollectTagMatchCount(book)
-          this.collectTagMatchCache.set(book.id, matchCount)
-        }
-      })
-
-      console.log(`预计算了 ${this.collectTagMatchCache.size} 本书的收藏标签匹配数量`)
-    },
-
-    // 检查书籍是否有重复的画廊链接（只检查exhentai和e-hentai的URL）
-    isDuplicateGallery(book) {
-      if (!book || !book.url || book.isCollection) {
-        return false
-      }
-      
-      // 只检查exhentai和e-hentai的URL
-      if (!book.url.includes('exhentai.org') && !book.url.includes('e-hentai.org')) {
-        return false
-      }
-      
-      // 统计相同url的书籍数量
-      const duplicateCount = this.bookList.filter(b => 
-        b.url === book.url && !b.isCollection && 
-        (b.url.includes('exhentai.org') || b.url.includes('e-hentai.org'))
-      ).length
-      
-      // 如果有多个书籍有相同的url，则认为是重复的
-      return duplicateCount > 1
-    },
-
-    // 获取书籍的重复画廊数量（相同URL的书籍数量）
-    getDuplicateGalleryCount(book) {
-      if (!book || !book.url || book.isCollection) {
-        return 0
-      }
-      
-      // 只统计exhentai和e-hentai的URL
-      if (!book.url.includes('exhentai.org') && !book.url.includes('e-hentai.org')) {
-        return 0
-      }
-      
-      // 从缓存中获取重复数量
-      return this.duplicateCountCache.get(book.url) || 0
-    },
-
-    // 构建重复画廊数量缓存
-    async buildDuplicateCountCache() {
-      try {
-        console.log('🔍 开始构建重复画廊数量缓存...')
-        const startTime = performance.now()
-        
-        // 使用SQL查询获取所有URL的重复统计
-        const sqlQuery = `
-          SELECT url, COUNT(*) as count
-          FROM Metadata
-          WHERE url IS NOT NULL AND url != "" 
-          AND (url LIKE '%exhentai.org%' OR url LIKE '%e-hentai.org%')
-          GROUP BY url
-          HAVING COUNT(*) > 1
-        `
-        
-        const sqlResult = await window.ipcRenderer.invoke('execute-sql-query', {
-          query: sqlQuery,
-          replacements: {}
-        })
-        
-        // 清空缓存
-        this.duplicateCountCache.clear()
-        
-        // 填充缓存
-        if (sqlResult && Array.isArray(sqlResult)) {
-          sqlResult.forEach(row => {
-            this.duplicateCountCache.set(row.url, row.count)
-          })
-        }
-        
-        console.log(`📊 重复画廊数量缓存构建完成: ${this.duplicateCountCache.size} 个重复URL, 耗时: ${(performance.now() - startTime).toFixed(2)}ms`)
-        
-      } catch (error) {
-        console.error('❌ 构建重复画廊数量缓存失败:', error)
-        // 回退到内存统计
-        this.buildDuplicateCountCacheFallback()
-      }
-    },
-
-    // 回退方案：内存中构建重复画廊数量缓存
-    buildDuplicateCountCacheFallback() {
-      console.log('🔄 使用内存回退方案构建重复画廊数量缓存...')
-      const startTime = performance.now()
-      
-      // 清空缓存
-      this.duplicateCountCache.clear()
-      
-      // 统计URL出现次数
-      const urlCount = new Map()
-      
-      this.bookList.forEach(book => {
-        if (book && book.url && !book.isCollection && 
-            (book.url.includes('exhentai.org') || book.url.includes('e-hentai.org'))) {
-          urlCount.set(book.url, (urlCount.get(book.url) || 0) + 1)
-        }
-      })
-      
-      // 只保留重复的URL
-      urlCount.forEach((count, url) => {
-        if (count > 1) {
-          this.duplicateCountCache.set(url, count)
-        }
-      })
-      
-      console.log(`📊 内存重复画廊数量缓存构建完成: ${this.duplicateCountCache.size} 个重复URL, 耗时: ${(performance.now() - startTime).toFixed(2)}ms`)
-    },
 
     // base function
     currentUI() {
